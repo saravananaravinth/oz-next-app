@@ -1,6 +1,7 @@
 // oz-next-app/src/server/api/server-client.ts
 import "server-only";
 
+import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { cache } from "react";
 import { z, type ZodType } from "zod";
 
@@ -59,6 +60,14 @@ type NormalizedRequestOptions = Readonly<{
   next?: NextFetchConfig | undefined;
 }>;
 
+type CloudflareFetchServiceBinding = Readonly<{
+  fetch: (request: Request) => Promise<Response>;
+}>;
+
+type CloudflareRuntimeEnv = Readonly<{
+  ERP_EDGE?: unknown;
+}>;
+
 export type ServerApiOptions<TData> = Readonly<{
   method?: HttpMethod | undefined;
   body?: unknown;
@@ -113,6 +122,68 @@ const idempotencyKeySchema = z
   .regex(/^[A-Za-z0-9:_./@-]+$/u);
 
 const apiBaseUrlSchema = z.string().trim().min(1).max(2_048).pipe(z.url());
+
+function isCloudflareFetchServiceBinding(
+  value: unknown,
+): value is CloudflareFetchServiceBinding {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "fetch" in value &&
+    typeof value.fetch === "function"
+  );
+}
+
+function resolveErpEdgeServiceBinding(): CloudflareFetchServiceBinding | null {
+  try {
+    const context = getCloudflareContext();
+    const env = context.env as CloudflareRuntimeEnv;
+
+    return isCloudflareFetchServiceBinding(env.ERP_EDGE) ? env.ERP_EDGE : null;
+  } catch {
+    return null;
+  }
+}
+
+function toServiceBindingRequest(
+  url: string,
+  init: ServerRequestInit,
+): Request {
+  const requestInit: RequestInit = {
+    headers: new Headers(init.headers),
+  };
+
+  if (init.method !== undefined) {
+    requestInit.method = init.method;
+  }
+
+  if (init.body !== undefined && init.body !== null) {
+    requestInit.body = init.body;
+  }
+
+  if (init.redirect !== undefined) {
+    requestInit.redirect = init.redirect;
+  }
+
+  if (init.signal !== undefined) {
+    requestInit.signal = init.signal;
+  }
+
+  return new Request(url, requestInit);
+}
+
+async function dispatchEdgeRequest(
+  url: string,
+  init: ServerRequestInit,
+): Promise<Response> {
+  const erpEdge = resolveErpEdgeServiceBinding();
+
+  if (erpEdge !== null) {
+    return await erpEdge.fetch(toServiceBindingRequest(url, init));
+  }
+
+  return await fetch(url, init);
+}
 
 const nextFetchTagSchema = z
   .string()
@@ -344,15 +415,18 @@ async function refreshServerAuthTokens(): Promise<AuthTokenResponse | null> {
     refreshToken,
   });
 
-  const response = await fetch(buildServerEdgeUrl(AUTH_ENDPOINTS.refresh), {
-    method: HTTP_METHODS.POST,
-    headers: await serverRequestContextHeaders({
-      includeJsonContentType: true,
-    }),
-    body: JSON.stringify(body),
-    cache: "no-store",
-    redirect: "error",
-  });
+  const response = await dispatchEdgeRequest(
+    buildServerEdgeUrl(AUTH_ENDPOINTS.refresh),
+    {
+      method: HTTP_METHODS.POST,
+      headers: await serverRequestContextHeaders({
+        includeJsonContentType: true,
+      }),
+      body: JSON.stringify(body),
+      cache: "no-store",
+      redirect: "error",
+    },
+  );
 
   const payload = await readJsonPayload(response);
 
@@ -440,7 +514,10 @@ async function fetchOnce<TData>(
   };
 
   try {
-    const response = await fetch(buildServerEdgeUrl(path), requestInit);
+    const response = await dispatchEdgeRequest(
+      buildServerEdgeUrl(path),
+      requestInit,
+    );
     const payload = await readJsonPayload(response);
 
     if (!response.ok) {

@@ -41,6 +41,12 @@ binding = "IMAGES"
 binding = "WORKER_SELF_REFERENCE"
 service = "oz-next-app"
 
+# Server-side ERP API calls must use Cloudflare's internal service binding.
+# Browser/client code still uses NEXT_PUBLIC_API_BASE_URL.
+[[services]]
+binding = "ERP_EDGE"
+service = "oz-erp-edge"
+
 [placement]
 region = "gcp:asia-south1"
 

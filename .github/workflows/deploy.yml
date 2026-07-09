@@ -334,6 +334,16 @@ jobs:
               "Invalid self-reference service",
               "WORKER_SELF_REFERENCE must point to oz-next-app.",
           )
+          require(
+              any(
+                  isinstance(service, dict)
+                  and service.get("binding") == "ERP_EDGE"
+                  and service.get("service") == "oz-erp-edge"
+                  for service in services
+              ),
+              "Missing ERP edge service binding",
+              "ERP_EDGE must bind oz-next-app to oz-erp-edge for server-side ERP API calls.",
+          )
 
           placement = config.get("placement")
           require(isinstance(placement, dict), "Missing placement", "placement must be configured.")
