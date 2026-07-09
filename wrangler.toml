@@ -1,4 +1,13 @@
 # oz-next-app/wrangler.toml
+#
+# Architecture:
+#   Browser -> oz-next-app OpenNext Worker -> oz-erp-edge Worker -> private oz-erp-api Cloud Run
+#
+# Security rules:
+#   - Do not place secrets in this file.
+#   - Do not expose Cloud Run URLs, service account credentials, JWT secrets, database URLs,
+#     Redis URLs, webhook secrets, R2 secrets, or tokens.
+#   - NEXT_PUBLIC_API_BASE_URL must always point to the public oz-erp-edge Worker origin.
 
 name = "oz-next-app"
 main = ".open-next/worker.js"
@@ -11,6 +20,11 @@ compatibility_flags = [
 workers_dev = false
 preview_urls = false
 upload_source_maps = true
+
+# Required for OpenNext Cloudflare.
+# Prevents Wrangler/esbuild from injecting __name helpers into generated scripts,
+# which can break next-themes/runtime string-evaluated scripts in production.
+keep_names = false
 
 [[routes]]
 pattern = "erp.ozotecev.com/*"
