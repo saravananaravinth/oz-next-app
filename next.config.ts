@@ -169,22 +169,22 @@ const allowedServerActionOrigins = uniqueSources([appOrigin]).map(originToHost);
 
 const allowedDevOrigins = isDevelopment
   ? uniqueSources([
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
-    "http://localhost:8787",
-    "http://127.0.0.1:8787",
-    appOrigin,
-    apiOrigin,
-  ])
+      "http://localhost:3000",
+      "http://127.0.0.1:3000",
+      "http://localhost:8787",
+      "http://127.0.0.1:8787",
+      appOrigin,
+      apiOrigin,
+    ])
   : [];
 
 const productionOnlySecurityHeaders: readonly Header[] = isProduction
   ? [
-    {
-      key: "Strict-Transport-Security",
-      value: "max-age=31536000; includeSubDomains; preload",
-    },
-  ]
+      {
+        key: "Strict-Transport-Security",
+        value: "max-age=31536000; includeSubDomains; preload",
+      },
+    ]
   : [];
 
 const securityHeaders: readonly Header[] = [
