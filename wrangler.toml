@@ -1,0 +1,66 @@
+# ==============================================================================
+# oz-next-app — OpenNext Cloudflare Worker configuration
+# ==============================================================================
+#
+# Architecture:
+#   Browser
+#     -> oz-next-app OpenNext Worker
+#     -> oz-erp-edge Cloudflare Worker
+#     -> private oz-erp-api Cloud Run
+#
+# Security boundary:
+#   - Do not put secrets in this file.
+#   - Do not put Cloud Run URLs in this file.
+#   - Do not put JWTs, cookies, API keys, DB URLs, Redis URLs, service account JSON,
+#     webhook secrets, R2 secrets, tenant IDs, actor IDs, or private diagnostics here.
+#   - Public frontend API traffic must go through oz-erp-edge only.
+
+name = "oz-next-app"
+main = ".open-next/worker.js"
+compatibility_date = "2026-07-09"
+compatibility_flags = [
+  "nodejs_compat",
+  "global_fetch_strictly_public",
+]
+
+workers_dev = false
+preview_urls = false
+upload_source_maps = true
+
+[[routes]]
+pattern = "erp.ozotecev.com"
+custom_domain = true
+
+[[routes]]
+pattern = "erp.ozotecev.com/*"
+zone_name = "ozotecev.com"
+
+[assets]
+binding = "ASSETS"
+directory = ".open-next/assets"
+
+[images]
+binding = "IMAGES"
+
+[[services]]
+binding = "WORKER_SELF_REFERENCE"
+service = "oz-next-app"
+
+[placement]
+region = "gcp:asia-south1"
+
+[observability]
+enabled = true
+head_sampling_rate = 0.1
+
+[vars]
+NEXTJS_ENV = "production"
+
+NEXT_PUBLIC_APP_ENV = "production"
+NEXT_PUBLIC_APP_URL = "https://erp.ozotecev.com"
+NEXT_PUBLIC_API_BASE_URL = "https://api.erp.ozotecev.com"
+NEXT_PUBLIC_CLIENT_ID = "erp-web"
+NEXT_PUBLIC_PROJECT = "ERP"
+NEXT_PUBLIC_REQUEST_TIMEOUT_MS = "30000"
+NEXT_PUBLIC_APP_VERSION = "0.1.0"
+NEXT_PUBLIC_LOG_LEVEL = "warn"
