@@ -30,6 +30,7 @@ import {
   PUBLIC_API_ALLOWED_PREFIXES,
   type HttpMethod,
 } from "@/lib/constants";
+import { logger } from "@/lib/logger";
 import {
   serverRequestContextHeaders,
   type ServerActorContextHeaders,
@@ -66,6 +67,16 @@ type CloudflareFetchServiceBinding = Readonly<{
 
 type CloudflareRuntimeEnv = Readonly<{
   ERP_EDGE?: unknown;
+}>;
+
+type ErpEdgeBindingStatus =
+  "available" | "context_unavailable" | "missing" | "invalid";
+
+type ErpEdgeBindingResolution = Readonly<{
+  binding: CloudflareFetchServiceBinding | null;
+  status: ErpEdgeBindingStatus;
+  contextErrorName?: string | undefined;
+  contextErrorMessage?: string | undefined;
 }>;
 
 export type ServerApiOptions<TData> = Readonly<{
@@ -109,6 +120,7 @@ const ACCESS_TOKEN_EXPIRY_SKEW_SECONDS = 30;
 const MAX_API_PATH_LENGTH = 2_048;
 const CONTROL_CHARACTER_MAX_CODE = 0x1f;
 const DELETE_CHARACTER_CODE = 0x7f;
+const MAX_DIAGNOSTIC_TEXT_LENGTH = 512;
 
 const UNSAFE_ENCODED_PATH_PATTERN = /%(?:00|2e|2f|5c)/iu;
 
@@ -123,6 +135,10 @@ const idempotencyKeySchema = z
 
 const apiBaseUrlSchema = z.string().trim().min(1).max(2_048).pipe(z.url());
 
+function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 function isCloudflareFetchServiceBinding(
   value: unknown,
 ): value is CloudflareFetchServiceBinding {
@@ -134,14 +150,123 @@ function isCloudflareFetchServiceBinding(
   );
 }
 
-function resolveErpEdgeServiceBinding(): CloudflareFetchServiceBinding | null {
+function replaceControlCharacters(value: string): string {
+  let output = "";
+  let changed = false;
+
+  for (let index = 0; index < value.length; index += 1) {
+    const codePoint = value.charCodeAt(index);
+
+    if (
+      codePoint <= CONTROL_CHARACTER_MAX_CODE ||
+      codePoint === DELETE_CHARACTER_CODE
+    ) {
+      output += " ";
+      changed = true;
+      continue;
+    }
+
+    output += value.charAt(index);
+  }
+
+  return changed ? output : value;
+}
+
+function normalizeDiagnosticText(value: string, fallback: string): string {
+  const normalized = replaceControlCharacters(value)
+    .replace(/\s+/gu, " ")
+    .trim();
+  const safeValue = normalized.length > 0 ? normalized : fallback;
+
+  return safeValue.length <= MAX_DIAGNOSTIC_TEXT_LENGTH
+    ? safeValue
+    : `${safeValue.slice(0, MAX_DIAGNOSTIC_TEXT_LENGTH - 1).trimEnd()}…`;
+}
+
+function diagnosticErrorName(error: unknown): string {
+  if (error instanceof Error) {
+    return normalizeDiagnosticText(error.name, "Error");
+  }
+
+  if (isRecord(error) && typeof error["name"] === "string") {
+    return normalizeDiagnosticText(error["name"], "Error");
+  }
+
+  return "UnknownError";
+}
+
+function diagnosticErrorMessage(error: unknown): string {
+  if (error instanceof Error) {
+    return normalizeDiagnosticText(error.message, "No error message.");
+  }
+
+  if (isRecord(error) && typeof error["message"] === "string") {
+    return normalizeDiagnosticText(error["message"], "No error message.");
+  }
+
+  return "No error message.";
+}
+
+function readDiagnosticHeader(
+  init: ServerRequestInit,
+  name: string,
+): string | null {
+  try {
+    return new Headers(init.headers).get(name);
+  } catch {
+    return null;
+  }
+}
+
+function readDiagnosticUrlParts(
+  url: string,
+): Readonly<{ origin: string; pathname: string }> {
+  try {
+    const parsed = new URL(url);
+
+    return {
+      origin: parsed.origin,
+      pathname: parsed.pathname,
+    };
+  } catch {
+    return {
+      origin: "invalid",
+      pathname: "invalid",
+    };
+  }
+}
+
+function resolveErpEdgeServiceBinding(): ErpEdgeBindingResolution {
   try {
     const context = getCloudflareContext();
     const env = context.env as CloudflareRuntimeEnv;
+    const binding = env.ERP_EDGE;
 
-    return isCloudflareFetchServiceBinding(env.ERP_EDGE) ? env.ERP_EDGE : null;
-  } catch {
-    return null;
+    if (binding === undefined) {
+      return {
+        binding: null,
+        status: "missing",
+      };
+    }
+
+    if (!isCloudflareFetchServiceBinding(binding)) {
+      return {
+        binding: null,
+        status: "invalid",
+      };
+    }
+
+    return {
+      binding,
+      status: "available",
+    };
+  } catch (error: unknown) {
+    return {
+      binding: null,
+      status: "context_unavailable",
+      contextErrorName: diagnosticErrorName(error),
+      contextErrorMessage: diagnosticErrorMessage(error),
+    };
   }
 }
 
@@ -176,13 +301,56 @@ async function dispatchEdgeRequest(
   url: string,
   init: ServerRequestInit,
 ): Promise<Response> {
-  const erpEdge = resolveErpEdgeServiceBinding();
+  const resolution = resolveErpEdgeServiceBinding();
+  const target = readDiagnosticUrlParts(url);
+  const requestId = readDiagnosticHeader(init, HDR.REQUEST_ID);
+  const correlationId = readDiagnosticHeader(init, HDR.CORRELATION_ID);
+  const method = init.method ?? HTTP_METHODS.GET;
 
-  if (erpEdge !== null) {
-    return await erpEdge.fetch(toServiceBindingRequest(url, init));
+  const baseLogFields = {
+    operation: "erp_edge_dispatch",
+    method,
+    requestId,
+    correlationId,
+    targetOrigin: target.origin,
+    targetPathname: target.pathname,
+    bindingStatus: resolution.status,
+    contextErrorName: resolution.contextErrorName,
+    contextErrorMessage: resolution.contextErrorMessage,
+  };
+
+  if (resolution.binding !== null) {
+    try {
+      return await resolution.binding.fetch(toServiceBindingRequest(url, init));
+    } catch (error: unknown) {
+      logger.error("erp_edge_service_binding_dispatch_failed", {
+        ...baseLogFields,
+        dispatchTarget: "service_binding",
+        errorName: diagnosticErrorName(error),
+        errorMessage: diagnosticErrorMessage(error),
+      });
+
+      throw error;
+    }
   }
 
-  return await fetch(url, init);
+  logger.warn("erp_edge_service_binding_unavailable", {
+    ...baseLogFields,
+    dispatchTarget: "public_fetch",
+  });
+
+  try {
+    return await fetch(url, init);
+  } catch (error: unknown) {
+    logger.error("erp_edge_public_fetch_dispatch_failed", {
+      ...baseLogFields,
+      dispatchTarget: "public_fetch",
+      errorName: diagnosticErrorName(error),
+      errorMessage: diagnosticErrorMessage(error),
+    });
+
+    throw error;
+  }
 }
 
 const nextFetchTagSchema = z
@@ -518,6 +686,7 @@ async function fetchOnce<TData>(
       buildServerEdgeUrl(path),
       requestInit,
     );
+
     const payload = await readJsonPayload(response);
 
     if (!response.ok) {
