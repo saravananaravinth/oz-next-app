@@ -126,6 +126,20 @@ function stripQueryHash(value: string): string {
   return value.split(/[?#]/u, 1)[0] ?? value;
 }
 
+function isSafeRelativeRoute(value: string): value is Route {
+  return !(
+    value.length === 0 ||
+    value.length > MAX_HREF_LENGTH ||
+    !value.startsWith("/") ||
+    value.startsWith("//") ||
+    value.includes("\\") ||
+    CONTROL_CHARACTER_TEST_PATTERN.test(value) ||
+    UNSAFE_ENCODED_PATH_PATTERN.test(value) ||
+    SENSITIVE_QUERY_PATTERN.test(value) ||
+    stripQueryHash(value).split("/").includes("..")
+  );
+}
+
 export function toSafeRelativeRoute(
   value: unknown,
   fallback: Route = "/dashboard",
@@ -136,21 +150,7 @@ export function toSafeRelativeRoute(
 
   const normalized = value.trim();
 
-  if (
-    normalized.length === 0 ||
-    normalized.length > MAX_HREF_LENGTH ||
-    !normalized.startsWith("/") ||
-    normalized.startsWith("//") ||
-    normalized.includes("\\") ||
-    CONTROL_CHARACTER_TEST_PATTERN.test(normalized) ||
-    UNSAFE_ENCODED_PATH_PATTERN.test(normalized) ||
-    SENSITIVE_QUERY_PATTERN.test(normalized) ||
-    stripQueryHash(normalized).split("/").includes("..")
-  ) {
-    return fallback;
-  }
-
-  return normalized as Route;
+  return isSafeRelativeRoute(normalized) ? normalized : fallback;
 }
 
 export function toNumberOrNull(value: unknown): number | null {

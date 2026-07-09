@@ -43,8 +43,7 @@ jobs:
       WORKER_NAME: oz-next-app
       WORKER_ROUTE: erp.ozotecev.com/*
       RELEASE_NAME: oz-next-app
-      REQUESTED_RELEASE_TYPE:
-        ${{ github.event_name == 'workflow_dispatch' && inputs.release_type || 'auto' }}
+      REQUESTED_RELEASE_TYPE: ${{ github.event_name == 'workflow_dispatch' && inputs.release_type || 'auto' }}
 
       NEXT_PUBLIC_APP_ENV: production
       NEXT_PUBLIC_APP_ORIGIN: https://erp.ozotecev.com

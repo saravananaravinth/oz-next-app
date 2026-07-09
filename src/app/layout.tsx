@@ -92,8 +92,24 @@ function createMetadataBase(value: string, appEnv: string): URL {
   }
 }
 
+function readMetadataBaseInput(): string {
+  const appUrl = env.NEXT_PUBLIC_APP_URL?.trim();
+
+  if (appUrl !== undefined && appUrl.length > 0) {
+    return appUrl;
+  }
+
+  const appOrigin = env.NEXT_PUBLIC_APP_ORIGIN.trim();
+
+  if (appOrigin.length > 0) {
+    return appOrigin;
+  }
+
+  throw new Error("metadata_base_url_missing");
+}
+
 const metadataBase = createMetadataBase(
-  env.NEXT_PUBLIC_APP_ORIGIN,
+  readMetadataBaseInput(),
   env.NEXT_PUBLIC_APP_ENV,
 );
 

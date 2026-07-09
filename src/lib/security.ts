@@ -49,6 +49,10 @@ function isSafeRelativePath(value: string): boolean {
   return !pathname(value).split("/").includes("..");
 }
 
+function isSafeInternalRoute(value: string): value is Route {
+  return isSafeRelativePath(value);
+}
+
 export function safeInternalHref(
   value: string | null | undefined,
   fallback: Route = "/dashboard",
@@ -59,7 +63,7 @@ export function safeInternalHref(
 
   const trimmed = value.trim();
 
-  return isSafeRelativePath(trimmed) ? (trimmed as Route) : fallback;
+  return isSafeInternalRoute(trimmed) ? trimmed : fallback;
 }
 
 export function safeAssetPath(
