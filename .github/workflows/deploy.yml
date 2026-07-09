@@ -37,7 +37,6 @@ jobs:
 
     env:
       CI: "true"
-      NODE_ENV: production
       NEXT_TELEMETRY_DISABLED: "1"
       NODE_VERSION: "24"
 
@@ -57,9 +56,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
+          persist-credentials: true
 
       - name: Fetch git tags
         shell: bash
@@ -75,6 +75,8 @@ jobs:
             CLOUDFLARE_API_TOKEN
             WORKER_NAME
             WORKER_ROUTE
+            RELEASE_NAME
+            REQUESTED_RELEASE_TYPE
             NEXT_PUBLIC_APP_ENV
             NEXT_PUBLIC_APP_ORIGIN
             NEXT_PUBLIC_API_BASE_URL
@@ -93,6 +95,14 @@ jobs:
             exit 1
           fi
 
+          case "${REQUESTED_RELEASE_TYPE}" in
+            auto|patch|minor|major|none) ;;
+            *)
+              echo "::error title=Invalid release type::release_type must be auto, patch, minor, major, or none."
+              exit 1
+              ;;
+          esac
+
           case "${WORKER_ROUTE}" in
             */*) ;;
             *)
@@ -101,26 +111,51 @@ jobs:
               ;;
           esac
 
-          case "${NEXT_PUBLIC_APP_ORIGIN}" in
-            https://*) ;;
-            *)
-              echo "::error title=Invalid frontend origin::NEXT_PUBLIC_APP_ORIGIN must be an HTTPS origin."
-              exit 1
-              ;;
-          esac
+          python <<'PY'
+          import os
+          import re
+          import sys
+          from urllib.parse import urlparse
 
-          case "${NEXT_PUBLIC_API_BASE_URL}" in
-            https://api.erp.ozotecev.com|https://api.ozotecev.com) ;;
-            *)
-              echo "::error title=Invalid API origin::NEXT_PUBLIC_API_BASE_URL must point to the public oz-erp-edge Worker origin, not Cloud Run."
-              exit 1
-              ;;
-          esac
+          def fail(title: str, detail: str) -> None:
+              print(f"::error title={title}::{detail}")
+              sys.exit(1)
 
-          if printf '%s' "${NEXT_PUBLIC_API_BASE_URL}" | grep -Eiq '(run\.app|cloudrun|localhost|127\.0\.0\.1)'; then
-            echo "::error title=Unsafe API origin::NEXT_PUBLIC_API_BASE_URL must not point to Cloud Run, localhost, or private backend infrastructure."
-            exit 1
-          fi
+          app_env = os.environ["NEXT_PUBLIC_APP_ENV"]
+          app_origin = os.environ["NEXT_PUBLIC_APP_ORIGIN"]
+          api_base_url = os.environ["NEXT_PUBLIC_API_BASE_URL"]
+          auth_client_id = os.environ["NEXT_PUBLIC_AUTH_CLIENT_ID"]
+
+          if app_env != "production":
+              fail("Invalid app environment", "NEXT_PUBLIC_APP_ENV must be production for this workflow.")
+
+          for name, value in {
+              "NEXT_PUBLIC_APP_ORIGIN": app_origin,
+              "NEXT_PUBLIC_API_BASE_URL": api_base_url,
+          }.items():
+              parsed = urlparse(value)
+              if parsed.scheme != "https" or not parsed.netloc:
+                  fail("Invalid HTTPS origin", f"{name} must be an absolute HTTPS origin.")
+              if parsed.username or parsed.password:
+                  fail("Unsafe URL", f"{name} must not contain credentials.")
+              if parsed.query or parsed.fragment:
+                  fail("Unsafe URL", f"{name} must not contain query strings or fragments.")
+
+          if api_base_url not in {"https://api.erp.ozotecev.com", "https://api.ozotecev.com"}:
+              fail(
+                  "Invalid API origin",
+                  "NEXT_PUBLIC_API_BASE_URL must point to the public oz-erp-edge Worker origin.",
+              )
+
+          if re.search(r"(run\.app|cloudrun|localhost|127\.0\.0\.1)", api_base_url, re.IGNORECASE):
+              fail(
+                  "Unsafe API origin",
+                  "NEXT_PUBLIC_API_BASE_URL must not point to private backend infrastructure.",
+              )
+
+          if not re.fullmatch(r"[A-Za-z0-9._:-]{2,128}", auth_client_id):
+              fail("Invalid auth client ID", "NEXT_PUBLIC_AUTH_CLIENT_ID contains unsupported characters.")
+          PY
 
       - name: Validate Worker deployment manifest
         shell: bash
@@ -137,89 +172,245 @@ jobs:
             exit 1
           fi
 
-          if ! grep -Eq '^name = "oz-next-app"$' wrangler.toml; then
-            echo "::error title=Invalid Worker name::wrangler.toml must deploy the oz-next-app Worker."
-            exit 1
-          fi
+          python <<'PY'
+          import datetime as dt
+          import os
+          import re
+          import sys
+          import tomllib
+          from pathlib import Path
+          from urllib.parse import urlparse
 
-          if ! grep -Eq '^main = "\.open-next/worker\.js"$' wrangler.toml; then
-            echo "::error title=Invalid Worker entrypoint::wrangler.toml main must be .open-next/worker.js."
-            exit 1
-          fi
+          CONFIG_PATH = Path("wrangler.toml")
+          MIN_COMPATIBILITY_DATE = dt.date(2024, 9, 23)
 
-          if ! grep -Eq '^workers_dev = false$' wrangler.toml; then
-            echo "::error title=Unsafe Worker exposure::workers_dev must be false for production."
-            exit 1
-          fi
+          ALLOWED_PUBLIC_VARS = {
+              "NEXTJS_ENV",
+              "NEXT_PUBLIC_APP_ENV",
+              "NEXT_PUBLIC_APP_ORIGIN",
+              "NEXT_PUBLIC_API_BASE_URL",
+              "NEXT_PUBLIC_AUTH_CLIENT_ID",
+              "NEXT_PUBLIC_APP_VERSION",
+              "NEXT_PUBLIC_LOG_LEVEL",
+          }
 
-          if ! grep -Fq "pattern = \"${WORKER_ROUTE}\"" wrangler.toml; then
-            echo "::error title=Route mismatch::wrangler.toml route must include ${WORKER_ROUTE}."
-            exit 1
-          fi
+          REQUIRED_PUBLIC_VARS = {
+              "NEXT_PUBLIC_APP_ENV",
+              "NEXT_PUBLIC_APP_ORIGIN",
+              "NEXT_PUBLIC_API_BASE_URL",
+              "NEXT_PUBLIC_AUTH_CLIENT_ID",
+              "NEXT_PUBLIC_APP_VERSION",
+          }
 
-          if ! grep -Eq '^binding = "ASSETS"$' wrangler.toml; then
-            echo "::error title=Missing ASSETS binding::OpenNext Worker assets binding is required."
-            exit 1
-          fi
-
-          if ! grep -Eq '^directory = "\.open-next/assets"$' wrangler.toml; then
-            echo "::error title=Invalid assets directory::OpenNext assets directory must be .open-next/assets."
-            exit 1
-          fi
-
-          if ! grep -Eq '^binding = "WORKER_SELF_REFERENCE"$' wrangler.toml; then
-            echo "::error title=Missing self-reference service::OpenNext requires WORKER_SELF_REFERENCE."
-            exit 1
-          fi
-
-          if ! grep -Eq '^service = "oz-next-app"$' wrangler.toml; then
-            echo "::error title=Invalid self-reference service::WORKER_SELF_REFERENCE service must be oz-next-app."
-            exit 1
-          fi
-
-          if ! grep -Eq '^[[:space:]]*"nodejs_compat",$|^[[:space:]]*"nodejs_compat"$' wrangler.toml; then
-            echo "::error title=Missing compatibility flag::nodejs_compat is required for OpenNext Cloudflare."
-            exit 1
-          fi
-
-          if ! grep -Eq '^region = "gcp:asia-south1"$' wrangler.toml; then
-            echo "::error title=Invalid placement::wrangler.toml placement region must be gcp:asia-south1."
-            exit 1
-          fi
-
-          if grep -Eiq '(CLOUD_RUN|DATABASE_URL|REDIS_URL|JWT_|SERVICE_ACCOUNT|SECRET|PRIVATE_KEY|TOKEN_HASH|TASK_SHARED_SECRET|R2_SECRET|WEBHOOK|OTP_HMAC|run\.app)' wrangler.toml; then
-            echo "::error title=Secret or private backend config leaked::wrangler.toml must contain only public frontend runtime variables."
-            exit 1
-          fi
-
-          if grep -Eq 'NEXT_PUBLIC_API_BASE_URL = ".*(run\.app|cloudrun|localhost|127\.0\.0\.1).*"' wrangler.toml; then
-            echo "::error title=Unsafe API base URL::NEXT_PUBLIC_API_BASE_URL must point to oz-erp-edge, not private infrastructure."
-            exit 1
-          fi
-
-          required_public_vars=(
-            NEXT_PUBLIC_APP_ENV
-            NEXT_PUBLIC_APP_ORIGIN
-            NEXT_PUBLIC_API_BASE_URL
-            NEXT_PUBLIC_AUTH_CLIENT_ID
-            NEXT_PUBLIC_APP_VERSION
+          SECRET_LIKE_KEY_RE = re.compile(
+              r"(DATABASE_URL|REDIS_URL|JWT_|SERVICE_ACCOUNT|PRIVATE_KEY|TOKEN_HASH|TASK_SHARED_SECRET|R2_SECRET|OTP_HMAC|WEBHOOK_HMAC|AUTH_KEY|API_KEY|PASSWORD)",
+              re.IGNORECASE,
           )
 
-          for key in "${required_public_vars[@]}"; do
-            if ! grep -Eq "^${key} = \".+\"$" wrangler.toml; then
-              echo "::error title=Missing public runtime variable::wrangler.toml must define ${key}."
-              exit 1
-            fi
-          done
+          SECRET_LIKE_VALUE_RE = re.compile(
+              r"(-----BEGIN|run\.app|postgres://|postgresql://|redis://|Bearer\s+|eyJ[A-Za-z0-9_-]+\.)",
+              re.IGNORECASE,
+          )
+
+          def fail(title: str, detail: str) -> None:
+              print(f"::error title={title}::{detail}")
+              sys.exit(1)
+
+          def require(condition: bool, title: str, detail: str) -> None:
+              if not condition:
+                  fail(title, detail)
+
+          def parse_https_origin(name: str, value: str) -> str:
+              parsed = urlparse(value)
+              require(
+                  parsed.scheme == "https" and bool(parsed.netloc),
+                  "Invalid HTTPS origin",
+                  f"{name} must be an absolute HTTPS origin.",
+              )
+              require(
+                  not parsed.username and not parsed.password,
+                  "Unsafe URL",
+                  f"{name} must not contain credentials.",
+              )
+              require(
+                  not parsed.query and not parsed.fragment,
+                  "Unsafe URL",
+                  f"{name} must not contain query strings or fragments.",
+              )
+              return f"{parsed.scheme}://{parsed.netloc}"
+
+          try:
+              config = tomllib.loads(CONFIG_PATH.read_text(encoding="utf-8"))
+          except tomllib.TOMLDecodeError as error:
+              fail("Invalid wrangler.toml", str(error))
+
+          worker_name = os.environ["WORKER_NAME"]
+          worker_route = os.environ["WORKER_ROUTE"]
+          expected_app_origin = os.environ["NEXT_PUBLIC_APP_ORIGIN"]
+          expected_api_origin = os.environ["NEXT_PUBLIC_API_BASE_URL"]
+          expected_app_env = os.environ["NEXT_PUBLIC_APP_ENV"]
+          expected_auth_client_id = os.environ["NEXT_PUBLIC_AUTH_CLIENT_ID"]
+
+          require(config.get("name") == worker_name, "Invalid Worker name", f"wrangler.toml name must be {worker_name}.")
+          require(config.get("main") == ".open-next/worker.js", "Invalid Worker entrypoint", "main must be .open-next/worker.js.")
+          require(config.get("workers_dev") is False, "Unsafe Worker exposure", "workers_dev must be false for production.")
+          require(config.get("preview_urls") is False, "Unsafe preview exposure", "preview_urls must be false for production.")
+          require(config.get("upload_source_maps") is True, "Missing source map upload", "upload_source_maps must be true.")
+
+          raw_compatibility_date = config.get("compatibility_date")
+          require(isinstance(raw_compatibility_date, str), "Missing compatibility date", "compatibility_date must be configured.")
+          try:
+              compatibility_date = dt.date.fromisoformat(raw_compatibility_date)
+          except ValueError:
+              fail("Invalid compatibility date", "compatibility_date must use YYYY-MM-DD.")
+
+          require(
+              compatibility_date >= MIN_COMPATIBILITY_DATE,
+              "Compatibility date too old",
+              "OpenNext Cloudflare requires compatibility_date on or after 2024-09-23.",
+          )
+
+          compatibility_flags = config.get("compatibility_flags")
+          require(isinstance(compatibility_flags, list), "Missing compatibility flags", "compatibility_flags must be an array.")
+          require("nodejs_compat" in compatibility_flags, "Missing compatibility flag", "nodejs_compat is required.")
+          require(
+              "global_fetch_strictly_public" in compatibility_flags,
+              "Missing compatibility flag",
+              "global_fetch_strictly_public is required.",
+          )
+
+          routes = config.get("routes")
+          require(isinstance(routes, list) and len(routes) > 0, "Missing Worker route", "wrangler.toml must define at least one route.")
+          require(
+              any(isinstance(route, dict) and route.get("pattern") == worker_route for route in routes),
+              "Route mismatch",
+              f"wrangler.toml routes must include {worker_route}.",
+          )
+
+          app_origin_host = urlparse(expected_app_origin).netloc
+          require(
+              any(
+                  isinstance(route, dict)
+                  and isinstance(route.get("pattern"), str)
+                  and route["pattern"].replace("/*", "") == app_origin_host
+                  for route in routes
+              ),
+              "Route origin mismatch",
+              "Worker route host must match NEXT_PUBLIC_APP_ORIGIN host.",
+          )
+
+          assets = config.get("assets")
+          require(isinstance(assets, dict), "Missing assets binding", "OpenNext assets binding is required.")
+          require(assets.get("binding") == "ASSETS", "Invalid assets binding", "assets.binding must be ASSETS.")
+          require(
+              assets.get("directory") == ".open-next/assets",
+              "Invalid assets directory",
+              "assets.directory must be .open-next/assets.",
+          )
+
+          images = config.get("images")
+          require(isinstance(images, dict), "Missing images binding", "OpenNext image optimization binding is required.")
+          require(images.get("binding") == "IMAGES", "Invalid images binding", "images.binding must be IMAGES.")
+
+          services = config.get("services")
+          require(isinstance(services, list), "Missing service bindings", "services must be configured.")
+          require(
+              any(
+                  isinstance(service, dict)
+                  and service.get("binding") == "WORKER_SELF_REFERENCE"
+                  and service.get("service") == worker_name
+                  for service in services
+              ),
+              "Invalid self-reference service",
+              "WORKER_SELF_REFERENCE must point to oz-next-app.",
+          )
+
+          placement = config.get("placement")
+          require(isinstance(placement, dict), "Missing placement", "placement must be configured.")
+          require(
+              placement.get("region") == "gcp:asia-south1",
+              "Invalid placement",
+              "placement.region must be gcp:asia-south1.",
+          )
+
+          observability = config.get("observability")
+          require(isinstance(observability, dict), "Missing observability", "observability must be configured.")
+          require(observability.get("enabled") is True, "Observability disabled", "observability.enabled must be true.")
+
+          vars_section = config.get("vars")
+          require(isinstance(vars_section, dict), "Missing vars", "wrangler.toml must contain a [vars] table.")
+
+          missing_vars = sorted(REQUIRED_PUBLIC_VARS - vars_section.keys())
+          require(
+              len(missing_vars) == 0,
+              "Missing public runtime variable",
+              f"wrangler.toml must define: {', '.join(missing_vars)}.",
+          )
+
+          unexpected_vars = sorted(set(vars_section.keys()) - ALLOWED_PUBLIC_VARS)
+          require(
+              len(unexpected_vars) == 0,
+              "Unexpected runtime variable",
+              f"wrangler.toml contains unsupported variable(s): {', '.join(unexpected_vars)}.",
+          )
+
+          for key, value in vars_section.items():
+              require(
+                  isinstance(value, str) and len(value.strip()) > 0,
+                  "Invalid runtime variable",
+                  f"{key} must be a non-empty string.",
+              )
+              require(
+                  key == "NEXTJS_ENV" or key.startswith("NEXT_PUBLIC_"),
+                  "Unsafe runtime variable",
+                  f"{key} is not browser-safe for this frontend Worker.",
+              )
+              require(
+                  SECRET_LIKE_KEY_RE.search(key) is None,
+                  "Secret-like variable name",
+                  f"{key} must not be configured in wrangler.toml.",
+              )
+              require(
+                  SECRET_LIKE_VALUE_RE.search(value) is None,
+                  "Secret-like variable value",
+                  f"{key} contains an unsafe value.",
+              )
+
+          require(vars_section["NEXT_PUBLIC_APP_ENV"] == expected_app_env, "App env mismatch", "wrangler.toml app env must match workflow env.")
+          require(vars_section["NEXT_PUBLIC_APP_ORIGIN"] == expected_app_origin, "App origin mismatch", "wrangler.toml app origin must match workflow env.")
+          require(vars_section["NEXT_PUBLIC_API_BASE_URL"] == expected_api_origin, "API origin mismatch", "wrangler.toml API origin must match workflow env.")
+          require(vars_section["NEXT_PUBLIC_AUTH_CLIENT_ID"] == expected_auth_client_id, "Auth client mismatch", "wrangler.toml auth client must match workflow env.")
+
+          parse_https_origin("NEXT_PUBLIC_APP_ORIGIN", vars_section["NEXT_PUBLIC_APP_ORIGIN"])
+          api_origin = parse_https_origin("NEXT_PUBLIC_API_BASE_URL", vars_section["NEXT_PUBLIC_API_BASE_URL"])
+          require(
+              api_origin in {"https://api.erp.ozotecev.com", "https://api.ozotecev.com"},
+              "Invalid API origin",
+              "NEXT_PUBLIC_API_BASE_URL must point to the public oz-erp-edge Worker origin.",
+          )
+          PY
 
       - name: Setup Node.js 24
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: npm
+          package-manager-cache: false
+
+      - name: Print toolchain versions
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --version
+          npm --version
+          git --version
+          python3 --version
 
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --include=dev
+
+      - name: Validate Wrangler CLI
+        shell: bash
+        run: npm exec -- wrangler --version
 
       - name: Typecheck
         run: npm run typecheck
@@ -390,9 +581,9 @@ jobs:
           set -euo pipefail
 
           node --input-type=module <<'NODE'
-          import fs from 'node:fs';
+          import fs from "node:fs";
 
-          const filePath = 'wrangler.toml';
+          const filePath = "wrangler.toml";
 
           const values = {
             NEXT_PUBLIC_APP_ENV: process.env.NEXT_PUBLIC_APP_ENV,
@@ -403,21 +594,22 @@ jobs:
           };
 
           for (const [key, value] of Object.entries(values)) {
-            if (typeof value !== 'string' || value.trim().length === 0) {
+            if (typeof value !== "string" || value.trim().length === 0) {
               throw new Error(`${key} is required.`);
             }
           }
 
           if (!/^[0-9]+\.[0-9]+\.[0-9]+$/.test(values.NEXT_PUBLIC_APP_VERSION)) {
-            throw new Error('NEXT_PUBLIC_APP_VERSION must be SemVer major.minor.patch.');
+            throw new Error("NEXT_PUBLIC_APP_VERSION must be SemVer major.minor.patch.");
           }
 
-          const escapeRegExp = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          const escapeRegExp = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-          let current = fs.readFileSync(filePath, 'utf8');
+          let current = fs.readFileSync(filePath, "utf8");
 
           for (const [key, value] of Object.entries(values)) {
-            const pattern = new RegExp(`^${escapeRegExp(key)}\\s*=\\s*".*"$`, 'm');
+            const pattern = new RegExp(`^${escapeRegExp(key)}\\s*=\\s*".*"$`, "m");
+
             if (!pattern.test(current)) {
               throw new Error(`wrangler.toml must contain ${key}.`);
             }
@@ -459,15 +651,15 @@ jobs:
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ env.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ env.CLOUDFLARE_API_TOKEN }}
-        run: npx wrangler deploy --dry-run
+        run: npm exec -- wrangler deploy --dry-run
 
       - name: Deploy Cloudflare Worker
         if: steps.release_meta.outputs.release_required == 'true'
-        uses: cloudflare/wrangler-action@v4
-        with:
-          apiToken: ${{ env.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ env.CLOUDFLARE_ACCOUNT_ID }}
-          command: deploy
+        shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ env.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ env.CLOUDFLARE_API_TOKEN }}
+        run: npm exec -- wrangler deploy
 
       - name: Smoke check frontend
         if: steps.release_meta.outputs.release_required == 'true'
@@ -497,6 +689,7 @@ jobs:
                 import fs from "node:fs";
 
                 const filePath = process.argv[1];
+
                 try {
                   const body = fs.readFileSync(filePath, "utf8");
                   const ok = /<html[\s>]/i.test(body) && /(Sign in|Ozotec|ERP)/i.test(body);
@@ -594,17 +787,18 @@ jobs:
             echo
             echo "## Verification"
             echo
-            echo "- \`npm ci\` completed"
+            echo "- \`npm ci --include=dev\` completed"
+            echo "- \`npm exec -- wrangler --version\` completed"
             echo "- \`npm run typecheck\` completed"
             echo "- \`npm run lint\` completed"
             echo "- \`npm run format:check\` completed"
             echo "- \`npm run test\` completed"
             echo "- \`npm audit --omit=dev --audit-level=high\` completed"
-            echo "- Worker deployment manifest validated"
+            echo "- Worker deployment manifest validated using TOML parsing"
             echo "- Public runtime version patched to \`${package_version}\`"
             echo "- \`npm run build:cf\` completed"
             echo "- OpenNext output validated"
-            echo "- Wrangler dry-run bundle completed"
+            echo "- Wrangler dry-run completed"
             echo "- Cloudflare Worker deploy completed"
             echo "- Frontend \`/login\` smoke check completed"
           } > "${notes_file}"
