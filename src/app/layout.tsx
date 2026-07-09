@@ -93,16 +93,16 @@ function createMetadataBase(value: string, appEnv: string): URL {
 }
 
 function readMetadataBaseInput(): string {
-  const appUrl = env.NEXT_PUBLIC_APP_URL?.trim();
-
-  if (appUrl !== undefined && appUrl.length > 0) {
-    return appUrl;
-  }
-
   const appOrigin = env.NEXT_PUBLIC_APP_ORIGIN.trim();
 
   if (appOrigin.length > 0) {
     return appOrigin;
+  }
+
+  const appUrl = env.NEXT_PUBLIC_APP_URL?.trim();
+
+  if (appUrl !== undefined && appUrl.length > 0) {
+    return appUrl;
   }
 
   throw new Error("metadata_base_url_missing");

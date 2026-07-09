@@ -135,9 +135,21 @@ function buildRemotePatterns(origins: readonly string[]): RemotePattern[] {
   return origins.map(originToRemotePattern);
 }
 
+function readPublicAppOrigin(): string | undefined {
+  const appOrigin = process.env["NEXT_PUBLIC_APP_ORIGIN"]?.trim();
+
+  if (appOrigin !== undefined && appOrigin.length > 0) {
+    return appOrigin;
+  }
+
+  const appUrl = process.env["NEXT_PUBLIC_APP_URL"]?.trim();
+
+  return appUrl !== undefined && appUrl.length > 0 ? appUrl : undefined;
+}
+
 const appOrigin = parseHttpOrigin(
-  "NEXT_PUBLIC_APP_URL",
-  process.env["NEXT_PUBLIC_APP_URL"],
+  "NEXT_PUBLIC_APP_URL/NEXT_PUBLIC_APP_ORIGIN",
+  readPublicAppOrigin(),
   {
     fallbackDevelopmentOrigin: "http://localhost:3000",
   },
@@ -157,22 +169,22 @@ const allowedServerActionOrigins = uniqueSources([appOrigin]).map(originToHost);
 
 const allowedDevOrigins = isDevelopment
   ? uniqueSources([
-      "http://localhost:3000",
-      "http://127.0.0.1:3000",
-      "http://localhost:8787",
-      "http://127.0.0.1:8787",
-      appOrigin,
-      apiOrigin,
-    ])
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://localhost:8787",
+    "http://127.0.0.1:8787",
+    appOrigin,
+    apiOrigin,
+  ])
   : [];
 
 const productionOnlySecurityHeaders: readonly Header[] = isProduction
   ? [
-      {
-        key: "Strict-Transport-Security",
-        value: "max-age=31536000; includeSubDomains; preload",
-      },
-    ]
+    {
+      key: "Strict-Transport-Security",
+      value: "max-age=31536000; includeSubDomains; preload",
+    },
+  ]
   : [];
 
 const securityHeaders: readonly Header[] = [
