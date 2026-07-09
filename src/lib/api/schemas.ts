@@ -12,6 +12,7 @@ const DEFAULT_OTP_LENGTH = 6;
 const DEFAULT_OTP_MAX_ATTEMPTS = 5;
 const MAX_ACCESS_TTL_SECONDS = 24 * 60 * 60;
 const MAX_REFRESH_TTL_SECONDS = 366 * 24 * 60 * 60;
+const MAX_SESSION_JWT_CHARS = 36_000;
 const DEFAULT_PROJECT = "ERP" as const;
 
 export const uuidSchema = z.string().trim().regex(UUID_RE);
@@ -19,7 +20,7 @@ export const jwtTokenSchema = z
   .string()
   .trim()
   .min(32)
-  .max(8_192)
+  .max(MAX_SESSION_JWT_CHARS)
   .regex(JWT_RE);
 export const isoDateTimeStringSchema = z
   .string()

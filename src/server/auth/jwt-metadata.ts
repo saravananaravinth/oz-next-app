@@ -4,7 +4,8 @@ import "server-only";
 import { z } from "zod";
 
 const JWT_PART_PATTERN = /^[A-Za-z0-9_-]+$/u;
-const MAX_JWT_PART_CHARS = 32_768;
+const MAX_SESSION_JWT_CHARS = 36_000;
+const MAX_JWT_PART_CHARS = MAX_SESSION_JWT_CHARS;
 const SECONDS_PER_MILLISECOND = 1_000;
 
 const sessionTokenTypeSchema = z.enum(["access", "refresh"]);
@@ -33,7 +34,13 @@ function isJwtPart(value: string): boolean {
 }
 
 function splitJwt(token: string): JwtParts | null {
-  const parts = token.trim().split(".");
+  const normalized = token.trim();
+
+  if (normalized.length < 32 || normalized.length > MAX_SESSION_JWT_CHARS) {
+    return null;
+  }
+
+  const parts = normalized.split(".");
 
   if (parts.length !== 3) {
     return null;
