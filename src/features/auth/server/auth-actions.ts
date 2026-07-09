@@ -8,6 +8,7 @@ import { z } from "zod";
 import { AUTH_ENDPOINTS } from "@/lib/api/endpoints";
 import { ApiHttpError, isApiHttpError } from "@/lib/api/problem";
 import {
+  authTokenResponseSchema,
   loginVerifyRequestSchema,
   logoutResponseSchema,
   meResponseSchema,
@@ -49,35 +50,11 @@ const REQUEST_ID_PATTERN = /^[A-Za-z0-9_.:/@-]+$/u;
 const ERROR_CODE_PATTERN = /^[A-Za-z0-9_.:-]{1,160}$/u;
 const MAX_REQUEST_ID_LENGTH = 128;
 const DEFAULT_LOGIN_VERIFY_ERROR_CODE = "login_verification_failed";
+const LOGIN_BACKEND_UNAVAILABLE_CODE = "login_backend_unavailable";
+const LOGIN_BACKEND_TIMEOUT_CODE = "login_backend_timeout";
+const LOGIN_TOKEN_RESPONSE_INVALID_CODE = "login_token_response_invalid";
 const MAX_RETRY_AFTER_SECONDS = 86_400;
 const MAX_ATTEMPTS_REMAINING = 50;
-
-const backendLoginTokenPairSchema = z
-  .looseObject({
-    tokenType: z.literal("Bearer"),
-    accessToken: z.string().trim().min(32).max(8_192),
-    expiresInSeconds: z.number().int().min(1).max(86_400),
-    refreshToken: z.string().trim().min(32).max(8_192),
-    refreshExpiresInSeconds: z
-      .number()
-      .int()
-      .min(1)
-      .max(60 * 24 * 60 * 60),
-  })
-  .transform((value) => {
-    const refreshExpiresAt = new Date(
-      Date.now() + value.refreshExpiresInSeconds * 1_000,
-    ).toISOString();
-
-    return {
-      access_token: value.accessToken,
-      refresh_token: value.refreshToken,
-      token_type: value.tokenType,
-      expires_in: value.expiresInSeconds,
-      refresh_expires_at: refreshExpiresAt,
-      permissions: [] as readonly string[],
-    };
-  });
 
 function normalizeRequestId(value: string | null | undefined): string | null {
   const normalized = value?.trim() ?? "";
@@ -154,14 +131,48 @@ function normalizeAttemptsRemaining(value: unknown): number | null {
     : null;
 }
 
+function loginVerifyActionError(
+  input: Readonly<{
+    status: number;
+    code: string;
+    requestId?: string | null;
+    retryAfter?: number | null;
+    attemptsRemaining?: number | null;
+  }>,
+): LoginVerifyActionError {
+  const code = normalizeErrorCode(input.code);
+
+  return {
+    message: code,
+    status: normalizeHttpStatus(input.status),
+    code,
+    requestId: normalizeRequestId(input.requestId),
+    retryAfter: input.retryAfter ?? null,
+    attemptsRemaining: input.attemptsRemaining ?? null,
+  };
+}
+
+function errorName(error: unknown): string {
+  return isRecord(error) && typeof error["name"] === "string"
+    ? error["name"]
+    : "";
+}
+
+function isAbortLikeError(error: unknown): boolean {
+  const name = errorName(error);
+
+  return name === "AbortError" || name === "TimeoutError";
+}
+
+function isTransportLikeError(error: unknown): boolean {
+  return error instanceof TypeError || errorName(error) === "TypeError";
+}
+
 function toLoginVerifyActionError(error: unknown): LoginVerifyActionError {
   if (isApiHttpError(error)) {
-    const code = normalizeErrorCode(error.code);
-
-    return {
-      message: code,
-      status: normalizeHttpStatus(error.status),
-      code,
+    return loginVerifyActionError({
+      status: error.status,
+      code: normalizeErrorCode(error.code),
       requestId: normalizeRequestId(error.requestId),
       retryAfter: normalizeRetryAfter(
         error.retryAfterSeconds ?? error.problem?.retry_after,
@@ -169,17 +180,34 @@ function toLoginVerifyActionError(error: unknown): LoginVerifyActionError {
       attemptsRemaining: normalizeAttemptsRemaining(
         error.details ?? error.problem?.details ?? error.problem?.errors,
       ),
-    };
+    });
   }
 
-  return {
-    message: DEFAULT_LOGIN_VERIFY_ERROR_CODE,
-    status: HTTP_STATUS.UNAUTHORIZED,
+  if (error instanceof z.ZodError) {
+    return loginVerifyActionError({
+      status: HTTP_STATUS.BAD_GATEWAY,
+      code: LOGIN_TOKEN_RESPONSE_INVALID_CODE,
+    });
+  }
+
+  if (isAbortLikeError(error)) {
+    return loginVerifyActionError({
+      status: HTTP_STATUS.GATEWAY_TIMEOUT,
+      code: LOGIN_BACKEND_TIMEOUT_CODE,
+    });
+  }
+
+  if (isTransportLikeError(error)) {
+    return loginVerifyActionError({
+      status: HTTP_STATUS.SERVICE_UNAVAILABLE,
+      code: LOGIN_BACKEND_UNAVAILABLE_CODE,
+    });
+  }
+
+  return loginVerifyActionError({
+    status: HTTP_STATUS.SERVICE_UNAVAILABLE,
     code: DEFAULT_LOGIN_VERIFY_ERROR_CODE,
-    requestId: null,
-    retryAfter: null,
-    attemptsRemaining: null,
-  };
+  });
 }
 
 function assertSessionTokenType(
@@ -215,7 +243,7 @@ export async function loginVerifyAction(
       auth: false,
       body,
       cache: "no-store",
-      schema: backendLoginTokenPairSchema,
+      schema: authTokenResponseSchema,
     });
 
     assertSessionTokenType(

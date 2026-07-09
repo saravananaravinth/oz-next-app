@@ -77,6 +77,46 @@ export class ApiHttpError extends Error {
   }
 }
 
+function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isHttpStatus(value: unknown): value is number {
+  return (
+    typeof value === "number" &&
+    Number.isInteger(value) &&
+    value >= 100 &&
+    value <= 599
+  );
+}
+
+function isProblemCode(value: unknown): value is string | number {
+  if (typeof value === "number") {
+    return Number.isInteger(value);
+  }
+
+  if (typeof value !== "string") {
+    return false;
+  }
+
+  const normalized = value.trim();
+
+  return normalized.length > 0 && normalized.length <= 160;
+}
+
 export function isApiHttpError(error: unknown): error is ApiHttpError {
-  return error instanceof ApiHttpError;
+  if (error instanceof ApiHttpError) {
+    return true;
+  }
+
+  if (!isRecord(error)) {
+    return false;
+  }
+
+  return (
+    error["name"] === "ApiHttpError" &&
+    typeof error["message"] === "string" &&
+    isHttpStatus(error["status"]) &&
+    isProblemCode(error["code"])
+  );
 }

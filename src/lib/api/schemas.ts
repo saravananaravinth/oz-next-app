@@ -9,7 +9,7 @@ const SAFE_SLUG_RE = /^[A-Za-z0-9._:-]+$/u;
 const SAFE_IDEMPOTENCY_KEY_RE = /^[A-Za-z0-9:_./@-]+$/u;
 const SAFE_PERMISSION_RE = /^[A-Za-z0-9:._/-]+$/u;
 const DEFAULT_OTP_LENGTH = 6;
-const DEFAULT_OTP_MAX_ATTEMPTS = 10;
+const DEFAULT_OTP_MAX_ATTEMPTS = 5;
 const MAX_ACCESS_TTL_SECONDS = 24 * 60 * 60;
 const MAX_REFRESH_TTL_SECONDS = 366 * 24 * 60 * 60;
 const DEFAULT_PROJECT = "ERP" as const;
@@ -220,6 +220,9 @@ const backendLoginOtpRequestResultSchema = z
     deliveryTargetMasked: z.string().trim().min(1).max(320).nullable(),
     expiresAt: isoDateTimeStringSchema,
     resendAfter: isoDateTimeStringSchema,
+    codeLength: z.number().int().min(4).max(8).optional(),
+    maxAttempts: z.number().int().min(1).max(20).optional(),
+    attemptsRemaining: z.number().int().min(0).max(20).optional(),
   })
   .strict();
 
@@ -241,12 +244,18 @@ export const loginStartResponseSchema = z.union([
                 : {}),
             };
 
+      const maxAttempts = value.maxAttempts ?? DEFAULT_OTP_MAX_ATTEMPTS;
+      const attemptsRemaining = Math.min(
+        value.attemptsRemaining ?? maxAttempts,
+        maxAttempts,
+      );
+
       return {
         challenge_id: value.challengeId,
         expires_in: secondsUntil(value.expiresAt, 5 * 60),
-        length: DEFAULT_OTP_LENGTH,
-        max_attempts: DEFAULT_OTP_MAX_ATTEMPTS,
-        attempts_remaining: DEFAULT_OTP_MAX_ATTEMPTS,
+        length: value.codeLength ?? DEFAULT_OTP_LENGTH,
+        max_attempts: maxAttempts,
+        attempts_remaining: attemptsRemaining,
         ...(destination !== undefined ? { destination } : {}),
       };
     },
