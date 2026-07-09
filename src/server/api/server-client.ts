@@ -109,12 +109,14 @@ const IDEMPOTENT_METHODS = new Set<HttpMethod>([
   HTTP_METHODS.GET,
   HTTP_METHODS.HEAD,
 ]);
+
 const BODYLESS_METHODS = new Set<HttpMethod>([
   HTTP_METHODS.GET,
   HTTP_METHODS.HEAD,
 ]);
 
 const REQUEST_CACHE_NO_STORE = CACHE_CONTROL.NO_STORE;
+const EDGE_REDIRECT_MODE = "manual" satisfies RequestRedirect;
 const MAX_JSON_BODY_BYTES = 10 * 1024 * 1024;
 const ACCESS_TOKEN_EXPIRY_SKEW_SECONDS = 30;
 const MAX_API_PATH_LENGTH = 2_048;
@@ -270,6 +272,12 @@ function resolveErpEdgeServiceBinding(): ErpEdgeBindingResolution {
   }
 }
 
+function toCloudflareRedirectMode(
+  value: RequestRedirect | undefined,
+): RequestRedirect | undefined {
+  return value === "error" ? EDGE_REDIRECT_MODE : value;
+}
+
 function toServiceBindingRequest(
   url: string,
   init: ServerRequestInit,
@@ -286,8 +294,10 @@ function toServiceBindingRequest(
     requestInit.body = init.body;
   }
 
-  if (init.redirect !== undefined) {
-    requestInit.redirect = init.redirect;
+  const redirect = toCloudflareRedirectMode(init.redirect);
+
+  if (redirect !== undefined) {
+    requestInit.redirect = redirect;
   }
 
   if (init.signal !== undefined) {
@@ -295,6 +305,15 @@ function toServiceBindingRequest(
   }
 
   return new Request(url, requestInit);
+}
+
+function toCloudflareFetchInit(init: ServerRequestInit): ServerRequestInit {
+  const redirect = toCloudflareRedirectMode(init.redirect);
+
+  return {
+    ...init,
+    ...(redirect !== undefined ? { redirect } : {}),
+  };
 }
 
 async function dispatchEdgeRequest(
@@ -340,7 +359,7 @@ async function dispatchEdgeRequest(
   });
 
   try {
-    return await fetch(url, init);
+    return await fetch(url, toCloudflareFetchInit(init));
   } catch (error: unknown) {
     logger.error("erp_edge_public_fetch_dispatch_failed", {
       ...baseLogFields,
@@ -592,7 +611,7 @@ async function refreshServerAuthTokens(): Promise<AuthTokenResponse | null> {
       }),
       body: JSON.stringify(body),
       cache: "no-store",
-      redirect: "error",
+      redirect: EDGE_REDIRECT_MODE,
     },
   );
 
@@ -676,7 +695,7 @@ async function fetchOnce<TData>(
     headers: outboundHeaders,
     ...(body !== undefined ? { body } : {}),
     cache: normalized.cache,
-    redirect: "error",
+    redirect: EDGE_REDIRECT_MODE,
     signal: timeout.signal,
     ...(normalized.next !== undefined ? { next: normalized.next } : {}),
   };
