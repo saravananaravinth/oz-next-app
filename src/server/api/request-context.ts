@@ -24,9 +24,6 @@ export type ServerRequestContextHeadersOptions = Readonly<{
 
 const SAFE_HEADER_ID_PATTERN = /^[A-Za-z0-9_.:/@-]{1,128}$/u;
 const TRACEPARENT_PATTERN = /^[\da-f]{2}-[\da-f]{32}-[\da-f]{16}-[\da-f]{2}$/iu;
-const FORWARDED_USER_AGENT_MAX_LENGTH = 512;
-const CONTROL_CHARACTER_MAX_CODE = 0x1f;
-const DELETE_CHARACTER_CODE = 0x7f;
 
 const actorContextHeadersSchema = z
   .object({
@@ -37,21 +34,6 @@ const actorContextHeadersSchema = z
     customerId: z.uuid().nullish(),
   })
   .strict();
-
-function containsHeaderControlCharacter(value: string): boolean {
-  for (let index = 0; index < value.length; index += 1) {
-    const codePoint = value.charCodeAt(index);
-
-    if (
-      codePoint <= CONTROL_CHARACTER_MAX_CODE ||
-      codePoint === DELETE_CHARACTER_CODE
-    ) {
-      return true;
-    }
-  }
-
-  return false;
-}
 
 function normalizeHeaderId(
   value: string | null | undefined,
@@ -66,23 +48,6 @@ function normalizeTraceparent(value: string | null): string | null {
   const normalized = value?.trim() ?? "";
 
   return TRACEPARENT_PATTERN.test(normalized) ? normalized : null;
-}
-
-function normalizeForwardedHeaderValue(
-  value: string | null,
-  maxLength: number,
-): string | null {
-  const normalized = value?.trim() ?? "";
-
-  if (
-    normalized.length === 0 ||
-    normalized.length > maxLength ||
-    containsHeaderControlCharacter(normalized)
-  ) {
-    return null;
-  }
-
-  return normalized;
 }
 
 function appendActorContextHeaders(
@@ -139,10 +104,6 @@ export async function serverRequestContextHeaders(
   const traceparent = normalizeTraceparent(
     incomingHeaders.get(HDR.TRACEPARENT),
   );
-  const userAgent = normalizeForwardedHeaderValue(
-    incomingHeaders.get("user-agent"),
-    FORWARDED_USER_AGENT_MAX_LENGTH,
-  );
 
   outboundHeaders.set(HDR.ACCEPT, CT.JSON);
   outboundHeaders.set(HDR.ORIGIN, API_CONFIG.appOrigin);
@@ -155,10 +116,6 @@ export async function serverRequestContextHeaders(
 
   if (traceparent !== null) {
     outboundHeaders.set(HDR.TRACEPARENT, traceparent);
-  }
-
-  if (userAgent !== null) {
-    outboundHeaders.set("user-agent", userAgent);
   }
 
   appendActorContextHeaders(outboundHeaders, options.actorContext);
