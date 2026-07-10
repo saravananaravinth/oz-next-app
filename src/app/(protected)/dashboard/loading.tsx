@@ -1,55 +1,42 @@
-// oz-next-app/src/app/(protected)/dashboard/loading.tsx
 import type { ReactElement } from "react";
 
 import { ContentGrid, ContentMetrics, ContentRoot } from "@/components/content";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 
-const SIGNAL_SKELETON_KEYS = [
-  "session",
-  "tenant-policy",
-  "shell",
-  "runtime",
+const METRIC_KEYS = [
+  "assigned-leads",
+  "bookings",
+  "conversions",
+  "forward-requests",
+  "owner-guides",
+  "matching-ready",
+  "fresh-locations",
+  "open-assignments",
 ] as const;
 
-const DETAIL_SKELETON_KEYS = [
-  "workspace-tools",
-  "enterprise-baseline",
+const FUNNEL_KEYS = [
+  "assigned",
+  "notified",
+  "accepted",
+  "visited",
+  "test-drive",
+  "booked",
+  "converted",
 ] as const;
 
-function DashboardSignalSkeleton(): ReactElement {
+function MetricSkeleton(): ReactElement {
   return (
     <Card size="sm" aria-hidden="true">
       <CardHeader className="flex flex-row items-start justify-between gap-4">
         <div className="grid min-w-0 flex-1 gap-2">
           <Skeleton className="h-3 w-28 rounded-full" />
-          <Skeleton className="h-5 w-36 rounded-full" />
+          <Skeleton className="h-8 w-20 rounded-xl" />
         </div>
-
         <Skeleton className="size-10 rounded-2xl" />
       </CardHeader>
-
       <CardContent>
-        <Skeleton className="h-14 w-full rounded-2xl" />
-      </CardContent>
-    </Card>
-  );
-}
-
-function DashboardSectionSkeleton(): ReactElement {
-  return (
-    <Card aria-hidden="true">
-      <CardHeader className="gap-3">
-        <Skeleton className="size-11 rounded-2xl" />
-        <Skeleton className="h-8 w-full max-w-sm rounded-2xl" />
-        <Skeleton className="h-4 w-full max-w-lg rounded-full" />
-      </CardHeader>
-
-      <CardContent className="grid gap-3 sm:grid-cols-2">
-        <Skeleton className="h-28 w-full rounded-2xl" />
-        <Skeleton className="h-28 w-full rounded-2xl" />
-        <Skeleton className="h-28 w-full rounded-2xl" />
-        <Skeleton className="h-28 w-full rounded-2xl" />
+        <Skeleton className="h-4 w-32 rounded-full" />
       </CardContent>
     </Card>
   );
@@ -63,44 +50,85 @@ export default function DashboardLoading(): ReactElement {
       aria-labelledby="dashboard-loading-title"
     >
       <div className="sr-only" role="status" aria-live="polite">
-        <h1 id="dashboard-loading-title">Loading dashboard</h1>
+        <h1 id="dashboard-loading-title">Loading secure dealer dashboard</h1>
       </div>
 
       <Card aria-hidden="true">
-        <CardContent className="grid gap-6">
-          <div className="grid gap-3">
-            <Skeleton className="h-6 w-40 rounded-full" />
-            <Skeleton className="h-14 w-full max-w-2xl rounded-3xl" />
-            <Skeleton className="h-5 w-full max-w-3xl rounded-full" />
+        <CardContent className="grid gap-6 p-6 sm:p-8">
+          <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+            <div className="grid min-w-0 gap-3">
+              <Skeleton className="h-6 w-40 rounded-full" />
+              <Skeleton className="h-12 w-72 max-w-full rounded-3xl" />
+            </div>
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <Skeleton className="h-11 w-full rounded-2xl sm:w-32" />
+              <Skeleton className="h-11 w-full rounded-2xl sm:w-52" />
+            </div>
           </div>
 
-          <Card size="sm">
-            <CardContent className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
-              <div className="grid min-w-0 gap-2">
-                <Skeleton className="h-5 w-56 rounded-full" />
-                <Skeleton className="h-4 w-full max-w-lg rounded-full" />
+          <div className="grid gap-4 border-t border-border/70 pt-5">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-center gap-3">
+                <Skeleton className="size-8 rounded-xl" />
+                <div className="grid gap-2">
+                  <Skeleton className="h-5 w-32 rounded-full" />
+                  <Skeleton className="h-3 w-72 max-w-full rounded-full" />
+                </div>
               </div>
+              <Skeleton className="h-10 w-full rounded-2xl sm:w-48" />
+            </div>
 
-              <Skeleton className="h-12 w-28 rounded-2xl" />
-              <Skeleton className="h-2 w-full rounded-full sm:col-span-2" />
-            </CardContent>
-          </Card>
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(12rem,20rem)_minmax(12rem,20rem)_auto]">
+              <Skeleton className="h-16 rounded-2xl" />
+              <Skeleton className="h-16 rounded-2xl" />
+              <Skeleton className="h-10 w-full self-end rounded-2xl sm:col-span-2 xl:col-span-1 xl:w-32" />
+            </div>
+          </div>
         </CardContent>
       </Card>
 
       <ContentMetrics>
-        {SIGNAL_SKELETON_KEYS.map((key) => (
-          <DashboardSignalSkeleton key={key} />
+        {METRIC_KEYS.slice(0, 4).map((key) => (
+          <MetricSkeleton key={key} />
         ))}
       </ContentMetrics>
 
-      <ContentGrid variant="main-aside">
-        {DETAIL_SKELETON_KEYS.map((key) => (
-          <DashboardSectionSkeleton key={key} />
+      <ContentMetrics>
+        {METRIC_KEYS.slice(4).map((key) => (
+          <MetricSkeleton key={key} />
         ))}
+      </ContentMetrics>
+
+      <Skeleton aria-hidden="true" className="h-24 w-full rounded-3xl" />
+
+      <ContentGrid variant="main-aside">
+        <Card aria-hidden="true">
+          <CardContent className="grid gap-5 p-5 sm:p-6">
+            <Skeleton className="h-7 w-64 rounded-xl" />
+            {FUNNEL_KEYS.map((key) => (
+              <div key={key} className="grid gap-2">
+                <div className="flex justify-between gap-4">
+                  <Skeleton className="h-4 w-24 rounded-full" />
+                  <Skeleton className="h-4 w-10 rounded-full" />
+                </div>
+                <Skeleton className="h-2 w-full rounded-full" />
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+
+        <Card aria-hidden="true">
+          <CardContent className="grid gap-4 p-5 sm:p-6">
+            <Skeleton className="h-7 w-52 rounded-xl" />
+            <Skeleton className="h-14 w-full rounded-2xl" />
+            <Skeleton className="h-14 w-full rounded-2xl" />
+            <Skeleton className="h-14 w-full rounded-2xl" />
+            <Skeleton className="h-24 w-full rounded-2xl" />
+          </CardContent>
+        </Card>
       </ContentGrid>
 
-      <Skeleton aria-hidden="true" className="h-16 w-full rounded-2xl" />
+      <Skeleton aria-hidden="true" className="h-80 w-full rounded-3xl" />
     </ContentRoot>
   );
 }

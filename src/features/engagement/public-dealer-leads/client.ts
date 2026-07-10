@@ -15,6 +15,8 @@ import {
   type DealerLeadUpdateRequest,
 } from "./schemas";
 
+const DEALER_LEAD_MUTATION_TIMEOUT_MS = 20_000;
+
 export type UpdatePublicDealerLeadInput = Readonly<{
   token: string;
   update: DealerLeadUpdateRequest;
@@ -39,7 +41,7 @@ export async function updatePublicDealerLead(
     auth: false,
     retry: 0,
     retryOnUnauthorized: false,
-    timeoutMs: 15_000,
+    timeoutMs: DEALER_LEAD_MUTATION_TIMEOUT_MS,
     idempotencyKey: input.idempotencyKey,
     body,
     schema: dealerLeadMutationResponseSchema,
@@ -59,7 +61,7 @@ export async function forwardPublicDealerLead(
       auth: false,
       retry: 0,
       retryOnUnauthorized: false,
-      timeoutMs: 15_000,
+      timeoutMs: DEALER_LEAD_MUTATION_TIMEOUT_MS,
       idempotencyKey: input.idempotencyKey,
       body,
       schema: dealerLeadMutationResponseSchema,

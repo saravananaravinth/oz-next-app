@@ -8,12 +8,17 @@ const PAGE_TITLE = "Warranty application";
 const PAGE_DESCRIPTION = "Submit your Ozotec EV warranty application securely.";
 
 export const dynamic = "force-static";
+export const revalidate = false;
 
 export const viewport = {
   width: "device-width",
   initialScale: 1,
-  themeColor: "#09090b",
-  colorScheme: "dark",
+  viewportFit: "cover",
+  colorScheme: "light dark",
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#ffffff" },
+    { media: "(prefers-color-scheme: dark)", color: "#09090b" },
+  ],
 } satisfies Viewport;
 
 export const metadata = {

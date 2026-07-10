@@ -20,6 +20,15 @@ function optionalText(maxLength: number, label: string): z.ZodString {
   return z.string().trim().max(maxLength, `${label} is too long.`);
 }
 
+const optionalPostalCodeSchema = z
+  .string()
+  .trim()
+  .max(6, "PIN code is too long.")
+  .refine(
+    (value) => value.length === 0 || PINCODE_PATTERN.test(value),
+    "Enter a valid 6-digit PIN code.",
+  );
+
 export const publicServiceFeedbackTokenSchema = z
   .string()
   .trim()
@@ -39,8 +48,13 @@ export const serviceFeedbackIssueCategorySchema = z.enum([
   "OTHER",
 ]);
 
+export const serviceFeedbackLocationModeSchema = z.enum(["GPS", "MANUAL"]);
+
 export type ServiceFeedbackIssueCategory = z.infer<
   typeof serviceFeedbackIssueCategorySchema
+>;
+export type ServiceFeedbackLocationMode = z.infer<
+  typeof serviceFeedbackLocationModeSchema
 >;
 
 export const serviceFeedbackFormSchema = z
@@ -60,40 +74,82 @@ export const serviceFeedbackFormSchema = z
         "Enter a valid email address.",
       ),
     issueCategory: serviceFeedbackIssueCategorySchema,
-    feedback: requiredText(8_000, "Feedback"),
-    addressLine1: requiredText(512, "Address line 1"),
+    feedback: requiredText(8_000, "Feedback or complaint"),
+
+    locationMode: serviceFeedbackLocationModeSchema,
+    addressLine1: optionalText(512, "Address line 1"),
     addressLine2: optionalText(512, "Address line 2"),
-    city: requiredText(128, "City"),
-    district: requiredText(128, "District"),
-    state: requiredText(128, "State"),
-    postalCode: z
-      .string()
-      .trim()
-      .regex(PINCODE_PATTERN, "Enter a valid 6-digit PIN code."),
+    city: optionalText(128, "City"),
+    district: optionalText(128, "District"),
+    state: optionalText(128, "State"),
+    postalCode: optionalPostalCodeSchema,
   })
-  .strict();
+  .strict()
+  .superRefine((values, context) => {
+    if (values.locationMode !== "MANUAL") {
+      return;
+    }
+
+    const requiredManualFields = [
+      ["addressLine1", values.addressLine1, "Address line 1"],
+      ["city", values.city, "City"],
+      ["district", values.district, "District"],
+      ["state", values.state, "State"],
+      ["postalCode", values.postalCode, "PIN code"],
+    ] as const;
+
+    for (const [field, value, label] of requiredManualFields) {
+      if (value.trim().length === 0) {
+        context.addIssue({
+          code: "custom",
+          path: [field],
+          message: `${label} is required.`,
+        });
+      }
+    }
+  });
 
 export type ServiceFeedbackFormValues = z.infer<
   typeof serviceFeedbackFormSchema
 >;
 
-export const serviceFeedbackSubmitRequestSchema = z
+const serviceFeedbackCommonRequestShape = {
+  name: z.string().trim().min(1).max(256),
+  mobileNumber: z.string().trim().regex(MOBILE_PATTERN),
+  email: emailValueSchema.optional(),
+  issueCategory: serviceFeedbackIssueCategorySchema,
+  feedback: z.string().trim().min(1).max(8_000),
+} as const;
+
+const serviceFeedbackGpsSubmitRequestSchema = z
   .object({
-    name: z.string().trim().min(1).max(256),
-    mobileNumber: z.string().trim().regex(MOBILE_PATTERN),
-    email: emailValueSchema.optional(),
-    issueCategory: z.string().trim().min(1).max(128),
-    feedback: z.string().trim().min(1).max(8_000),
+    ...serviceFeedbackCommonRequestShape,
+    locationMode: z.literal("GPS"),
+    latitude: z.number().min(-90).max(90),
+    longitude: z.number().min(-180).max(180),
+  })
+  .strict();
+
+const serviceFeedbackManualSubmitRequestSchema = z
+  .object({
+    ...serviceFeedbackCommonRequestShape,
+    locationMode: z.literal("MANUAL"),
     addressLine1: z.string().trim().min(1).max(512),
     addressLine2: z.string().trim().max(512).optional(),
     city: z.string().trim().min(1).max(128),
     district: z.string().trim().min(1).max(128),
     state: z.string().trim().min(1).max(128),
     postalCode: z.string().trim().regex(PINCODE_PATTERN),
-    latitude: z.number().min(-90).max(90),
-    longitude: z.number().min(-180).max(180),
   })
   .strict();
+
+export const serviceFeedbackSubmitRequestSchema = z.discriminatedUnion(
+  "locationMode",
+  [
+    serviceFeedbackGpsSubmitRequestSchema,
+    serviceFeedbackManualSubmitRequestSchema,
+  ],
+);
 
 export type ServiceFeedbackSubmitRequest = z.infer<
   typeof serviceFeedbackSubmitRequestSchema

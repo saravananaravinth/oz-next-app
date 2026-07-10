@@ -19,6 +19,16 @@ export const AUTH_ENDPOINTS = {
   logout: `${ERP_PREFIX}/auth/sessions/current`,
 } as const;
 
+export const ENGAGEMENT_ENDPOINTS = {
+  dealerBase: `${ERP_PREFIX}/engagement/dealer`,
+  dealerDashboard: `${ERP_PREFIX}/engagement/dealer/dashboard`,
+  ownerGuides: `${ERP_PREFIX}/engagement/dealer/owner-guides`,
+  ownerGuide: (ownerGuideId: string) =>
+    `${ERP_PREFIX}/engagement/dealer/owner-guides/${encodeURIComponent(ownerGuideId)}` as const,
+  ownerGuideSettings: `${ERP_PREFIX}/engagement/dealer/owner-guide-settings`,
+  manualOwnerGuideFlow: `${ERP_PREFIX}/engagement/dealer/owner-guide-flows/manual-start`,
+} as const;
+
 export type AuthStaticEndpoint = Exclude<
   (typeof AUTH_ENDPOINTS)[keyof typeof AUTH_ENDPOINTS],
   (sessionId: string) => string

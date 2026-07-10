@@ -21,6 +21,14 @@ import {
 
 const UPLOAD_TIMEOUT_MS = 60_000;
 
+const UPLOAD_MIME_TYPE_BY_EXTENSION = new Map<string, string>([
+  ["pdf", "application/pdf"],
+  ["jpg", "image/jpeg"],
+  ["jpeg", "image/jpeg"],
+  ["png", "image/png"],
+  ["webp", "image/webp"],
+]);
+
 export type SubmitPublicWarrantyApplicationInput = Readonly<{
   token: string;
   application: WarrantyApplicationSubmitRequest;
@@ -85,6 +93,34 @@ export async function submitPublicWarrantyApplication(
   );
 }
 
+function fileExtension(fileName: string): string {
+  const normalized = fileName.trim().toLowerCase();
+  const separatorIndex = normalized.lastIndexOf(".");
+
+  return separatorIndex >= 0 && separatorIndex < normalized.length - 1
+    ? normalized.slice(separatorIndex + 1)
+    : "";
+}
+
+function fileForUpload(file: File): File {
+  if (file.type.trim().length > 0) {
+    return file;
+  }
+
+  const inferredMimeType = UPLOAD_MIME_TYPE_BY_EXTENSION.get(
+    fileExtension(file.name),
+  );
+
+  if (inferredMimeType === undefined) {
+    return file;
+  }
+
+  return new File([file], file.name, {
+    type: inferredMimeType,
+    lastModified: file.lastModified,
+  });
+}
+
 function readJsonPayload(text: string): unknown {
   if (text.trim().length === 0) {
     return null;
@@ -113,14 +149,10 @@ function toUploadError(
 
   return new PublicWarrantyUploadError({
     status,
-    code: parsed.data.code ?? "WARRANTY_UPLOAD_FAILED",
+    code: String(parsed.data.code),
     message:
-      parsed.data.detail ??
-      parsed.data.title ??
-      "The invoice file could not be uploaded.",
-    ...(parsed.data.request_id === undefined
-      ? {}
-      : { requestId: parsed.data.request_id }),
+      parsed.data.detail.length > 0 ? parsed.data.detail : parsed.data.title,
+    requestId: parsed.data.request_id,
   });
 }
 
@@ -132,7 +164,6 @@ export function uploadPublicWarrantyApplicationFile(
   return new Promise<WarrantyApplicationUploadedFile>((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     const formData = new FormData();
-
     let completed = false;
 
     const cleanup = (): void => {
@@ -166,8 +197,10 @@ export function uploadPublicWarrantyApplicationFile(
 
     input.signal?.addEventListener("abort", abortUpload, { once: true });
 
+    const uploadFile = fileForUpload(input.file);
+
     formData.set("purpose", purpose);
-    formData.set("file", input.file, input.file.name);
+    formData.set("file", uploadFile, uploadFile.name);
 
     xhr.open(
       "POST",
@@ -176,6 +209,7 @@ export function uploadPublicWarrantyApplicationFile(
     );
     xhr.responseType = "text";
     xhr.timeout = UPLOAD_TIMEOUT_MS;
+    xhr.withCredentials = false;
 
     xhr.setRequestHeader(HDR.ACCEPT, CT.JSON);
     xhr.setRequestHeader(HDR.REQUEST_ID, requestId("web"));
@@ -187,12 +221,8 @@ export function uploadPublicWarrantyApplicationFile(
         return;
       }
 
-      input.onProgress?.(
-        Math.min(
-          99,
-          Math.max(1, Math.round((event.loaded / event.total) * 100)),
-        ),
-      );
+      const progress = Math.round((event.loaded / event.total) * 100);
+      input.onProgress?.(Math.min(99, Math.max(1, progress)));
     });
 
     xhr.addEventListener("load", () => {
@@ -242,7 +272,7 @@ export function uploadPublicWarrantyApplicationFile(
           status: 0,
           code: "WARRANTY_UPLOAD_TIMEOUT",
           message:
-            "Invoice upload timed out. Please retry with a smaller file or stronger network.",
+            "Invoice upload timed out. Retry with a stronger network connection.",
         }),
       );
     });

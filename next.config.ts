@@ -120,6 +120,10 @@ function originToHost(origin: string): string {
   return new URL(origin).host;
 }
 
+function originToHostname(origin: string): string {
+  return new URL(origin).hostname;
+}
+
 function originToRemotePattern(origin: string): RemotePattern {
   const url = new URL(origin);
 
@@ -168,14 +172,14 @@ const imageOrigins = uniqueSources([appOrigin, apiOrigin]);
 const allowedServerActionOrigins = uniqueSources([appOrigin]).map(originToHost);
 
 const allowedDevOrigins = isDevelopment
-  ? uniqueSources([
-      "http://localhost:3000",
-      "http://127.0.0.1:3000",
-      "http://localhost:8787",
-      "http://127.0.0.1:8787",
-      appOrigin,
-      apiOrigin,
-    ])
+  ? Array.from(
+      new Set([
+        "localhost",
+        "127.0.0.1",
+        "[::1]",
+        ...(appOrigin === null ? [] : [originToHostname(appOrigin)]),
+      ]),
+    )
   : [];
 
 const productionOnlySecurityHeaders: readonly Header[] = isProduction
@@ -199,6 +203,14 @@ const securityHeaders: readonly Header[] = [
   {
     key: "X-Content-Type-Options",
     value: "nosniff",
+  },
+  {
+    key: "X-Download-Options",
+    value: "noopen",
+  },
+  {
+    key: "X-Permitted-Cross-Domain-Policies",
+    value: "none",
   },
   {
     key: "Referrer-Policy",

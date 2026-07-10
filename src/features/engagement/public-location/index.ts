@@ -1,6 +1,8 @@
 // oz-next-app/src/features/engagement/public-location/index.ts
 export { PublicLocationRequestPage } from "./public-location-request-page";
-export { submitPublicLocation } from "./client";
+
+export { submitPublicLocation, type SubmitPublicLocationInput } from "./client";
+
 export {
   buildPublicLocationSubmitPath,
   publicLocationSubmitRequestSchema,

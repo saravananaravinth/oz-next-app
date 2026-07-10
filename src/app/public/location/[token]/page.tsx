@@ -5,7 +5,7 @@ import type { ReactElement } from "react";
 import { PublicLocationRequestPage } from "@/features/engagement/public-location";
 
 const PAGE_TITLE = "Share location";
-const PAGE_DESCRIPTION = "Securely share your location with Ozotec EV.";
+const PAGE_DESCRIPTION = "Securely share your current location with Ozotec EV.";
 
 export const dynamic = "force-static";
 export const revalidate = false;
@@ -33,8 +33,8 @@ export const metadata = {
 export const viewport = {
   width: "device-width",
   initialScale: 1,
-  maximumScale: 1,
   viewportFit: "cover",
+  colorScheme: "light dark",
   themeColor: [
     { media: "(prefers-color-scheme: light)", color: "#ffffff" },
     { media: "(prefers-color-scheme: dark)", color: "#09090b" },

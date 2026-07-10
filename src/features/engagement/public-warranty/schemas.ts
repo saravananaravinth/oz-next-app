@@ -2,12 +2,13 @@
 import { z } from "zod";
 
 const SAFE_TOKEN_PATTERN = /^[A-Za-z0-9._~:-]+$/u;
-const MOBILE_PATTERN = /^\+?[1-9][0-9]{7,14}$/u;
 const INDIAN_MOBILE_DIGITS_PATTERN = /^[6-9][0-9]{9}$/u;
+const INDIAN_MOBILE_E164_PATTERN = /^\+91[6-9][0-9]{9}$/u;
 const PINCODE_PATTERN = /^[1-9][0-9]{5}$/u;
 const VIN_PATTERN = /^[A-HJ-NPR-Z0-9]{11,17}$/u;
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
+const SAFE_REFERENCE_PATTERN = /^[A-Za-z0-9_.:/@-]+$/u;
 
 export const WARRANTY_APPLICATION_UPLOAD_MAX_BYTES = 10 * 1024 * 1024;
 export const WARRANTY_APPLICATION_MAX_SERVICE_INVOICE_FILES = 10;
@@ -30,7 +31,7 @@ export const WARRANTY_APPLICATION_ALLOWED_UPLOAD_EXTENSIONS = [
 export const WARRANTY_APPLICATION_UPLOAD_ACCEPT =
   "application/pdf,image/jpeg,image/png,image/webp,.pdf,.jpg,.jpeg,.png,.webp";
 
-const EmailSchema = z.string().trim().max(320).pipe(z.email());
+const emailSchema = z.string().trim().max(320).pipe(z.email());
 
 const requiredText = (max: number, label: string) =>
   z
@@ -68,7 +69,7 @@ export const warrantyApplicationFormSchema = z
         INDIAN_MOBILE_DIGITS_PATTERN,
         "Enter a valid 10-digit mobile number.",
       ),
-    email: z.union([z.literal(""), EmailSchema]).optional(),
+    email: z.union([z.literal(""), emailSchema]).optional(),
 
     addressLine1: requiredText(512, "Address line 1"),
     addressLine2: optionalText(512, "Address line 2"),
@@ -96,8 +97,8 @@ export type WarrantyApplicationFormValues = z.infer<
 export const warrantyApplicationSubmitRequestSchema = z
   .object({
     name: z.string().trim().min(1).max(256),
-    mobileNumber: z.string().trim().regex(MOBILE_PATTERN),
-    email: EmailSchema.optional(),
+    mobileNumber: z.string().trim().regex(INDIAN_MOBILE_E164_PATTERN),
+    email: emailSchema.optional(),
 
     addressLine1: z.string().trim().min(1).max(512),
     addressLine2: z.string().trim().max(512).optional(),
@@ -154,8 +155,8 @@ export const warrantyApplicationUploadFileEnvelopeSchema = z
   .object({
     success: z.literal(true),
     data: warrantyApplicationUploadedFileSchema,
-    request_id: z.string().trim().min(1).max(128),
-    timestamp: z.string().trim().min(1).max(64),
+    request_id: z.string().trim().min(1).max(128).regex(SAFE_REFERENCE_PATTERN),
+    timestamp: z.string().trim().min(1).max(128),
   })
   .strict();
 
@@ -163,17 +164,25 @@ export type WarrantyApplicationUploadFileEnvelope = z.infer<
   typeof warrantyApplicationUploadFileEnvelopeSchema
 >;
 
+const warrantyApplicationProblemFieldSchema = z
+  .object({
+    path: z.string().trim().min(1).max(512),
+    message: z.string().trim().min(1).max(1_024),
+  })
+  .strict();
+
 export const warrantyApplicationProblemEnvelopeSchema = z
   .object({
-    type: z.string().trim().min(1).max(512).optional(),
-    title: z.string().trim().min(1).max(256).optional(),
-    status: z.number().int().min(400).max(599).optional(),
-    detail: z.string().trim().min(1).max(1_000).optional(),
-    code: z.string().trim().min(1).max(128).optional(),
-    request_id: z.string().trim().min(1).max(128).optional(),
-    timestamp: z.string().trim().min(1).max(64).optional(),
+    type: z.string().trim().min(1).max(2_048),
+    title: z.string().trim().min(1).max(256),
+    status: z.number().int().min(400).max(599),
+    detail: z.string().trim().max(4_096),
+    code: z.union([z.string().trim().min(1).max(160), z.number().int()]),
+    request_id: z.string().trim().min(1).max(128).regex(SAFE_REFERENCE_PATTERN),
+    timestamp: z.string().trim().min(1).max(128),
+    invalid_params: z.array(warrantyApplicationProblemFieldSchema).optional(),
   })
-  .loose();
+  .strict();
 
 export type WarrantyApplicationProblemEnvelope = z.infer<
   typeof warrantyApplicationProblemEnvelopeSchema

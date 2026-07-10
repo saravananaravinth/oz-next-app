@@ -56,13 +56,13 @@ const PUBLIC_TOKEN_ROUTES = [
   {
     exactPath: "/public/location",
     prefix: "/public/location/",
-    privateCache: false,
+    privateCache: true,
     varyCookie: false,
   },
   {
     exactPath: "/erp/public/location",
     prefix: "/erp/public/location/",
-    privateCache: false,
+    privateCache: true,
     varyCookie: false,
   },
   {
@@ -90,6 +90,12 @@ const PUBLIC_TOKEN_ROUTES = [
     varyCookie: false,
   },
   {
+    exactPath: "/erp/public/forms/dealership",
+    prefix: "/erp/public/forms/dealership/",
+    privateCache: true,
+    varyCookie: false,
+  },
+  {
     exactPath: "/public/service-feedback",
     prefix: "/public/service-feedback/",
     privateCache: true,
@@ -102,6 +108,12 @@ const PUBLIC_TOKEN_ROUTES = [
     varyCookie: false,
   },
   {
+    exactPath: "/erp/public/forms/service-feedback",
+    prefix: "/erp/public/forms/service-feedback/",
+    privateCache: true,
+    varyCookie: false,
+  },
+  {
     exactPath: "/public/warranty",
     prefix: "/public/warranty/",
     privateCache: true,
@@ -110,6 +122,12 @@ const PUBLIC_TOKEN_ROUTES = [
   {
     exactPath: "/erp/public/warranty",
     prefix: "/erp/public/warranty/",
+    privateCache: true,
+    varyCookie: false,
+  },
+  {
+    exactPath: "/erp/public/forms/warranty",
+    prefix: "/erp/public/forms/warranty/",
     privateCache: true,
     varyCookie: false,
   },
@@ -315,12 +333,24 @@ function publicTokenRouteForPath(
   );
 }
 
-function isPublicLocationRequestPath(pathname: string): boolean {
+function isGeolocationAllowedRequestPath(pathname: string): boolean {
   return (
     pathname === "/public/location" ||
     pathname.startsWith("/public/location/") ||
     pathname === "/erp/public/location" ||
-    pathname.startsWith("/erp/public/location/")
+    pathname.startsWith("/erp/public/location/") ||
+    pathname === "/public/dealership" ||
+    pathname.startsWith("/public/dealership/") ||
+    pathname === "/erp/public/dealership" ||
+    pathname.startsWith("/erp/public/dealership/") ||
+    pathname === "/erp/public/forms/dealership" ||
+    pathname.startsWith("/erp/public/forms/dealership/") ||
+    pathname === "/public/service-feedback" ||
+    pathname.startsWith("/public/service-feedback/") ||
+    pathname === "/erp/public/service-feedback" ||
+    pathname.startsWith("/erp/public/service-feedback/") ||
+    pathname === "/erp/public/forms/service-feedback" ||
+    pathname.startsWith("/erp/public/forms/service-feedback/")
   );
 }
 
@@ -544,7 +574,7 @@ function buildPermissionsPolicy(pathname: string): string {
     "display-capture=()",
     "encrypted-media=()",
     "fullscreen=(self)",
-    isPublicLocationRequestPath(pathname)
+    isGeolocationAllowedRequestPath(pathname)
       ? "geolocation=(self)"
       : "geolocation=()",
     "gyroscope=()",
@@ -572,6 +602,9 @@ function applySecurityHeaders(
   response.headers.set("x-download-options", "noopen");
   response.headers.set("x-permitted-cross-domain-policies", "none");
   response.headers.set("referrer-policy", "strict-origin-when-cross-origin");
+  response.headers.set("cross-origin-opener-policy", "same-origin");
+  response.headers.set("cross-origin-resource-policy", "same-site");
+  response.headers.set("origin-agent-cluster", "?1");
   response.headers.set(
     "permissions-policy",
     buildPermissionsPolicy(request.nextUrl.pathname),
@@ -593,6 +626,13 @@ function finalizeResponse(
   response.headers.set(HDR.CORRELATION_ID, options.context.correlationId);
 
   applySecurityHeaders(response, options.request);
+
+  if (publicTokenRouteForPath(options.request.nextUrl.pathname) !== null) {
+    response.headers.set(
+      "x-robots-tag",
+      "noindex, nofollow, noarchive, nosnippet",
+    );
+  }
 
   if (options.privateCache === true) {
     response.headers.set(HDR.CACHE_CONTROL, CACHE_CONTROL.PRIVATE_NO_STORE);

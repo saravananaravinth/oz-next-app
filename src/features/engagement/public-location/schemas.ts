@@ -1,14 +1,14 @@
 // oz-next-app/src/features/engagement/public-location/schemas.ts
 import { z } from "zod";
 
-const SAFE_PUBLIC_LOCATION_TOKEN_RE = /^[A-Za-z0-9._~:-]+$/u;
+const SAFE_PUBLIC_LOCATION_TOKEN_PATTERN = /^[A-Za-z0-9._~:-]+$/u;
 
 export const publicLocationTokenSchema = z
   .string()
   .trim()
   .min(32)
   .max(256)
-  .regex(SAFE_PUBLIC_LOCATION_TOKEN_RE);
+  .regex(SAFE_PUBLIC_LOCATION_TOKEN_PATTERN);
 
 export const publicLocationSubmitRequestSchema = z
   .object({

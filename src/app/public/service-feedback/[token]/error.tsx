@@ -1,21 +1,21 @@
 // oz-next-app/src/app/erp/public/forms/service-feedback/[token]/error.tsx
 "use client";
 
-import Image from "next/image";
-import type { ReactElement } from "react";
 import { AlertTriangle, RotateCcw } from "lucide-react";
+import { useCallback, useMemo, type ReactElement } from "react";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
+  CardDescription,
   CardFooter,
   CardHeader,
-  CardTitle,
 } from "@/components/ui/card";
+import { PublicServiceFeedbackShell } from "@/features/engagement/public-service-feedback";
 
-type ServiceFeedbackErrorProps = Readonly<{
+export type ServiceFeedbackErrorProps = Readonly<{
   error: Error & {
     readonly digest?: string;
   };
@@ -34,90 +34,84 @@ function safeDigest(value: string | undefined): string | null {
   return SAFE_DIGEST_PATTERN.test(normalized) ? normalized : null;
 }
 
-function BrandMark(): ReactElement {
-  return (
-    <div className="flex size-14 items-center justify-center rounded-3xl border border-border/70 bg-background/75 shadow-xs">
-      <Image
-        src="/icon-light.svg"
-        alt=""
-        width={42}
-        height={42}
-        priority
-        className="block h-10 w-auto dark:hidden"
-      />
-      <Image
-        src="/icon-dark.svg"
-        alt=""
-        width={42}
-        height={42}
-        priority
-        className="hidden h-10 w-auto dark:block"
-      />
-    </div>
-  );
-}
-
 export default function ServiceFeedbackError({
   error,
   reset,
 }: ServiceFeedbackErrorProps): ReactElement {
-  const reference = safeDigest(error.digest);
+  const errorReference = useMemo(
+    () => safeDigest(error.digest),
+    [error.digest],
+  );
+  const handleReset = useCallback((): void => {
+    reset();
+  }, [reset]);
 
   return (
-    <main
-      className="dark min-h-svh bg-[radial-gradient(circle_at_top,_hsl(var(--destructive)/0.12),_transparent_30rem),linear-gradient(180deg,_hsl(var(--background)),_hsl(var(--muted)/0.35))] px-4 py-5 text-foreground"
-      style={{ colorScheme: "dark" }}
+    <PublicServiceFeedbackShell
+      mainLabelledBy="service-feedback-error-title"
+      mainClassName="items-center"
     >
-      <section
-        aria-labelledby="feedback-complaints-error-title"
-        className="mx-auto grid min-h-[calc(100svh-2.5rem)] w-full max-w-md content-center"
-      >
-        <Card className="overflow-hidden border-border/70 bg-card/95 shadow-2xl shadow-foreground/5">
-          <CardHeader className="items-center gap-4 px-5 pt-6 text-center">
-            <BrandMark />
+      <section className="w-full max-w-xl px-4 sm:px-0">
+        <Card className="overflow-hidden border-border/70 bg-card/95 shadow-xl shadow-foreground/5 supports-[backdrop-filter]:backdrop-blur-xl">
+          <CardHeader className="items-center gap-5 px-5 pt-7 text-center sm:px-8 sm:pt-9">
+            <span className="flex size-16 items-center justify-center rounded-3xl border border-destructive/20 bg-destructive/8 text-destructive shadow-xs">
+              <AlertTriangle aria-hidden="true" className="size-8" />
+            </span>
 
             <div className="grid gap-2">
               <p className="text-overline text-muted-readable">Ozotec EV</p>
-              <CardTitle
-                id="feedback-complaints-error-title"
-                className="text-section-title"
+              <h1
+                id="service-feedback-error-title"
+                className="text-section-title text-balance"
               >
-                Feedback/Complaints could not be opened
-              </CardTitle>
-              <p className="text-body-sm text-muted-readable text-pretty">
-                Retry the secure form. Your feedback or complaint was not
-                submitted.
-              </p>
+                Feedback form could not be opened
+              </h1>
+              <CardDescription className="mx-auto max-w-md text-body-sm text-pretty text-muted-readable">
+                Retry the form. Your feedback was not submitted or changed.
+              </CardDescription>
             </div>
           </CardHeader>
 
-          <CardContent>
-            <Alert variant="destructive" role="alert">
+          <CardContent className="grid gap-4 px-5 sm:px-8">
+            <Alert
+              variant="destructive"
+              role="alert"
+              aria-live="assertive"
+              aria-atomic="true"
+            >
               <AlertTriangle aria-hidden="true" />
-              <AlertTitle>
-                Feedback/Complaints form failed to render safely
-              </AlertTitle>
+              <AlertTitle>Form loading failed</AlertTitle>
               <AlertDescription>
-                <p>Please retry. No internal ERP data was exposed.</p>
-
-                {reference === null ? null : (
+                <p>
+                  The public feedback form could not render safely. Try again
+                  using the same secure link.
+                </p>
+                {errorReference === null ? null : (
                   <p className="mt-1 text-caption">
                     Reference:{" "}
-                    <code className="break-all text-tabular">{reference}</code>
+                    <code className="break-all text-tabular">
+                      {errorReference}
+                    </code>
                   </p>
                 )}
               </AlertDescription>
             </Alert>
-          </CardContent>
 
-          <CardFooter className="px-5 pb-5">
-            <Button type="button" className="w-full" onClick={reset}>
+            <Button
+              type="button"
+              onClick={handleReset}
+              className="h-12 rounded-2xl"
+            >
               <RotateCcw aria-hidden="true" className="size-4" />
               Try again
             </Button>
+          </CardContent>
+
+          <CardFooter className="justify-center border-t border-border/70 bg-muted/30 px-5 py-4 text-center text-caption text-muted-readable sm:px-8">
+            <p>No internal ERP diagnostics are exposed on this public page.</p>
           </CardFooter>
         </Card>
       </section>
-    </main>
+    </PublicServiceFeedbackShell>
   );
 }

@@ -1,29 +1,26 @@
-// oz-next-app/src/app/erp/public/forms/dealership/[token]/error.tsx
 "use client";
 
-import Image from "next/image";
-import type { ReactElement } from "react";
-import { useCallback, useMemo } from "react";
 import { AlertTriangle, RotateCcw } from "lucide-react";
+import { useCallback, useMemo, type ReactElement } from "react";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
+  CardDescription,
   CardFooter,
   CardHeader,
-  CardTitle,
 } from "@/components/ui/card";
+import { PublicDealershipShell } from "@/features/engagement/public-dealership/public-dealership-shell";
 
-type PublicDealershipFormErrorProps = Readonly<{
+export type PublicDealershipFormErrorProps = Readonly<{
   error: Error & {
     readonly digest?: string;
   };
   reset: () => void;
 }>;
 
-const BRAND_ICON_SIZE = 32;
 const SAFE_DIGEST_PATTERN = /^[A-Za-z0-9._:-]{1,128}$/u;
 
 function safeDigest(value: string | undefined): string | null {
@@ -34,32 +31,6 @@ function safeDigest(value: string | undefined): string | null {
   }
 
   return SAFE_DIGEST_PATTERN.test(normalized) ? normalized : null;
-}
-
-function BrandMark(): ReactElement {
-  return (
-    <span
-      aria-hidden="true"
-      className="flex size-14 items-center justify-center rounded-3xl border border-primary/15 bg-primary/10 shadow-xs"
-    >
-      <Image
-        src="/icon-light.svg"
-        alt=""
-        width={BRAND_ICON_SIZE}
-        height={BRAND_ICON_SIZE}
-        className="block h-8 w-auto dark:hidden"
-        priority
-      />
-      <Image
-        src="/icon-dark.svg"
-        alt=""
-        width={BRAND_ICON_SIZE}
-        height={BRAND_ICON_SIZE}
-        className="hidden h-8 w-auto dark:block"
-        priority
-      />
-    </span>
-  );
 }
 
 export default function PublicDealershipFormError({
@@ -75,44 +46,60 @@ export default function PublicDealershipFormError({
     reset();
   }, [reset]);
 
-  return (
-    <main
-      className="dark min-h-svh bg-[radial-gradient(circle_at_top,_hsl(var(--primary)/0.16),_transparent_30rem),linear-gradient(180deg,_hsl(var(--background)),_hsl(var(--muted)/0.34))] px-4 py-5 text-foreground"
-      style={{ colorScheme: "dark" }}
-    >
-      <section
-        aria-labelledby="dealership-error-title"
-        className="mx-auto flex min-h-[calc(100svh-2.5rem)] w-full max-w-md flex-col justify-center"
+  const footerActions = (
+    <div className="mx-auto w-full max-w-xl">
+      <Button
+        type="button"
+        onClick={handleReset}
+        className="h-12 w-full rounded-2xl"
       >
-        <Card className="overflow-hidden border-border/70 bg-card/95 shadow-2xl shadow-foreground/5 supports-[backdrop-filter]:backdrop-blur-xl">
-          <CardHeader className="items-center gap-5 px-5 pt-6 text-center">
-            <BrandMark />
+        <RotateCcw aria-hidden="true" className="size-4" />
+        Try again
+      </Button>
+    </div>
+  );
+
+  return (
+    <PublicDealershipShell
+      footerActions={footerActions}
+      mainLabelledBy="dealership-error-title"
+      mainClassName="items-center"
+    >
+      <section className="w-full max-w-xl px-4 sm:px-0">
+        <Card className="overflow-hidden border-border/70 bg-card/95 shadow-xl shadow-foreground/5 supports-[backdrop-filter]:backdrop-blur-xl">
+          <CardHeader className="items-center gap-5 px-5 pt-7 text-center sm:px-8 sm:pt-9">
+            <span className="flex size-16 items-center justify-center rounded-3xl border border-destructive/20 bg-destructive/8 text-destructive shadow-xs">
+              <AlertTriangle aria-hidden="true" className="size-8" />
+            </span>
 
             <div className="grid gap-2">
               <p className="text-overline text-muted-readable">Ozotec EV</p>
-
-              <CardTitle
+              <h1
                 id="dealership-error-title"
-                className="text-section-title"
+                className="text-section-title text-balance"
               >
                 Dealership form could not be opened
-              </CardTitle>
-
-              <p className="text-body-sm text-muted-readable text-pretty">
+              </h1>
+              <CardDescription className="mx-auto max-w-md text-body-sm text-pretty text-muted-readable">
                 Retry the form. Your application details were not submitted or
                 changed.
-              </p>
+              </CardDescription>
             </div>
           </CardHeader>
 
-          <CardContent className="grid gap-4 px-5">
-            <Alert variant="destructive" role="alert" aria-live="assertive">
+          <CardContent className="px-5 sm:px-8">
+            <Alert
+              variant="destructive"
+              role="alert"
+              aria-live="assertive"
+              aria-atomic="true"
+            >
               <AlertTriangle aria-hidden="true" />
               <AlertTitle>Form loading failed</AlertTitle>
               <AlertDescription>
                 <p>
-                  The public dealership application could not render safely.
-                  Please try again using the same link.
+                  The public dealership application could not render safely. Try
+                  again using the same link.
                 </p>
 
                 {errorReference === null ? null : (
@@ -125,22 +112,13 @@ export default function PublicDealershipFormError({
                 )}
               </AlertDescription>
             </Alert>
-
-            <Button
-              type="button"
-              onClick={handleReset}
-              className="h-12 rounded-2xl"
-            >
-              <RotateCcw aria-hidden="true" className="size-4" />
-              Try again
-            </Button>
           </CardContent>
 
-          <CardFooter className="justify-center border-t border-border/70 bg-muted/35 px-5 py-4 text-center text-caption text-muted-readable">
+          <CardFooter className="justify-center border-t border-border/70 bg-muted/30 px-5 py-4 text-center text-caption text-muted-readable sm:px-8">
             <p>No internal ERP diagnostics are exposed on this public page.</p>
           </CardFooter>
         </Card>
       </section>
-    </main>
+    </PublicDealershipShell>
   );
 }

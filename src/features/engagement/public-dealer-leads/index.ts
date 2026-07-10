@@ -14,11 +14,13 @@ export {
 } from "./server";
 
 export {
+  DEALER_LEAD_EDITABLE_FIELD_VALUES,
   DEALER_LEAD_STATUS_VALUES,
   IVR_FLOW_CODE_VALUES,
   buildPublicDealerLeadForwardPath,
   buildPublicDealerLeadUpdatePath,
   buildPublicDealerLeadViewPath,
+  dealerLeadEditableFieldSchema,
   dealerLeadForwardFormSchema,
   dealerLeadForwardRequestSchema,
   dealerLeadMutationResponseSchema,
@@ -28,6 +30,7 @@ export {
   dealerLeadUpdateRequestSchema,
   ivrFlowCodeSchema,
   publicDealerLeadTokenSchema,
+  type DealerLeadEditableField,
   type DealerLeadForwardFormValues,
   type DealerLeadForwardRequest,
   type DealerLeadMutationResponse,

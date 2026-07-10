@@ -1,57 +1,74 @@
 // oz-next-app/src/app/erp/public/forms/warranty/[token]/loading.tsx
 import type { ReactElement } from "react";
 
-import {
-  Card,
-  CardContent,
-  CardFooter,
-  CardHeader,
-} from "@/components/ui/card";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { PublicWarrantyShell } from "@/features/engagement/public-warranty/public-warranty-shell";
 
 export default function WarrantyApplicationLoading(): ReactElement {
+  const footerActions = (
+    <div className="mx-auto grid w-full max-w-3xl gap-2.5">
+      <div className="grid grid-cols-2 gap-3">
+        <Skeleton className="h-12 w-full rounded-2xl" />
+        <Skeleton className="h-12 w-full rounded-2xl" />
+      </div>
+      <Skeleton className="mx-auto h-4 w-80 max-w-full" />
+    </div>
+  );
+
   return (
-    <main
-      className="dark min-h-svh bg-[radial-gradient(circle_at_top,_hsl(var(--primary)/0.14),_transparent_30rem),linear-gradient(180deg,_hsl(var(--background)),_hsl(var(--muted)/0.35))] px-4 py-5 text-foreground"
-      style={{ colorScheme: "dark" }}
+    <PublicWarrantyShell
+      footerActions={footerActions}
+      mainLabelledBy="warranty-loading-title"
     >
-      <section
-        aria-busy="true"
-        aria-labelledby="warranty-loading-title"
-        className="mx-auto grid min-h-[calc(100svh-2.5rem)] w-full max-w-md content-center"
-      >
-        <p id="warranty-loading-title" className="sr-only" role="status">
-          Loading warranty application…
+      <section aria-busy="true" className="flex w-full max-w-3xl sm:px-0">
+        <p
+          id="warranty-loading-title"
+          className="sr-only"
+          role="status"
+          aria-live="polite"
+        >
+          Preparing warranty application…
         </p>
 
-        <Card className="overflow-hidden border-border/70 bg-card/95 shadow-2xl shadow-foreground/5">
-          <CardHeader className="gap-5 px-5 pt-6">
-            <div className="flex items-start gap-4">
-              <Skeleton className="size-12 rounded-3xl" />
-              <div className="grid flex-1 gap-2">
-                <Skeleton className="h-3 w-20" />
-                <Skeleton className="h-6 w-48" />
-                <Skeleton className="h-4 w-full" />
-              </div>
+        <Card
+          aria-hidden="true"
+          className="w-full gap-0 overflow-hidden rounded-none border-x-0 border-y-0 border-border/70 bg-card/96 py-0 shadow-xl shadow-foreground/5 supports-[backdrop-filter]:backdrop-blur-xl sm:rounded-3xl sm:border"
+        >
+          <CardHeader className="gap-5 px-4 py-5 sm:px-7 sm:py-7">
+            <div className="grid gap-2">
+              <Skeleton className="h-3 w-40" />
+              <Skeleton className="h-8 w-64 max-w-full" />
+              <Skeleton className="h-5 w-full max-w-xl" />
             </div>
-            <Skeleton className="h-2 w-full rounded-full" />
+
+            <div className="grid gap-3">
+              <div className="flex justify-between gap-4">
+                <Skeleton className="h-4 w-20" />
+                <Skeleton className="h-4 w-24" />
+              </div>
+              <Skeleton className="h-1.5 w-full rounded-full" />
+            </div>
           </CardHeader>
 
-          <CardContent className="grid gap-4 px-5">
-            <Skeleton className="h-4 w-32" />
-            <Skeleton className="h-11 w-full" />
-            <Skeleton className="h-4 w-32" />
-            <Skeleton className="h-11 w-full" />
-            <Skeleton className="h-4 w-44" />
-            <Skeleton className="h-11 w-full" />
+          <CardContent className="grid gap-5 px-4 pb-6 sm:px-7 sm:pb-7">
+            <div className="grid gap-5 sm:grid-cols-2">
+              <div className="grid gap-2">
+                <Skeleton className="h-4 w-32" />
+                <Skeleton className="h-11 w-full rounded-xl" />
+              </div>
+              <div className="grid gap-2">
+                <Skeleton className="h-4 w-32" />
+                <Skeleton className="h-11 w-full rounded-xl" />
+              </div>
+              <div className="grid gap-2 sm:col-span-2">
+                <Skeleton className="h-4 w-40" />
+                <Skeleton className="h-11 w-full rounded-xl" />
+              </div>
+            </div>
           </CardContent>
-
-          <CardFooter className="grid gap-4 border-t border-border/70 bg-muted/30 px-5 py-4">
-            <Skeleton className="h-4 w-56" />
-            <Skeleton className="h-11 w-full" />
-          </CardFooter>
         </Card>
       </section>
-    </main>
+    </PublicWarrantyShell>
   );
 }

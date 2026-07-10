@@ -1,5 +1,5 @@
 // oz-next-app/src/app/erp/public/dealer-leads/[token]/page.tsx
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import type { ReactElement } from "react";
 
 import {
@@ -9,11 +9,21 @@ import {
 
 const PAGE_TITLE = "Vehicle enquiry follow-up";
 const PAGE_DESCRIPTION =
-  "Update the customer follow-up for an Ozotec EV vehicle enquiry securely.";
+  "Update or route an Ozotec EV customer enquiry securely.";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 export const fetchCache = "force-no-store";
+
+export const viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#ffffff" },
+    { media: "(prefers-color-scheme: dark)", color: "#09090b" },
+  ],
+} satisfies Viewport;
 
 export const metadata = {
   title: PAGE_TITLE,
@@ -32,6 +42,11 @@ export const metadata = {
     card: "summary",
     title: PAGE_TITLE,
     description: PAGE_DESCRIPTION,
+  },
+  formatDetection: {
+    telephone: false,
+    email: false,
+    address: false,
   },
 } satisfies Metadata;
 

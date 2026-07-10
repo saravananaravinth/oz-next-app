@@ -11,6 +11,8 @@ import {
   type DealerLeadPublicView,
 } from "./schemas";
 
+const SAFE_REQUEST_ID_PATTERN = /^[A-Za-z0-9_.:/@-]{1,128}$/u;
+
 export type PublicDealerLeadLoadResult =
   | Readonly<{
       ok: true;
@@ -21,6 +23,20 @@ export type PublicDealerLeadLoadResult =
       reason: "invalid-token" | "not-found" | "unavailable";
       requestId?: string;
     }>;
+
+function safeRequestId(value: string | undefined): string | undefined {
+  const normalized = value?.trim();
+
+  if (
+    normalized === undefined ||
+    normalized.length === 0 ||
+    !SAFE_REQUEST_ID_PATTERN.test(normalized)
+  ) {
+    return undefined;
+  }
+
+  return normalized;
+}
 
 export async function getPublicDealerLeadByToken(
   token: string,
@@ -35,7 +51,7 @@ export async function getPublicDealerLeadByToken(
   }
 
   try {
-    const lead = await serverApiClient.get(
+    const lead = await serverApiClient.get<DealerLeadPublicView>(
       buildPublicDealerLeadViewPath(parsedToken.data),
       dealerLeadPublicViewSchema,
       {
@@ -52,15 +68,15 @@ export async function getPublicDealerLeadByToken(
     };
   } catch (error: unknown) {
     if (isApiHttpError(error)) {
+      const requestId = safeRequestId(error.requestId);
+
       return {
         ok: false,
         reason:
           error.status === 404 || error.status === 410
             ? "not-found"
             : "unavailable",
-        ...(error.requestId === undefined
-          ? {}
-          : { requestId: error.requestId }),
+        ...(requestId === undefined ? {} : { requestId }),
       };
     }
 

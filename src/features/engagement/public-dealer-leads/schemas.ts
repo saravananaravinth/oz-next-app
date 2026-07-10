@@ -2,6 +2,8 @@
 import { z } from "zod";
 
 const SAFE_TOKEN_PATTERN = /^[A-Za-z0-9._~:-]+$/u;
+const DATE_TIME_LOCAL_PATTERN = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/u;
+
 const isoOffsetDateTimeSchema = z
   .string()
   .trim()
@@ -22,6 +24,14 @@ export const IVR_FLOW_CODE_VALUES = [
   "SERVICE_ENQUIRIES",
 ] as const;
 
+export const DEALER_LEAD_EDITABLE_FIELD_VALUES = [
+  "customerName",
+  "note",
+  "followUpAt",
+  "status",
+  "forwardFlow",
+] as const;
+
 export const publicDealerLeadTokenSchema = z
   .string()
   .trim()
@@ -31,9 +41,47 @@ export const publicDealerLeadTokenSchema = z
 
 export const dealerLeadStatusSchema = z.enum(DEALER_LEAD_STATUS_VALUES);
 export const ivrFlowCodeSchema = z.enum(IVR_FLOW_CODE_VALUES);
+export const dealerLeadEditableFieldSchema = z.enum(
+  DEALER_LEAD_EDITABLE_FIELD_VALUES,
+);
 
 export type DealerLeadStatus = z.infer<typeof dealerLeadStatusSchema>;
 export type IvrFlowCode = z.infer<typeof ivrFlowCodeSchema>;
+export type DealerLeadEditableField = z.infer<
+  typeof dealerLeadEditableFieldSchema
+>;
+
+function isValidDateTimeLocal(value: string): boolean {
+  if (value.length === 0) {
+    return true;
+  }
+
+  const match = DATE_TIME_LOCAL_PATTERN.exec(value);
+
+  if (match === null) {
+    return false;
+  }
+
+  const [, year, month, day, hour, minute] = match;
+  const date = new Date(
+    Number(year),
+    Number(month) - 1,
+    Number(day),
+    Number(hour),
+    Number(minute),
+    0,
+    0,
+  );
+
+  return (
+    !Number.isNaN(date.getTime()) &&
+    date.getFullYear() === Number(year) &&
+    date.getMonth() === Number(month) - 1 &&
+    date.getDate() === Number(day) &&
+    date.getHours() === Number(hour) &&
+    date.getMinutes() === Number(minute)
+  );
+}
 
 export const dealerLeadPublicViewSchema = z
   .object({
@@ -82,7 +130,7 @@ export const dealerLeadPublicViewSchema = z
         latestCustomerName: z.string().trim().max(256).nullable(),
         latestNote: z.string().trim().max(4_000).nullable(),
         latestStatus: z.string().trim().max(128).nullable(),
-        editableFields: z.array(z.string().trim().min(1).max(128)).max(32),
+        editableFields: z.array(dealerLeadEditableFieldSchema).max(5),
         canUpdate: z.boolean(),
         canForward: z.boolean(),
         expiresAt: isoOffsetDateTimeSchema,
@@ -101,7 +149,15 @@ export const dealerLeadUpdateRequestSchema = z
     followUpAt: isoOffsetDateTimeSchema.optional(),
     status: dealerLeadStatusSchema.optional(),
   })
-  .strict();
+  .strict()
+  .refine(
+    (value) =>
+      value.customerName !== undefined ||
+      value.note !== undefined ||
+      value.followUpAt !== undefined ||
+      value.status !== undefined,
+    "At least one follow-up field must be updated.",
+  );
 
 export type DealerLeadUpdateRequest = z.infer<
   typeof dealerLeadUpdateRequestSchema
@@ -135,7 +191,11 @@ export const dealerLeadUpdateFormSchema = z
   .object({
     customerName: z.string().trim().max(256, "Customer name is too long."),
     status: z.union([dealerLeadStatusSchema, z.literal("")]),
-    followUpAtLocal: z.string().trim().max(32),
+    followUpAtLocal: z
+      .string()
+      .trim()
+      .max(32)
+      .refine(isValidDateTimeLocal, "Enter a valid follow-up date and time."),
     note: z.string().trim().max(4_000, "Note is too long."),
   })
   .strict();
@@ -147,7 +207,11 @@ export type DealerLeadUpdateFormValues = z.infer<
 export const dealerLeadForwardFormSchema = z
   .object({
     targetIvrFlowCode: ivrFlowCodeSchema,
-    reason: z.string().trim().min(1, "Forward reason is required.").max(1_000),
+    reason: z
+      .string()
+      .trim()
+      .min(1, "Routing reason is required.")
+      .max(1_000, "Routing reason is too long."),
   })
   .strict();
 

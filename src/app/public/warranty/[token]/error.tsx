@@ -1,20 +1,21 @@
 // oz-next-app/src/app/erp/public/forms/warranty/[token]/error.tsx
 "use client";
 
+import { AlertTriangle, RotateCcw } from "lucide-react";
 import type { ReactElement } from "react";
-import { AlertTriangle, RotateCcw, Smartphone } from "lucide-react";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
+  CardDescription,
   CardFooter,
   CardHeader,
-  CardTitle,
 } from "@/components/ui/card";
+import { PublicWarrantyShell } from "@/features/engagement/public-warranty/public-warranty-shell";
 
-type WarrantyApplicationErrorProps = Readonly<{
+export type WarrantyApplicationErrorProps = Readonly<{
   error: Error & {
     readonly digest?: string;
   };
@@ -39,41 +40,58 @@ export default function WarrantyApplicationError({
 }: WarrantyApplicationErrorProps): ReactElement {
   const errorReference = safeDigest(error.digest);
 
+  const footerActions = (
+    <div className="mx-auto w-full max-w-xl">
+      <Button type="button" onClick={reset} className="h-12 w-full rounded-2xl">
+        <RotateCcw aria-hidden="true" className="size-4" />
+        Try again
+      </Button>
+    </div>
+  );
+
   return (
-    <main
-      className="dark min-h-svh bg-[radial-gradient(circle_at_top,_hsl(var(--destructive)/0.12),_transparent_30rem),linear-gradient(180deg,_hsl(var(--background)),_hsl(var(--muted)/0.35))] px-4 py-5 text-foreground"
-      style={{ colorScheme: "dark" }}
+    <PublicWarrantyShell
+      footerActions={footerActions}
+      mainLabelledBy="warranty-error-title"
+      mainClassName="items-center"
     >
-      <section
-        aria-labelledby="warranty-error-title"
-        className="mx-auto flex min-h-[calc(100svh-2.5rem)] w-full max-w-md flex-col justify-center"
-      >
-        <Card className="overflow-hidden border-border/70 bg-card/95 shadow-2xl shadow-foreground/5">
-          <CardHeader className="items-center gap-5 px-5 pt-6 text-center">
-            <div className="flex size-14 items-center justify-center rounded-3xl border border-destructive/25 bg-destructive/10 text-destructive shadow-xs">
-              <Smartphone aria-hidden="true" className="size-7" />
-            </div>
+      <section className="w-full max-w-xl px-4 sm:px-0">
+        <Card className="overflow-hidden border-border/70 bg-card/95 shadow-xl shadow-foreground/5 supports-[backdrop-filter]:backdrop-blur-xl">
+          <CardHeader className="items-center gap-5 px-5 pt-7 text-center sm:px-8 sm:pt-9">
+            <span className="flex size-16 items-center justify-center rounded-3xl border border-destructive/20 bg-destructive/8 text-destructive shadow-xs">
+              <AlertTriangle aria-hidden="true" className="size-8" />
+            </span>
 
             <div className="grid gap-2">
               <p className="text-overline text-muted-readable">Ozotec EV</p>
-              <CardTitle
+              <h1
                 id="warranty-error-title"
-                className="text-section-title"
+                className="text-section-title text-balance"
               >
                 Warranty form could not be opened
-              </CardTitle>
-              <p className="text-body-sm text-muted-readable text-pretty">
-                Retry the form. Your warranty details were not submitted.
-              </p>
+              </h1>
+              <CardDescription className="mx-auto max-w-md text-body-sm text-pretty text-muted-readable">
+                Retry the secure form. No warranty details or invoice files were
+                submitted by this failed render.
+              </CardDescription>
             </div>
           </CardHeader>
 
-          <CardContent>
-            <Alert variant="destructive" role="alert">
+          <CardContent className="px-5 sm:px-8">
+            <Alert
+              variant="destructive"
+              role="alert"
+              aria-live="assertive"
+              aria-atomic="true"
+            >
               <AlertTriangle aria-hidden="true" />
-              <AlertTitle>Public form failed</AlertTitle>
+              <AlertTitle>Warranty form failed safely</AlertTitle>
               <AlertDescription>
-                <p>The warranty application could not render safely.</p>
+                <p>
+                  The public warranty application could not render safely. Try
+                  again using the same link.
+                </p>
+
                 {errorReference === null ? null : (
                   <p className="mt-1 text-caption">
                     Reference:{" "}
@@ -86,14 +104,13 @@ export default function WarrantyApplicationError({
             </Alert>
           </CardContent>
 
-          <CardFooter className="grid gap-3 border-t border-border/70 bg-muted/30 px-5 py-4">
-            <Button type="button" onClick={reset}>
-              <RotateCcw aria-hidden="true" className="size-4" />
-              Try again
-            </Button>
+          <CardFooter className="justify-center border-t border-border/70 bg-muted/30 px-5 py-4 text-center text-caption text-muted-readable sm:px-8">
+            <p>
+              No internal ERP diagnostics or private files are exposed here.
+            </p>
           </CardFooter>
         </Card>
       </section>
-    </main>
+    </PublicWarrantyShell>
   );
 }

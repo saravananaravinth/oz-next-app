@@ -19,12 +19,12 @@ export type SubmitPublicLocationInput = Readonly<{
   signal?: AbortSignal;
 }>;
 
-export async function submitPublicLocation(
+export function submitPublicLocation(
   input: SubmitPublicLocationInput,
 ): Promise<PublicLocationSubmitResponse> {
   const body = publicLocationSubmitRequestSchema.parse(input.location);
 
-  return await apiClient.request(buildPublicLocationSubmitPath(input.token), {
+  return apiClient.request(buildPublicLocationSubmitPath(input.token), {
     method: HTTP_METHODS.POST,
     auth: false,
     retry: 0,
