@@ -1,4 +1,4 @@
-// oz-next-app/src/app/erp/public/dealer-leads/[token]/page.tsx
+// oz-next-app/src/app/public/dealer-leads/[token]/page.tsx
 import type { Metadata, Viewport } from "next";
 import type { ReactElement } from "react";
 

@@ -1,4 +1,4 @@
-// oz-next-app/src/app/erp/public/location/[token]/error.tsx
+// oz-next-app/src/app/public/location/[token]/error.tsx
 "use client";
 
 import { AlertTriangle, RotateCcw } from "lucide-react";

@@ -1,4 +1,4 @@
-// oz-next-app/src/app/erp/public/forms/warranty/[token]/page.tsx
+// oz-next-app/src/app/public/warranty/[token]/page.tsx
 import type { Metadata, Viewport } from "next";
 import type { ReactElement } from "react";
 

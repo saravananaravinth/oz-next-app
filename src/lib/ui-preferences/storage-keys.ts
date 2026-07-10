@@ -1,3 +1,4 @@
+// oz-next-app/src/lib/ui-preferences/storage-keys.ts
 export const UI_STORAGE_KEYS = {
   /** UI theme preference only. Never store auth/session/tenant state here. */
   THEME: "oz_theme",

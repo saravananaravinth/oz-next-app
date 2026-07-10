@@ -1,3 +1,4 @@
+// oz-next-app/src/app/(protected)/dashboard/loading.tsx
 import type { ReactElement } from "react";
 
 import { ContentGrid, ContentMetrics, ContentRoot } from "@/components/content";

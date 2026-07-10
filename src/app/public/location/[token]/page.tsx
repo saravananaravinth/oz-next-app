@@ -1,4 +1,4 @@
-// oz-next-app/src/app/erp/public/location/[token]/page.tsx
+// oz-next-app/src/app/public/location/[token]/page.tsx
 import type { Metadata, Viewport } from "next";
 import type { ReactElement } from "react";
 

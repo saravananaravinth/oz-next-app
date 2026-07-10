@@ -1,4 +1,4 @@
-// oz-next-app/src/app/erp/public/forms/service-feedback/[token]/loading.tsx
+// oz-next-app/src/app/public/service-feedback/[token]/loading.tsx
 import type { ReactElement } from "react";
 
 import { Card, CardContent, CardHeader } from "@/components/ui/card";

@@ -1,4 +1,4 @@
-// oz-next-app/src/app/erp/public/forms/dealership/[token]/page.tsx
+// oz-next-app/src/app/public/dealership/[token]/page.tsx
 import type { Metadata } from "next";
 import type { ReactElement } from "react";
 

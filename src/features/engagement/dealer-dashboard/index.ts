@@ -1,3 +1,4 @@
+// oz-next-app/src/features/engagement/dealer-dashboard/index.ts
 export { resolveDealerDashboardAccess } from "./access";
 export type {
   DealerDashboardAccess,

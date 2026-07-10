@@ -1,3 +1,4 @@
+// oz-next-app/src/app/public/dealership/[token]/error.tsx
 "use client";
 
 import { AlertTriangle, RotateCcw } from "lucide-react";
