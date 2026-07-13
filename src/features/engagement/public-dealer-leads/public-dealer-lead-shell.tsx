@@ -5,8 +5,6 @@ import type { ReactElement, ReactNode, Ref } from "react";
 
 import { cn } from "@/lib/utils";
 
-const COMPANY_LEGAL_NAME = "Ozotec Automobile Pvt Ltd";
-const CURRENT_YEAR = new Date().getUTCFullYear();
 const BRAND_ICON_SIZE = 36;
 
 export type PublicDealerLeadShellProps = Readonly<{
@@ -114,24 +112,6 @@ export function PublicDealerLeadShell({
             {footerActions}
           </div>
         ) : null}
-
-        <div
-          className={cn(
-            "px-4 pt-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] sm:px-6",
-            !hasFooterActions &&
-              "pt-3.5 pb-[max(0.875rem,env(safe-area-inset-bottom))]",
-          )}
-        >
-          <div className="mx-auto grid w-full max-w-5xl gap-1 text-center text-[0.6875rem] leading-relaxed text-muted-readable sm:grid-cols-[1fr_auto] sm:items-center sm:text-left sm:text-caption">
-            <p>
-              Copyright © {CURRENT_YEAR} {COMPANY_LEGAL_NAME}. All rights
-              reserved.
-            </p>
-            <p className="sm:text-right">
-              Information is used only for customer follow-up and routing.
-            </p>
-          </div>
-        </div>
       </footer>
     </div>
   );
