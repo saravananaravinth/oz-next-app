@@ -8,21 +8,28 @@ import { z } from "zod";
 import { AUTH_ENDPOINTS } from "@/lib/api/endpoints";
 import { ApiHttpError, isApiHttpError } from "@/lib/api/problem";
 import {
+  authListSessionsQuerySchema,
+  authSessionSummarySchema,
+  authSessionsMetaSchema,
   authTokenResponseSchema,
   loginVerifyRequestSchema,
   logoutResponseSchema,
   meResponseSchema,
+  type AuthListSessionsQuery,
+  type AuthPagination,
+  type AuthSessionSummary,
   type LoginVerifyRequest,
   type LogoutResponse,
   type MeResponse,
 } from "@/lib/api/schemas";
-import { HTTP_METHODS, HTTP_STATUS } from "@/lib/constants";
+import { API_CONFIG, HTTP_METHODS, HTTP_STATUS } from "@/lib/constants";
 import { hasSessionTokenType } from "@/server/auth/jwt-metadata";
 import {
   clearServerAuthCookies,
   setServerAuthTokens,
 } from "@/server/auth/session";
-import { serverFetch } from "@/server/fetch";
+import { serverEnvelopeFetch, serverFetch } from "@/server/fetch";
+import { assertSameOriginMutation } from "@/server/security/origin";
 
 export type LoginVerifyActionError = Readonly<{
   message: string;
@@ -45,6 +52,27 @@ export type LoginVerifyActionResult = Readonly<
       error: LoginVerifyActionError;
     }
 >;
+
+export type AuthSessionsPageData = Readonly<{
+  sessions: readonly AuthSessionSummary[];
+  pagination: AuthPagination;
+  requestId: string | null;
+}>;
+
+export type RevokeAuthSessionActionResult =
+  | Readonly<{ ok: true }>
+  | Readonly<{
+      ok: false;
+      code: string;
+      message: string;
+      requestId: string | null;
+    }>;
+
+const authSessionIdSchema = z.uuid();
+const authSessionListSchema = z
+  .array(authSessionSummarySchema)
+  .max(100)
+  .readonly();
 
 const REQUEST_ID_PATTERN = /^[A-Za-z0-9_.:/@-]+$/u;
 const ERROR_CODE_PATTERN = /^[A-Za-z0-9_.:-]{1,160}$/u;
@@ -233,6 +261,7 @@ function normalizeExpiresInSeconds(value: number): number {
 export async function loginVerifyAction(
   input: LoginVerifyRequest,
 ): Promise<LoginVerifyActionResult> {
+  await assertSameOriginMutation(API_CONFIG.appOrigin);
   const body = loginVerifyRequestSchema.parse(input);
 
   await clearServerAuthCookies();
@@ -281,6 +310,8 @@ export async function meAction(): Promise<MeResponse> {
 }
 
 export async function logoutAction(): Promise<LogoutResponse | null> {
+  await assertSameOriginMutation(API_CONFIG.appOrigin);
+
   try {
     return await serverFetch(AUTH_ENDPOINTS.revokeCurrentSession, {
       method: HTTP_METHODS.DELETE,
@@ -306,5 +337,84 @@ export async function logoutAction(): Promise<LogoutResponse | null> {
     throw error;
   } finally {
     await clearServerAuthCookies();
+  }
+}
+
+export async function listAuthSessionsAction(
+  input: Partial<AuthListSessionsQuery> = {},
+): Promise<AuthSessionsPageData> {
+  const query = authListSessionsQuerySchema.parse(input);
+  const search = new URLSearchParams({ limit: String(query.limit) });
+
+  if (query.cursor !== undefined) {
+    search.set("cursor", query.cursor);
+  }
+
+  const result = await serverEnvelopeFetch(
+    `${AUTH_ENDPOINTS.sessions}?${search.toString()}`,
+    {
+      method: HTTP_METHODS.GET,
+      auth: true,
+      refreshOnUnauthorized: true,
+      cache: "no-store",
+      schema: authSessionListSchema,
+      metaSchema: authSessionsMetaSchema,
+    },
+  );
+
+  return {
+    sessions: result.data,
+    pagination: result.meta.pagination,
+    requestId: result.requestId,
+  };
+}
+
+export async function revokeAuthSessionAction(
+  sessionIdInput: string,
+): Promise<RevokeAuthSessionActionResult> {
+  try {
+    await assertSameOriginMutation(API_CONFIG.appOrigin);
+
+    const sessionId = authSessionIdSchema.parse(sessionIdInput);
+
+    await serverFetch(AUTH_ENDPOINTS.session(sessionId), {
+      method: HTTP_METHODS.DELETE,
+      auth: true,
+      refreshOnUnauthorized: false,
+      cache: "no-store",
+      schema: logoutResponseSchema,
+    });
+
+    return { ok: true };
+  } catch (error: unknown) {
+    if (isApiHttpError(error)) {
+      return {
+        ok: false,
+        code: error.code,
+        message:
+          error.status === HTTP_STATUS.NOT_FOUND
+            ? "The session no longer exists."
+            : error.status === HTTP_STATUS.FORBIDDEN
+              ? "You are not authorized to revoke this session."
+              : "The session could not be revoked safely.",
+        requestId: normalizeRequestId(error.requestId),
+      };
+    }
+
+    if (error instanceof z.ZodError) {
+      return {
+        ok: false,
+        code: "auth_session_id_invalid",
+        message: "The selected session identifier is invalid.",
+        requestId: null,
+      };
+    }
+
+    return {
+      ok: false,
+      code: "auth_session_revoke_failed",
+      message: "The session could not be revoked safely.",
+      requestId: null,
+    };
   }
 }

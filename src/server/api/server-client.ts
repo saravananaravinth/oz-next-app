@@ -11,7 +11,9 @@ import {
   isMalformedAuthFailure,
   readJsonPayload,
   throwForHttpError,
+  unwrapApiEnvelope,
   unwrapApiPayload,
+  type ApiEnvelopeResult,
 } from "@/lib/api/envelope";
 import { ApiHttpError } from "@/lib/api/problem";
 import {
@@ -27,7 +29,7 @@ import {
   HDR,
   HTTP_METHODS,
   HTTP_STATUS,
-  PUBLIC_API_ALLOWED_PREFIXES,
+  SERVER_API_ALLOWED_PREFIXES,
   type HttpMethod,
 } from "@/lib/constants";
 import { logger } from "@/lib/logger";
@@ -96,6 +98,11 @@ export type ServerApiOptions<TData> = Readonly<{
   actorContext?: ServerActorContextHeaders | undefined;
 }>;
 
+export type ServerApiEnvelopeOptions<TData, TMeta> = ServerApiOptions<TData> &
+  Readonly<{
+    metaSchema: ZodType<TMeta>;
+  }>;
+
 const HTTP_METHOD_VALUES = [
   HTTP_METHODS.GET,
   HTTP_METHODS.POST,
@@ -117,12 +124,14 @@ const BODYLESS_METHODS = new Set<HttpMethod>([
 
 const REQUEST_CACHE_NO_STORE = CACHE_CONTROL.NO_STORE;
 const EDGE_REDIRECT_MODE = "manual" satisfies RequestRedirect;
-const MAX_JSON_BODY_BYTES = 10 * 1024 * 1024;
+const MAX_JSON_BODY_BYTES = 1 * 1024 * 1024;
 const ACCESS_TOKEN_EXPIRY_SKEW_SECONDS = 30;
 const MAX_API_PATH_LENGTH = 2_048;
 const CONTROL_CHARACTER_MAX_CODE = 0x1f;
 const DELETE_CHARACTER_CODE = 0x7f;
 const MAX_DIAGNOSTIC_TEXT_LENGTH = 512;
+const ALLOW_PUBLIC_EDGE_FALLBACK =
+  API_CONFIG.appEnv !== "production" && API_CONFIG.appEnv !== "staging";
 
 const UNSAFE_ENCODED_PATH_PATTERN = /%(?:00|2e|2f|5c)/iu;
 
@@ -353,6 +362,19 @@ async function dispatchEdgeRequest(
     }
   }
 
+  if (!ALLOW_PUBLIC_EDGE_FALLBACK) {
+    logger.error("erp_edge_service_binding_required", {
+      ...baseLogFields,
+      dispatchTarget: "none",
+    });
+
+    throw new ApiHttpError({
+      message: "ERP edge service binding is unavailable.",
+      status: HTTP_STATUS.SERVICE_UNAVAILABLE,
+      code: "erp_edge_binding_unavailable",
+    });
+  }
+
   logger.warn("erp_edge_service_binding_unavailable", {
     ...baseLogFields,
     dispatchTarget: "public_fetch",
@@ -420,7 +442,7 @@ function parseApiPath(path: string): string {
     !containsPathControlCharacter(value) &&
     !UNSAFE_ENCODED_PATH_PATTERN.test(value) &&
     !pathname.split("/").includes("..") &&
-    PUBLIC_API_ALLOWED_PREFIXES.some(
+    SERVER_API_ALLOWED_PREFIXES.some(
       (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
     ) &&
     !BLOCKED_PUBLIC_BACKEND_PATHS.some(
@@ -602,30 +624,37 @@ async function refreshServerAuthTokens(): Promise<AuthTokenResponse | null> {
     refreshToken,
   });
 
-  const response = await dispatchEdgeRequest(
-    buildServerEdgeUrl(AUTH_ENDPOINTS.refresh),
-    {
-      method: HTTP_METHODS.POST,
-      headers: await serverRequestContextHeaders({
-        includeJsonContentType: true,
-      }),
-      body: JSON.stringify(body),
-      cache: "no-store",
-      redirect: EDGE_REDIRECT_MODE,
-    },
-  );
+  const timeout = withTimeoutSignal(undefined, API_CONFIG.timeoutMs);
 
-  const payload = await readJsonPayload(response);
+  try {
+    const response = await dispatchEdgeRequest(
+      buildServerEdgeUrl(AUTH_ENDPOINTS.refresh),
+      {
+        method: HTTP_METHODS.POST,
+        headers: await serverRequestContextHeaders({
+          includeJsonContentType: true,
+        }),
+        body: JSON.stringify(body),
+        cache: "no-store",
+        redirect: EDGE_REDIRECT_MODE,
+        signal: timeout.signal,
+      },
+    );
 
-  if (!response.ok) {
-    return null;
+    const payload = await readJsonPayload(response);
+
+    if (!response.ok) {
+      return null;
+    }
+
+    const tokens = unwrapApiPayload(payload, authTokenResponseSchema);
+
+    await setServerAuthTokens(tokens);
+
+    return tokens;
+  } finally {
+    timeout.cleanup();
   }
-
-  const tokens = unwrapApiPayload(payload, authTokenResponseSchema);
-
-  await setServerAuthTokens(tokens);
-
-  return tokens;
 }
 
 export const refreshServerAuthTokensForMutableBoundary = cache(
@@ -664,11 +693,12 @@ function withTimeoutSignal(
   };
 }
 
-async function fetchOnce<TData>(
+async function fetchOnceEnvelope<TData, TMeta = undefined>(
   path: string,
   options: ServerApiOptions<TData>,
   normalized: NormalizedRequestOptions,
-): Promise<TData> {
+  metaSchema?: ZodType<TMeta>,
+): Promise<ApiEnvelopeResult<TData, TMeta>> {
   const body = serializeBody(normalized.method, options.body);
 
   const outboundHeaders = await serverRequestContextHeaders({
@@ -705,7 +735,6 @@ async function fetchOnce<TData>(
       buildServerEdgeUrl(path),
       requestInit,
     );
-
     const payload = await readJsonPayload(response);
 
     if (!response.ok) {
@@ -719,7 +748,7 @@ async function fetchOnce<TData>(
         const refreshed = await refreshServerAuthTokens();
 
         if (refreshed !== null) {
-          return await fetchOnce(
+          return await fetchOnceEnvelope(
             path,
             {
               ...options,
@@ -727,6 +756,7 @@ async function fetchOnce<TData>(
               refreshOnUnauthorized: false,
             },
             normalized,
+            metaSchema,
           );
         }
 
@@ -736,17 +766,30 @@ async function fetchOnce<TData>(
       throwForHttpError(response, payload);
     }
 
-    return unwrapApiPayload(payload, options.schema);
+    return unwrapApiEnvelope(payload, options.schema, metaSchema);
   } finally {
     timeout.cleanup();
   }
+}
+
+export async function serverEdgeFetchEnvelope<TData, TMeta>(
+  path: string,
+  options: ServerApiEnvelopeOptions<TData, TMeta>,
+): Promise<ApiEnvelopeResult<TData, TMeta>> {
+  return await fetchOnceEnvelope(
+    path,
+    options,
+    normalizeOptions(options),
+    options.metaSchema,
+  );
 }
 
 export async function serverEdgeFetch<TData>(
   path: string,
   options: ServerApiOptions<TData>,
 ): Promise<TData> {
-  return await fetchOnce(path, options, normalizeOptions(options));
+  return (await fetchOnceEnvelope(path, options, normalizeOptions(options)))
+    .data;
 }
 
 export const serverApiClient = {

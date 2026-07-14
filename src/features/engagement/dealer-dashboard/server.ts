@@ -7,6 +7,8 @@ import { createErpFeatureClient } from "@/features/erp/shared/clients/erp-featur
 import { ENGAGEMENT_ENDPOINTS } from "@/lib/api/endpoints";
 import type { ServerActorContextHeaders } from "@/server/api/request-context";
 
+import type { DealerDashboardCapabilities } from "./access";
+
 import {
   dealerEngagementDashboardSchema,
   ownerGuideSummarySchema,
@@ -34,6 +36,7 @@ export async function readDealerDashboardData(
   input: Readonly<{
     query: Pick<DealerDashboardSearchParams, "from" | "to">;
     actorContext?: ServerActorContextHeaders;
+    capabilities: Pick<DealerDashboardCapabilities, "canReadOwnerGuides">;
   }>,
 ): Promise<DealerDashboardData> {
   const query = {
@@ -41,23 +44,29 @@ export async function readDealerDashboardData(
     ...(input.query.to !== undefined ? { to: input.query.to } : {}),
   } as const;
 
+  const dashboardPromise = dealerEngagementClient.request({
+    path: "/dashboard",
+    query,
+    schema: dealerEngagementDashboardSchema,
+    ...(input.actorContext !== undefined
+      ? { actorContext: input.actorContext }
+      : {}),
+  });
+
+  const ownerGuidesPromise = input.capabilities.canReadOwnerGuides
+    ? dealerEngagementClient.request({
+        path: "/owner-guides",
+        query: { limit: 12 },
+        schema: ownerGuidePreviewSchema,
+        ...(input.actorContext !== undefined
+          ? { actorContext: input.actorContext }
+          : {}),
+      })
+    : Promise.resolve([] as readonly OwnerGuideSummary[]);
+
   const [dashboard, ownerGuides] = await Promise.all([
-    dealerEngagementClient.request({
-      path: "/dashboard",
-      query,
-      schema: dealerEngagementDashboardSchema,
-      ...(input.actorContext !== undefined
-        ? { actorContext: input.actorContext }
-        : {}),
-    }),
-    dealerEngagementClient.request({
-      path: "/owner-guides",
-      query: { limit: 12 },
-      schema: ownerGuidePreviewSchema,
-      ...(input.actorContext !== undefined
-        ? { actorContext: input.actorContext }
-        : {}),
-    }),
+    dashboardPromise,
+    ownerGuidesPromise,
   ]);
 
   return {

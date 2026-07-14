@@ -94,12 +94,13 @@ export default async function DashboardPage({
     return <WelcomeDashboard />;
   }
 
-  if (access.kind === "super_admin_context_required") {
+  if (access.kind === "context_required") {
     return <SuperAdminDealerContext />;
   }
 
   const data = await readDealerDashboardData({
     query,
+    capabilities: access.capabilities,
     ...(access.actorContext !== undefined
       ? { actorContext: access.actorContext }
       : {}),

@@ -9,8 +9,6 @@ import { ApiHttpError } from "@/lib/api/problem";
 import {
   loginStartRequestSchema,
   loginStartResponseSchema,
-  logoutResponseSchema,
-  meResponseSchema,
   type AuthSessionResponse,
   type LoginStartResponse,
   type LoginVerifyRequest,
@@ -140,23 +138,18 @@ export const authClient = {
     );
   },
 
-  async me(): Promise<MeResponse> {
-    return await edgeFetch(AUTH_ENDPOINTS.me, {
-      method: HTTP_METHODS.GET,
-      auth: true,
-      retryOnUnauthorized: true,
-      schema: meResponseSchema,
-    });
+  me(): Promise<MeResponse> {
+    return Promise.reject(
+      serverAuthBoundaryError("auth_me_server_boundary_required"),
+    );
   },
 
-  async logout(): Promise<LogoutResponse> {
+  logout(): Promise<LogoutResponse> {
     clearSessionTokens();
 
-    return await edgeFetch(AUTH_ENDPOINTS.logout, {
-      method: HTTP_METHODS.DELETE,
-      auth: true,
-      schema: logoutResponseSchema,
-    });
+    return Promise.reject(
+      serverAuthBoundaryError("auth_logout_server_boundary_required"),
+    );
   },
 } as const;
 

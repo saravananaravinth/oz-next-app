@@ -6,17 +6,19 @@ import { z, type ZodType } from "zod";
 import {
   readJsonPayload,
   throwForHttpError,
-  unwrapApiPayload,
+  unwrapApiEnvelope,
+  type ApiEnvelopeResult,
 } from "@/lib/api/envelope";
 import { ApiHttpError } from "@/lib/api/problem";
 import {
   API_CONFIG,
   BLOCKED_PUBLIC_BACKEND_PATHS,
+  BROWSER_API_ALLOWED_EXACT_PATHS,
+  BROWSER_API_ALLOWED_PREFIXES,
   CT,
   HDR,
   HTTP_METHODS,
   HTTP_STATUS,
-  PUBLIC_API_ALLOWED_PREFIXES,
   SAFE_HTTP_METHODS,
   type HttpMethod,
 } from "@/lib/constants";
@@ -45,7 +47,7 @@ const BODYLESS_METHODS = new Set<HttpMethod>([
 ]);
 const MAX_RETRY_ATTEMPTS = 2;
 const BASE_RETRY_DELAY_MS = 120;
-const MAX_JSON_BODY_BYTES = 10 * 1024 * 1024;
+const MAX_JSON_BODY_BYTES = 1 * 1024 * 1024;
 const MAX_API_PATH_LENGTH = 2_048;
 const MAX_RETRY_AFTER_SECONDS = 30;
 const RETRY_JITTER_MS = 40;
@@ -96,8 +98,12 @@ function parseHttpMethod(method: HttpMethod | undefined): HttpMethod {
   return httpMethodSchema.parse(method ?? HTTP_METHODS.GET);
 }
 
-function isAllowedPublicApiPath(pathname: string): boolean {
-  return PUBLIC_API_ALLOWED_PREFIXES.some(
+function isAllowedBrowserApiPath(pathname: string): boolean {
+  if (BROWSER_API_ALLOWED_EXACT_PATHS.some((path) => pathname === path)) {
+    return true;
+  }
+
+  return BROWSER_API_ALLOWED_PREFIXES.some(
     (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
   );
 }
@@ -120,7 +126,7 @@ function parseApiPath(path: string): string {
     !hasUnsafeControlCharacter(value) &&
     !UNSAFE_ENCODED_PATH_PATTERN.test(value) &&
     !pathname.split("/").includes("..") &&
-    isAllowedPublicApiPath(pathname) &&
+    isAllowedBrowserApiPath(pathname) &&
     !isBlockedPublicBackendPath(pathname);
 
   if (!isValid) {
@@ -169,6 +175,14 @@ function serializeBody(method: HttpMethod, body: unknown): string | undefined {
 
   const json = JSON.stringify(body);
 
+  if (typeof json !== "string") {
+    throw new ApiHttpError({
+      message: "Request body is not JSON serializable.",
+      status: HTTP_STATUS.BAD_REQUEST,
+      code: "invalid_request_body",
+    });
+  }
+
   if (byteLength(json) > MAX_JSON_BODY_BYTES) {
     throw new ApiHttpError({
       message: "Request body exceeds maximum allowed size.",
@@ -181,12 +195,21 @@ function serializeBody(method: HttpMethod, body: unknown): string | undefined {
 }
 
 function normalizeIdempotencyKey(value: string | undefined): string {
-  const normalized = value?.trim();
+  if (value === undefined) {
+    return requestId("idem");
+  }
 
-  return normalized !== undefined &&
-    SAFE_IDEMPOTENCY_KEY_PATTERN.test(normalized)
-    ? normalized
-    : requestId("idem");
+  const normalized = value.trim();
+
+  if (!SAFE_IDEMPOTENCY_KEY_PATTERN.test(normalized)) {
+    throw new ApiHttpError({
+      message: "Invalid idempotency key.",
+      status: HTTP_STATUS.BAD_REQUEST,
+      code: "invalid_idempotency_key",
+    });
+  }
+
+  return normalized;
 }
 
 function buildHeaders(
@@ -288,9 +311,9 @@ async function execute<T>(
   path: string,
   options: BrowserApiOptions<T>,
   retryingAfterRefresh: boolean,
-): Promise<T> {
+): Promise<ApiEnvelopeResult<T>> {
   const method = parseHttpMethod(options.method);
-  const auth = options.auth ?? true;
+  const auth = options.auth ?? false;
   const timeout = withTimeoutSignal(
     options.signal,
     options.timeoutMs ?? API_CONFIG.timeoutMs,
@@ -307,7 +330,7 @@ async function execute<T>(
       }),
       ...(body !== undefined ? { body } : {}),
       cache: "no-store",
-      credentials: "include",
+      credentials: "omit",
       redirect: "error",
       signal: timeout.signal,
     });
@@ -331,7 +354,7 @@ async function execute<T>(
       throwForHttpError(response, payload);
     }
 
-    return unwrapApiPayload(payload, options.schema);
+    return unwrapApiEnvelope(payload, options.schema);
   } catch (error) {
     if (error instanceof ApiHttpError) {
       throw error;
@@ -352,11 +375,18 @@ async function execute<T>(
   }
 }
 
-export async function edgeFetch<T>(
+export async function edgeFetchEnvelope<T>(
   path: string,
   options: BrowserApiOptions<T>,
-): Promise<T> {
+): Promise<ApiEnvelopeResult<T>> {
   const method = parseHttpMethod(options.method);
+  const normalizedOptions: BrowserApiOptions<T> = IDEMPOTENT_METHODS.has(method)
+    ? { ...options, method }
+    : {
+        ...options,
+        method,
+        idempotencyKey: normalizeIdempotencyKey(options.idempotencyKey),
+      };
   const maxAttempts = IDEMPOTENT_METHODS.has(method)
     ? Math.min(Math.max(options.retry ?? 0, 0), MAX_RETRY_ATTEMPTS)
     : 0;
@@ -364,7 +394,7 @@ export async function edgeFetch<T>(
 
   for (;;) {
     try {
-      return await execute(path, { ...options, method }, false);
+      return await execute(path, normalizedOptions, false);
     } catch (error) {
       if (
         !(error instanceof ApiHttpError) ||
@@ -386,6 +416,13 @@ export async function edgeFetch<T>(
       attempt += 1;
     }
   }
+}
+
+export async function edgeFetch<T>(
+  path: string,
+  options: BrowserApiOptions<T>,
+): Promise<T> {
+  return (await edgeFetchEnvelope(path, options)).data;
 }
 
 export const apiClient = {

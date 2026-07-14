@@ -11,7 +11,10 @@ import { API_CONFIG, HTTP_METHODS } from "@/lib/constants";
 import type { ServerActorContextHeaders } from "@/server/api/request-context";
 import { assertSameOriginMutation } from "@/server/security/origin";
 
-import { resolveDealerDashboardAccess } from "./access";
+import {
+  resolveDealerDashboardAccess,
+  type DealerDashboardCapabilities,
+} from "./access";
 import {
   dealerDashboardContextSchema,
   ownerGuideAssignmentEligibilityActionInputSchema,
@@ -90,7 +93,13 @@ function actionFailure(error: unknown): DealerDashboardActionResult {
 
 async function requireActionContext(
   contextInput: DealerDashboardContext,
-  capability: "canManageOwnerGuides",
+  capability: keyof Pick<
+    DealerDashboardCapabilities,
+    | "canCreateOwnerGuide"
+    | "canUpdateOwnerGuide"
+    | "canDisableOwnerGuide"
+    | "canSendOwnerGuideAppLink"
+  >,
 ): Promise<SecuredActionContext> {
   await assertSameOriginMutation(API_CONFIG.appOrigin);
 
@@ -100,7 +109,7 @@ async function requireActionContext(
 
   if (
     access.kind === "unsupported" ||
-    access.kind === "super_admin_context_required" ||
+    access.kind === "context_required" ||
     !access.capabilities[capability]
   ) {
     throw new Error("dealer_dashboard_action_forbidden");
@@ -124,7 +133,7 @@ export async function onboardOwnerGuideAction(
   try {
     const secured = await requireActionContext(
       input.context,
-      "canManageOwnerGuides",
+      "canCreateOwnerGuide",
     );
     const values = ownerGuideOnboardFormSchema.parse(input.values);
     const vehicleChassisNo = optionalChassisNumber(values.vehicleChassisNo);
@@ -184,7 +193,7 @@ export async function updateOwnerGuideAction(
   try {
     const secured = await requireActionContext(
       input.context,
-      "canManageOwnerGuides",
+      "canUpdateOwnerGuide",
     );
     const values = ownerGuideEditFormSchema.parse(input.values);
     const ownerGuideId = encodeURIComponent(values.ownerGuideId);
@@ -236,7 +245,7 @@ export async function updateOwnerGuideAssignmentEligibilityAction(
   try {
     const secured = await requireActionContext(
       input.context,
-      "canManageOwnerGuides",
+      "canUpdateOwnerGuide",
     );
     const values = ownerGuideAssignmentEligibilityActionInputSchema.parse({
       ownerGuideId: input.ownerGuideId,
@@ -283,27 +292,36 @@ export async function ownerGuideLifecycleAction(
   }>,
 ): Promise<DealerDashboardActionResult> {
   try {
-    const secured = await requireActionContext(
-      input.context,
-      "canManageOwnerGuides",
-    );
     const operationInput = ownerGuideLifecycleActionInputSchema.parse({
       ownerGuideId: input.ownerGuideId,
       operation: input.operation,
       idempotencyKey: input.idempotencyKey,
     });
-    const ownerGuideId = encodeURIComponent(operationInput.ownerGuideId);
+    const validatedOperationInput = operationInput;
+    const requiredCapability =
+      validatedOperationInput.operation === "deactivate"
+        ? "canDisableOwnerGuide"
+        : validatedOperationInput.operation === "send-app-link"
+          ? "canSendOwnerGuideAppLink"
+          : "canUpdateOwnerGuide";
+    const secured = await requireActionContext(
+      input.context,
+      requiredCapability,
+    );
+    const ownerGuideId = encodeURIComponent(
+      validatedOperationInput.ownerGuideId,
+    );
     const commonOptions = {
       method: HTTP_METHODS.POST,
-      path: `/owner-guides/${ownerGuideId}/${operationInput.operation}`,
-      idempotencyKey: operationInput.idempotencyKey,
+      path: `/owner-guides/${ownerGuideId}/${validatedOperationInput.operation}`,
+      idempotencyKey: validatedOperationInput.idempotencyKey,
       refreshOnUnauthorized: false,
       ...(secured.actorContext !== undefined
         ? { actorContext: secured.actorContext }
         : {}),
     } as const;
 
-    if (operationInput.operation === "send-app-link") {
+    if (validatedOperationInput.operation === "send-app-link") {
       await dealerEngagementClient.request({
         ...commonOptions,
         schema: sendOwnerGuideAppLinkResultSchema,
@@ -320,9 +338,9 @@ export async function ownerGuideLifecycleAction(
     return {
       ok: true,
       message:
-        operationInput.operation === "send-app-link"
+        validatedOperationInput.operation === "send-app-link"
           ? "Owner Guide application link was queued."
-          : operationInput.operation === "activate"
+          : validatedOperationInput.operation === "activate"
             ? "Owner Guide profile was activated."
             : "Owner Guide profile was deactivated.",
     };

@@ -75,6 +75,10 @@ export const HDR = {
   TRACEPARENT: "traceparent",
   ORIGIN: "origin",
   CACHE_CONTROL: "cache-control",
+  RETRY_AFTER: "retry-after",
+  RATE_LIMIT_SCOPE: "x-ratelimit-scope",
+  RATE_LIMIT_LIMIT: "x-ratelimit-limit",
+  RATE_LIMIT_REMAINING: "x-ratelimit-remaining",
   TENANT_ID: "x-tenant-id",
   ORG_UNIT_ID: "x-org-unit-id",
   DEALER_ORG_UNIT_ID: "x-dealer-org-unit-id",
@@ -110,7 +114,29 @@ export const AUTH_COOKIE = {
 
 export type AuthCookieName = ValueOf<typeof AUTH_COOKIE>;
 
-export const PUBLIC_API_ALLOWED_PREFIXES = ["/erp"] as const;
+/**
+ * Browser code is intentionally limited to anonymous/public ERP operations.
+ * Protected ERP requests must cross a Next.js server boundary where the
+ * HttpOnly access token can be injected as a Bearer token.
+ */
+export const BROWSER_API_ALLOWED_EXACT_PATHS = [
+  "/erp/auth/login/otp/request",
+] as const;
+export const BROWSER_API_ALLOWED_PREFIXES = ["/erp/engagement/public"] as const;
+
+/**
+ * Server-only callers may reach authenticated ERP routes through oz-erp-edge.
+ * Add future protected modules here deliberately; never allow the whole origin.
+ */
+export const SERVER_API_ALLOWED_PREFIXES = [
+  "/erp/auth",
+  "/erp/engagement",
+] as const;
+
+/**
+ * Operational and internal backend surfaces must never be reachable from the
+ * Next.js application, even if the edge Worker also blocks them.
+ */
 export const BLOCKED_PUBLIC_BACKEND_PATHS = [
   "/tasks",
   "/metrics",
@@ -118,6 +144,11 @@ export const BLOCKED_PUBLIC_BACKEND_PATHS = [
   "/healthz",
   "/livez",
   "/version",
+  "/erp/metrics",
+  "/erp/readyz",
+  "/erp/healthz",
+  "/erp/livez",
+  "/erp/version",
 ] as const;
 
 export const API_CONFIG = {

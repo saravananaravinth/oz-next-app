@@ -1,8 +1,14 @@
 // oz-next-app/src/components/app-shell/nav-user.tsx
 "use client";
 
+import Link from "next/link";
 import * as React from "react";
-import { LogOut, ShieldCheck, UserRound } from "lucide-react";
+import {
+  LogOut,
+  MonitorSmartphone,
+  ShieldCheck,
+  UserRound,
+} from "lucide-react";
 
 import type { AuthInfo } from "@/components/app-shell/app-sidebar";
 import {
@@ -120,6 +126,15 @@ export function NavUser({
               <span>
                 {roleCount} role{roleCount === 1 ? "" : "s"}
               </span>
+            </DropdownMenuItem>
+
+            <DropdownMenuSeparator />
+
+            <DropdownMenuItem asChild className="gap-2.5 rounded-2xl">
+              <Link href="/account/sessions">
+                <MonitorSmartphone aria-hidden="true" />
+                <span>Active sessions</span>
+              </Link>
             </DropdownMenuItem>
 
             <DropdownMenuSeparator />

@@ -101,7 +101,7 @@ const DATE_PARTS_FORMAT = new Intl.DateTimeFormat("en-GB", {
 });
 
 export type DealerDashboardPageProps = Readonly<{
-  access: Extract<DealerDashboardAccess, { kind: "dealer" | "super_admin" }>;
+  access: Extract<DealerDashboardAccess, { kind: "dealer" | "contextual" }>;
   data: DealerDashboardData;
   query: Pick<DealerDashboardSearchParams, "from" | "to">;
 }>;
@@ -118,6 +118,16 @@ type FunnelStep = Readonly<{
   value: number;
   help: string;
 }>;
+
+function hasOwnerGuideMutationCapability(
+  capabilities: DealerDashboardCapabilities,
+): boolean {
+  return (
+    capabilities.canUpdateOwnerGuide ||
+    capabilities.canDisableOwnerGuide ||
+    capabilities.canSendOwnerGuideAppLink
+  );
+}
 
 function count(value: number): string {
   return NUMBER_FORMAT.format(value);
@@ -522,7 +532,7 @@ function DashboardActions({
   return (
     <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
       <OwnerGuideIntroDialog />
-      {capabilities.canManageOwnerGuides ? (
+      {capabilities.canCreateOwnerGuide ? (
         <OwnerGuideOnboardDialog context={context} />
       ) : null}
     </div>
@@ -667,7 +677,7 @@ function OwnerGuidePreview({
           title="Build your Owner Guide team"
           description="Onboard the first Owner Guide, then enable assignments and confirm a fresh location before lead matching begins."
           actions={
-            capabilities.canManageOwnerGuides ? (
+            capabilities.canCreateOwnerGuide ? (
               <OwnerGuideOnboardDialog context={context} />
             ) : undefined
           }
@@ -695,7 +705,7 @@ function OwnerGuidePreview({
               <TableHead>Vehicle</TableHead>
               <TableHead>Location</TableHead>
               <TableHead>Limits</TableHead>
-              {capabilities.canManageOwnerGuides ? (
+              {hasOwnerGuideMutationCapability(capabilities) ? (
                 <TableHead className="text-right">Actions</TableHead>
               ) : null}
             </TableRow>
@@ -760,11 +770,12 @@ function OwnerGuidePreview({
                       : ` · ${String(ownerGuide.dailyAssignmentLimit)}/day`}
                   </span>
                 </TableCell>
-                {capabilities.canManageOwnerGuides ? (
+                {hasOwnerGuideMutationCapability(capabilities) ? (
                   <TableCell className="text-right">
                     <OwnerGuideRowActions
                       context={context}
                       ownerGuide={ownerGuide}
+                      capabilities={capabilities}
                     />
                   </TableCell>
                 ) : null}
@@ -824,10 +835,11 @@ function OwnerGuidePreview({
                       : ` · ${String(ownerGuide.dailyAssignmentLimit)}/day`}
                   </ContentDescriptionItem>
                 </ContentDescriptionList>
-                {capabilities.canManageOwnerGuides ? (
+                {hasOwnerGuideMutationCapability(capabilities) ? (
                   <OwnerGuideRowActions
                     context={context}
                     ownerGuide={ownerGuide}
+                    capabilities={capabilities}
                     showLabels
                   />
                 ) : null}
@@ -869,7 +881,7 @@ export function DealerDashboardPage({
         <DashboardDateFilter
           query={query}
           context={access.context}
-          includeContextInQuery={access.kind === "super_admin"}
+          includeContextInQuery={access.kind === "contextual"}
         />
       </ContentHeader>
 
@@ -1013,11 +1025,21 @@ export function DealerDashboardPage({
         <ReadinessSummary dashboard={dashboard} />
       </ContentGrid>
 
-      <OwnerGuidePreview
-        ownerGuides={ownerGuides}
-        context={access.context}
-        capabilities={access.capabilities}
-      />
+      {access.capabilities.canReadOwnerGuides ? (
+        <OwnerGuidePreview
+          ownerGuides={ownerGuides}
+          context={access.context}
+          capabilities={access.capabilities}
+        />
+      ) : (
+        <ContentStatus
+          role="note"
+          variant="info"
+          icon={<ShieldCheck aria-hidden="true" className="size-4" />}
+          title="Owner Guide records are restricted"
+          description="Your current actor context can read aggregate dealer engagement metrics but does not include Owner Guide record access."
+        />
+      )}
 
       <ContentStatus
         role="note"

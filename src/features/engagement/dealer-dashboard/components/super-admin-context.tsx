@@ -16,17 +16,17 @@ export function SuperAdminDealerContext(): ReactElement {
   return (
     <ContentRoot
       width="narrow"
-      aria-labelledby="super-admin-dealer-context-title"
+      aria-labelledby="dealer-context-selection-title"
     >
       <ContentHeader
         eyebrow={
           <Badge variant="secondary">
             <ShieldCheck aria-hidden="true" className="size-3.5" />
-            Super administrator
+            Central operations
           </Badge>
         }
         title={
-          <span id="super-admin-dealer-context-title">
+          <span id="dealer-context-selection-title">
             Select a dealer context
           </span>
         }
@@ -35,21 +35,21 @@ export function SuperAdminDealerContext(): ReactElement {
       <ContentStatus
         variant="info"
         title="Explicit context is required"
-        description="Super administrators must select both tenant and dealer organization scope before dealer engagement data is requested. The backend validates the selected context on every call."
+        description="Central operations users must select both tenant and dealer organization scope before dealer engagement data is requested. The backend validates the selected context on every call."
       />
 
       <ContentSection
-        title="Administrative dealer context"
-        description="Use validated UUIDs from the organization administration workspace. Values are sent only as requested actor context headers and are never authorization proof."
+        title="Authorized dealer context"
+        description="Use validated identifiers from the organization administration workspace. Values are sent only as requested actor context headers; they are not authorization proof and are never persisted in browser storage."
       >
         <form method="get" className="grid gap-4" noValidate>
           <label
             className="grid gap-1.5 text-body-sm"
-            htmlFor="super-admin-tenant-id"
+            htmlFor="dealer-context-tenant-id"
           >
             <span className="text-foreground">Tenant ID</span>
             <Input
-              id="super-admin-tenant-id"
+              id="dealer-context-tenant-id"
               name="tenantId"
               type="text"
               inputMode="text"
@@ -60,11 +60,11 @@ export function SuperAdminDealerContext(): ReactElement {
           </label>
           <label
             className="grid gap-1.5 text-body-sm"
-            htmlFor="super-admin-dealer-id"
+            htmlFor="dealer-context-org-unit-id"
           >
             <span className="text-foreground">Dealer organization unit ID</span>
             <Input
-              id="super-admin-dealer-id"
+              id="dealer-context-org-unit-id"
               name="dealerOrgUnitId"
               type="text"
               inputMode="text"

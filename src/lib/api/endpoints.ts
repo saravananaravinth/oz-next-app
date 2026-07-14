@@ -26,7 +26,6 @@ export const ENGAGEMENT_ENDPOINTS = {
   ownerGuide: (ownerGuideId: string) =>
     `${ERP_PREFIX}/engagement/dealer/owner-guides/${encodeURIComponent(ownerGuideId)}` as const,
   ownerGuideSettings: `${ERP_PREFIX}/engagement/dealer/owner-guide-settings`,
-  manualOwnerGuideFlow: `${ERP_PREFIX}/engagement/dealer/owner-guide-flows/manual-start`,
 } as const;
 
 export type AuthStaticEndpoint = Exclude<

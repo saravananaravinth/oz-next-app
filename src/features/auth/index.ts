@@ -1,4 +1,8 @@
 // oz-next-app/src/features/auth/index.ts
+export {
+  AuthSessionsPage,
+  type AuthSessionsPageProps,
+} from "./components/auth-sessions-page";
 export { AuthErrorAlert } from "./components/auth-error-alert";
 export { LoginBrandMark } from "./components/login-brand-mark";
 export { LoginClient } from "./components/login-client";

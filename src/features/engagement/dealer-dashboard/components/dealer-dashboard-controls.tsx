@@ -64,6 +64,7 @@ import {
   updateOwnerGuideAssignmentEligibilityAction,
   type DealerDashboardActionResult,
 } from "../actions";
+import type { DealerDashboardCapabilities } from "../access";
 import {
   ownerGuideEditFormSchema,
   ownerGuideOnboardFormSchema,
@@ -898,10 +899,12 @@ function LifecycleDialog({
 export function OwnerGuideRowActions({
   context,
   ownerGuide,
+  capabilities,
   showLabels = false,
 }: Readonly<{
   context: DealerDashboardContext;
   ownerGuide: OwnerGuideSummary;
+  capabilities: DealerDashboardCapabilities;
   showLabels?: boolean;
 }>): React.ReactElement {
   const [pending, startTransition] = React.useTransition();
@@ -950,28 +953,40 @@ export function OwnerGuideRowActions({
           : "flex flex-wrap items-center justify-end gap-1"
       }
     >
-      <OwnerGuideEditDialog
-        context={context}
-        ownerGuide={ownerGuide}
-        showLabel={showLabels}
-      />
-      {showLabels ? (
-        sendLinkButton
-      ) : (
-        <ActionTooltip label="Send Owner Guide app link">
-          {sendLinkButton}
-        </ActionTooltip>
-      )}
-      <AssignmentEligibilityDialog
-        context={context}
-        ownerGuide={ownerGuide}
-        showLabel={showLabels}
-      />
-      <LifecycleDialog
-        context={context}
-        ownerGuide={ownerGuide}
-        showLabel={showLabels}
-      />
+      {capabilities.canUpdateOwnerGuide ? (
+        <>
+          <OwnerGuideEditDialog
+            context={context}
+            ownerGuide={ownerGuide}
+            showLabel={showLabels}
+          />
+          <AssignmentEligibilityDialog
+            context={context}
+            ownerGuide={ownerGuide}
+            showLabel={showLabels}
+          />
+        </>
+      ) : null}
+      {capabilities.canSendOwnerGuideAppLink ? (
+        showLabels ? (
+          sendLinkButton
+        ) : (
+          <ActionTooltip label="Send Owner Guide app link">
+            {sendLinkButton}
+          </ActionTooltip>
+        )
+      ) : null}
+      {(
+        ownerGuide.status === "ACTIVE"
+          ? capabilities.canDisableOwnerGuide
+          : capabilities.canUpdateOwnerGuide
+      ) ? (
+        <LifecycleDialog
+          context={context}
+          ownerGuide={ownerGuide}
+          showLabel={showLabels}
+        />
+      ) : null}
     </div>
   );
 }

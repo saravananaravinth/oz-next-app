@@ -531,7 +531,7 @@ export const menuItemSchema: z.ZodType<MenuItem> = z.lazy(() =>
   }),
 );
 
-const authActorViewSchema = z
+export const authActorViewSchema = z
   .object({
     userId: uuidSchema,
     tenantId: nullableUuidSchema,
@@ -547,9 +547,9 @@ const authActorViewSchema = z
     requestId: z.string().trim().min(1).max(128),
     correlationId: z.string().trim().min(1).max(128),
   })
-  .loose();
+  .strict();
 
-const authRoleGrantSchema = z
+export const authRoleGrantSchema = z
   .object({
     roleId: uuidSchema,
     roleName: roleNameSchema,
@@ -557,9 +557,9 @@ const authRoleGrantSchema = z
     tenantId: nullableUuidSchema,
     permissions: z.array(permissionStringSchema).readonly(),
   })
-  .loose();
+  .strict();
 
-const authTenantMembershipSchema = z
+export const authTenantMembershipSchema = z
   .object({
     tenantId: uuidSchema,
     tenantName: z.string().trim().min(1).max(256),
@@ -571,40 +571,34 @@ const authTenantMembershipSchema = z
   })
   .strict();
 
-const authUserProfileSchema = z
+export const authUserProfileSchema = z
   .object({
     userId: uuidSchema,
     displayName: z.string().trim().max(256).nullable(),
-    status: z.string().trim().min(1).max(64).optional(),
-    locale: z.string().trim().min(1).max(64).nullable().optional(),
+    status: z.string().trim().min(1).max(64),
+    locale: z.string().trim().min(1).max(64).nullable(),
     pictureUrl: z.string().trim().max(2_048).nullable(),
     primaryEmail: nullableEmailSchema,
-    primaryPhoneMasked: z.string().trim().max(64).nullable().optional(),
-    lastLoginAt: isoDateTimeStringSchema.nullable().optional(),
-    createdAt: isoDateTimeStringSchema.optional(),
-    updatedAt: isoDateTimeStringSchema.optional(),
+    primaryPhoneMasked: z.string().trim().max(64).nullable(),
+    lastLoginAt: isoDateTimeStringSchema.nullable(),
+    createdAt: isoDateTimeStringSchema,
+    updatedAt: isoDateTimeStringSchema,
   })
-  .loose();
+  .strict();
 
-const authCustomerProfileSchema = z
+export const authCustomerProfileSchema = z
   .object({
     customerId: uuidSchema,
     tenantId: uuidSchema,
     name: z.string().trim().min(1).max(256),
     email: nullableEmailSchema,
-    phoneMasked: z.string().trim().max(64).nullable().optional(),
-    primaryPhoneId: uuidSchema.nullable().optional(),
-    preferredMsgChannel: z.string().trim().min(1).max(64).nullable().optional(),
-    preferredMsgLanguage: z
-      .string()
-      .trim()
-      .min(1)
-      .max(64)
-      .nullable()
-      .optional(),
-    createdAt: isoDateTimeStringSchema.optional(),
+    phoneMasked: z.string().trim().max(64).nullable(),
+    primaryPhoneId: uuidSchema.nullable(),
+    preferredMsgChannel: z.string().trim().min(1).max(64).nullable(),
+    preferredMsgLanguage: z.string().trim().min(1).max(64).nullable(),
+    createdAt: isoDateTimeStringSchema,
   })
-  .loose();
+  .strict();
 
 export const authMeResultSchema = z
   .object({
@@ -615,6 +609,55 @@ export const authMeResultSchema = z
     roles: z.array(authRoleGrantSchema).readonly(),
     tenants: z.array(authTenantMembershipSchema).default([]),
     effectivePermissions: z.array(permissionStringSchema).readonly(),
+  })
+  .strict();
+
+export const authSessionSummarySchema = z
+  .object({
+    sessionId: uuidSchema,
+    principalKind: principalKindSchema,
+    project: z.string().trim().min(1).max(64),
+    createdAt: isoDateTimeStringSchema,
+    expiresAt: isoDateTimeStringSchema.nullable(),
+    isCurrent: z.boolean(),
+    isExpired: z.boolean(),
+    hasActiveRefreshToken: z.boolean(),
+    ipAddress: z.string().trim().min(1).max(128).nullable(),
+    userAgent: z.string().trim().min(1).max(1_024).nullable(),
+    deviceFingerprintPresent: z.boolean(),
+  })
+  .strict();
+
+export const authPaginationSchema = z
+  .object({
+    limit: z.number().int().min(1).max(100),
+    hasNextPage: z.boolean(),
+    nextCursor: z
+      .string()
+      .trim()
+      .min(16)
+      .max(512)
+      .regex(/^[A-Za-z0-9_-]+$/u)
+      .nullable(),
+  })
+  .strict();
+
+export const authSessionsMetaSchema = z
+  .object({
+    pagination: authPaginationSchema,
+  })
+  .strict();
+
+export const authListSessionsQuerySchema = z
+  .object({
+    limit: z.number().int().min(1).max(100).default(20),
+    cursor: z
+      .string()
+      .trim()
+      .min(16)
+      .max(512)
+      .regex(/^[A-Za-z0-9_-]+$/u)
+      .optional(),
   })
   .strict();
 
@@ -633,6 +676,7 @@ const flatMeResponseSchema = z
     primary_role: roleNameSchema.nullable(),
     tenants: z.array(tenantMembershipSchema).readonly(),
     menus: z.array(menuItemSchema).readonly(),
+    auth: authMeResultSchema.optional(),
   })
   .loose();
 
@@ -693,4 +737,8 @@ export type LogoutTokenRequest = z.infer<typeof logoutTokenRequestSchema>;
 export type LogoutResponse = z.infer<typeof logoutResponseSchema>;
 export type TenantMembership = z.infer<typeof tenantMembershipSchema>;
 export type AuthMeResult = z.infer<typeof authMeResultSchema>;
+export type AuthSessionSummary = z.infer<typeof authSessionSummarySchema>;
+export type AuthPagination = z.infer<typeof authPaginationSchema>;
+export type AuthSessionsMeta = z.infer<typeof authSessionsMetaSchema>;
+export type AuthListSessionsQuery = z.infer<typeof authListSessionsQuerySchema>;
 export type MeResponse = z.infer<typeof meResponseSchema>;

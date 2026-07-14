@@ -4,6 +4,7 @@
 export {
   apiClient,
   edgeFetch,
+  edgeFetchEnvelope,
   buildEdgeUrl,
   registerUnauthorizedRefreshHandler,
 } from "@/lib/api/client";

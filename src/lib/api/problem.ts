@@ -36,12 +36,19 @@ export const problemDetailsSchema = z
     instance: z.string().trim().max(2_048).optional(),
     trace: z.string().trim().min(1).max(256).optional(),
     trace_id: z.string().trim().min(1).max(256).optional(),
+    // Legacy compatibility only. Current API emits Retry-After as an HTTP header.
     retry_after: z.number().int().nonnegative().max(86_400).optional(),
   })
   .catchall(z.unknown());
 
 export type ProblemFieldError = z.infer<typeof problemFieldErrorSchema>;
 export type ProblemDetails = z.infer<typeof problemDetailsSchema>;
+
+export type RateLimitMetadata = Readonly<{
+  scope?: string | undefined;
+  limit?: number | undefined;
+  remaining?: number | undefined;
+}>;
 
 export type ApiHttpErrorInput = Readonly<{
   message: string;
@@ -51,6 +58,7 @@ export type ApiHttpErrorInput = Readonly<{
   problem?: ProblemDetails | undefined;
   details?: unknown;
   retryAfterSeconds?: number | undefined;
+  rateLimit?: RateLimitMetadata | undefined;
   cause?: unknown;
 }>;
 
@@ -61,6 +69,7 @@ export class ApiHttpError extends Error {
   public readonly problem: ProblemDetails | undefined;
   public readonly details: unknown;
   public readonly retryAfterSeconds: number | undefined;
+  public readonly rateLimit: RateLimitMetadata | undefined;
 
   public constructor(input: ApiHttpErrorInput) {
     super(
@@ -74,6 +83,7 @@ export class ApiHttpError extends Error {
     this.problem = input.problem;
     this.details = input.details;
     this.retryAfterSeconds = input.retryAfterSeconds;
+    this.rateLimit = input.rateLimit;
   }
 }
 

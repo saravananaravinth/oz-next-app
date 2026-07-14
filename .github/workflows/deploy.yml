@@ -1,3 +1,4 @@
+# oz-next-app/.github/workflows/deploy.yml
 name: Deploy oz-next-app to Cloudflare Worker
 
 run-name: Deploy oz-next-app @ ${{ github.sha }}
@@ -38,44 +39,55 @@ jobs:
       CI: "true"
       NEXT_TELEMETRY_DISABLED: "1"
       NODE_VERSION: "24"
+      NPM_VERSION: "11.16.0"
 
       WORKER_NAME: oz-next-app
       WORKER_ROUTE: erp.ozotecev.com/*
       RELEASE_NAME: oz-next-app
       REQUESTED_RELEASE_TYPE: ${{ github.event_name == 'workflow_dispatch' && inputs.release_type || 'auto' }}
 
+      APP_ORIGIN: https://erp.ozotecev.com
       NEXT_PUBLIC_APP_ENV: production
       NEXT_PUBLIC_APP_ORIGIN: https://erp.ozotecev.com
       NEXT_PUBLIC_API_BASE_URL: https://api.erp.ozotecev.com
       NEXT_PUBLIC_AUTH_CLIENT_ID: erp-web
       NEXT_PUBLIC_APP_VERSION: 0.1.0
 
-      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@v7.0.0
         with:
           fetch-depth: 0
-          persist-credentials: true
+          persist-credentials: false
 
       - name: Fetch git tags
         shell: bash
-        run: git fetch --force --tags
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          auth_header="$(printf 'x-access-token:%s' "${GH_TOKEN}" | base64 --wrap=0)"
+          git -c http.extraheader="AUTHORIZATION: basic ${auth_header}" fetch origin --force --tags
+          unset auth_header
 
       - name: Validate required deployment config
         shell: bash
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: |
           set -euo pipefail
 
           required_env=(
             CLOUDFLARE_ACCOUNT_ID
             CLOUDFLARE_API_TOKEN
+            NODE_VERSION
+            NPM_VERSION
             WORKER_NAME
             WORKER_ROUTE
             RELEASE_NAME
             REQUESTED_RELEASE_TYPE
+            APP_ORIGIN
             NEXT_PUBLIC_APP_ENV
             NEXT_PUBLIC_APP_ORIGIN
             NEXT_PUBLIC_API_BASE_URL
@@ -95,6 +107,26 @@ jobs:
             exit 1
           fi
 
+          if [[ "${GITHUB_REF}" != "refs/heads/main" ]]; then
+            echo "::error title=Unsafe deployment ref::Production deployments must run from refs/heads/main."
+            exit 1
+          fi
+
+          if [[ "${NODE_VERSION}" != "24" ]]; then
+            echo "::error title=Unexpected Node.js contract::NODE_VERSION must remain 24."
+            exit 1
+          fi
+
+          if [[ "${NPM_VERSION}" != "11.16.0" ]]; then
+            echo "::error title=Unexpected npm contract::NPM_VERSION must remain 11.16.0."
+            exit 1
+          fi
+
+          if [[ ! "${CLOUDFLARE_ACCOUNT_ID}" =~ ^[A-Fa-f0-9]{32}$ ]]; then
+            echo "::error title=Invalid Cloudflare account ID::CLOUDFLARE_ACCOUNT_ID must be a 32-character hexadecimal account identifier."
+            exit 1
+          fi
+
           case "${REQUESTED_RELEASE_TYPE}" in
             auto|patch|minor|major|none) ;;
             *)
@@ -111,7 +143,7 @@ jobs:
               ;;
           esac
 
-          python <<'PY'
+          python3 <<'PY'
           import os
           import re
           import sys
@@ -122,6 +154,7 @@ jobs:
               sys.exit(1)
 
           app_env = os.environ["NEXT_PUBLIC_APP_ENV"]
+          canonical_app_origin = os.environ["APP_ORIGIN"]
           app_origin = os.environ["NEXT_PUBLIC_APP_ORIGIN"]
           api_base_url = os.environ["NEXT_PUBLIC_API_BASE_URL"]
           auth_client_id = os.environ["NEXT_PUBLIC_AUTH_CLIENT_ID"]
@@ -129,6 +162,12 @@ jobs:
 
           if app_env != "production":
               fail("Invalid app environment", "NEXT_PUBLIC_APP_ENV must be production for this workflow.")
+
+          if canonical_app_origin != app_origin:
+              fail(
+                  "Application origin mismatch",
+                  "APP_ORIGIN and NEXT_PUBLIC_APP_ORIGIN must be identical.",
+              )
 
           for name, value in {
               "NEXT_PUBLIC_APP_ORIGIN": app_origin,
@@ -142,10 +181,10 @@ jobs:
               if parsed.query or parsed.fragment:
                   fail("Unsafe URL", f"{name} must not contain query strings or fragments.")
 
-          if api_base_url not in {"https://api.erp.ozotecev.com", "https://api.ozotecev.com"}:
+          if api_base_url != "https://api.erp.ozotecev.com":
               fail(
                   "Invalid API origin",
-                  "NEXT_PUBLIC_API_BASE_URL must point to the public oz-erp-edge Worker origin.",
+                  "NEXT_PUBLIC_API_BASE_URL must point to https://api.erp.ozotecev.com.",
               )
 
           if re.search(r"(run\.app|cloudrun|localhost|127\.0\.0\.1)", api_base_url, re.IGNORECASE):
@@ -159,6 +198,13 @@ jobs:
 
           if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", app_version):
               fail("Invalid app version", "NEXT_PUBLIC_APP_VERSION must be SemVer major.minor.patch.")
+
+          expected_route = f"{urlparse(canonical_app_origin).netloc}/*"
+          if os.environ["WORKER_ROUTE"] != expected_route:
+              fail(
+                  "Worker route mismatch",
+                  f"WORKER_ROUTE must be {expected_route}.",
+              )
           PY
 
       - name: Validate Worker deployment manifest
@@ -176,7 +222,7 @@ jobs:
             exit 1
           fi
 
-          python <<'PY'
+          python3 <<'PY'
           import datetime as dt
           import os
           import re
@@ -405,17 +451,104 @@ jobs:
           parse_https_origin("NEXT_PUBLIC_APP_ORIGIN", vars_section["NEXT_PUBLIC_APP_ORIGIN"])
           api_origin = parse_https_origin("NEXT_PUBLIC_API_BASE_URL", vars_section["NEXT_PUBLIC_API_BASE_URL"])
           require(
-              api_origin in {"https://api.erp.ozotecev.com", "https://api.ozotecev.com"},
+              api_origin == "https://api.erp.ozotecev.com",
               "Invalid API origin",
-              "NEXT_PUBLIC_API_BASE_URL must point to the public oz-erp-edge Worker origin.",
+              "NEXT_PUBLIC_API_BASE_URL must point to https://api.erp.ozotecev.com.",
           )
           PY
 
       - name: Setup Node.js 24
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7.0.0
         with:
           node-version: ${{ env.NODE_VERSION }}
-          package-manager-cache: false
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Pin npm toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          npm install --global "npm@${NPM_VERSION}"
+
+          actual_node_version="$(node --version)"
+          actual_npm_version="$(npm --version)"
+
+          if [[ "${actual_node_version}" != v24.* ]]; then
+            echo "::error title=Unexpected Node.js version::Expected Node.js 24, received ${actual_node_version}."
+            exit 1
+          fi
+
+          if [[ "${actual_npm_version}" != "${NPM_VERSION}" ]]; then
+            echo "::error title=Unexpected npm version::Expected npm ${NPM_VERSION}, received ${actual_npm_version}."
+            exit 1
+          fi
+
+      - name: Validate dependency manifests
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ ! -f package.json || ! -f package-lock.json ]]; then
+            echo "::error title=Missing dependency manifest::package.json and package-lock.json must both be committed."
+            exit 1
+          fi
+
+          node --input-type=module <<'NODE'
+          import assert from "node:assert/strict";
+          import fs from "node:fs";
+
+          const packageJson = JSON.parse(fs.readFileSync("package.json", "utf8"));
+          const packageLock = JSON.parse(fs.readFileSync("package-lock.json", "utf8"));
+          const rootLock = packageLock?.packages?.[""];
+          const expectedPackageManager = `npm@${process.env.NPM_VERSION}`;
+
+          const normalizeRecord = (value) =>
+            Object.fromEntries(
+              Object.entries(value ?? {}).sort(([left], [right]) =>
+                left.localeCompare(right),
+              ),
+            );
+
+          assert.equal(packageJson.name, "oz-next-app", "Unexpected package name.");
+          assert.match(
+            packageJson.version,
+            /^[0-9]+\.[0-9]+\.[0-9]+$/,
+            "package.json version must be SemVer major.minor.patch.",
+          );
+          assert.equal(
+            packageJson.version,
+            process.env.NEXT_PUBLIC_APP_VERSION,
+            "Base NEXT_PUBLIC_APP_VERSION must match package.json before release patching.",
+          );
+          assert.equal(
+            packageJson.packageManager,
+            expectedPackageManager,
+            `packageManager must be ${expectedPackageManager}.`,
+          );
+          assert.equal(packageLock?.lockfileVersion, 3, "package-lock.json must use lockfileVersion 3.");
+          assert.ok(
+            typeof rootLock === "object" && rootLock !== null,
+            "package-lock.json must contain the root package record.",
+          );
+          assert.equal(rootLock.name, packageJson.name, "Lockfile package name is out of sync.");
+          assert.equal(rootLock.version, packageJson.version, "Lockfile package version is out of sync.");
+
+          for (const section of [
+            "dependencies",
+            "devDependencies",
+            "optionalDependencies",
+          ]) {
+            assert.deepEqual(
+              normalizeRecord(rootLock[section]),
+              normalizeRecord(packageJson[section]),
+              `${section} in package-lock.json is not synchronized with package.json.`,
+            );
+          }
+          NODE
+
+      - name: Install dependencies from lockfile
+        run: npm ci
 
       - name: Print toolchain versions
         shell: bash
@@ -425,9 +558,6 @@ jobs:
           npm --version
           git --version
           python3 --version
-
-      - name: Install dependencies
-        run: npm ci --include=dev
 
       - name: Validate Wrangler CLI
         shell: bash
@@ -682,71 +812,133 @@ jobs:
         if: steps.release_meta.outputs.release_required == 'true'
         shell: bash
         env:
-          CLOUDFLARE_ACCOUNT_ID: ${{ env.CLOUDFLARE_ACCOUNT_ID }}
-          CLOUDFLARE_API_TOKEN: ${{ env.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: npm exec -- wrangler deploy --dry-run
 
       - name: Deploy Cloudflare Worker
         if: steps.release_meta.outputs.release_required == 'true'
         shell: bash
         env:
-          CLOUDFLARE_ACCOUNT_ID: ${{ env.CLOUDFLARE_ACCOUNT_ID }}
-          CLOUDFLARE_API_TOKEN: ${{ env.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         run: npm exec -- wrangler deploy
 
-      - name: Smoke check frontend
+      - name: Smoke check production application
         if: steps.release_meta.outputs.release_required == 'true'
         shell: bash
         run: |
           set -euo pipefail
 
-          response_file="$(mktemp)"
-          trap 'rm -f "${response_file}"' EXIT
+          smoke_dir="$(mktemp -d)"
+          trap 'rm -rf "${smoke_dir}"' EXIT
 
-          frontend_smoke_url="${NEXT_PUBLIC_APP_ORIGIN%/}/login"
+          login_headers="${smoke_dir}/login.headers"
+          login_body="${smoke_dir}/login.html"
+          protected_headers="${smoke_dir}/protected.headers"
+          blocked_body="${smoke_dir}/blocked.body"
 
-          for attempt in {1..8}; do
-            status_code="$(
-              curl \
-                --silent \
-                --show-error \
-                --location \
-                --max-time 20 \
-                --output "${response_file}" \
-                --write-out "%{http_code}" \
-                "${frontend_smoke_url}" || true
-            )"
+          login_result="$(
+            curl \
+              --silent \
+              --show-error \
+              --location \
+              --proto '=https' \
+              --proto-redir '=https' \
+              --retry 5 \
+              --retry-all-errors \
+              --retry-delay 5 \
+              --max-time 30 \
+              --dump-header "${login_headers}" \
+              --output "${login_body}" \
+              --write-out $'%{http_code}\n%{url_effective}' \
+              "${APP_ORIGIN}/login"
+          )"
 
-            html_ok="$(
-              node --input-type=module --eval '
-                import fs from "node:fs";
+          login_status="$(printf '%s\n' "${login_result}" | sed -n '1p')"
+          login_effective_url="$(printf '%s\n' "${login_result}" | sed -n '2p')"
 
-                const filePath = process.argv[1];
+          if [[ "${login_status}" != "200" ]]; then
+            echo "::error title=Login smoke check failed::Expected HTTP 200, received ${login_status}."
+            head -c 4000 "${login_body}" || true
+            exit 1
+          fi
 
-                try {
-                  const body = fs.readFileSync(filePath, "utf8");
-                  const ok = /<html[\s>]/i.test(body) && /(Sign in|Ozotec|ERP)/i.test(body);
-                  process.stdout.write(ok ? "true" : "false");
-                } catch {
-                  process.stdout.write("false");
-                }
-              ' "${response_file}"
-            )"
+          case "${login_effective_url}" in
+            "${APP_ORIGIN}/login" | "${APP_ORIGIN}/login?"*) ;;
+            *)
+              echo "::error title=Unsafe login redirect::The login smoke check left the approved application origin: ${login_effective_url}."
+              exit 1
+              ;;
+          esac
 
-            if [[ "${status_code}" == "200" && "${html_ok}" == "true" ]]; then
-              exit 0
-            fi
+          if ! grep -Eiq '<html([[:space:]>])' "${login_body}"; then
+            echo "::error title=Invalid login response::Expected an HTML document from ${APP_ORIGIN}/login."
+            head -c 4000 "${login_body}" || true
+            exit 1
+          fi
 
-            if [[ "${attempt}" -lt 8 ]]; then
-              echo "Frontend smoke check attempt ${attempt} failed: status=${status_code}, html_ok=${html_ok}. Retrying..."
-              sleep 10
-            fi
-          done
+          if ! grep -Eiq '(Sign in|Ozotec|ERP)' "${login_body}"; then
+            echo "::error title=Unexpected login content::The production login document did not contain an expected application marker."
+            head -c 4000 "${login_body}" || true
+            exit 1
+          fi
 
-          echo "::error title=Frontend smoke check failed::Expected 200 HTML response from ${frontend_smoke_url}."
-          echo "Final HTTP status: ${status_code}"
-          head -c 4000 "${response_file}" || true
-          exit 1
+          protected_status="$(
+            curl \
+              --silent \
+              --show-error \
+              --proto '=https' \
+              --max-time 30 \
+              --dump-header "${protected_headers}" \
+              --output /dev/null \
+              --write-out '%{http_code}' \
+              "${APP_ORIGIN}/dashboard"
+          )"
+
+          if [[ "${protected_status}" != "302" && "${protected_status}" != "303" && "${protected_status}" != "307" && "${protected_status}" != "308" ]]; then
+            echo "::error title=Protected-route smoke check failed::Expected an authentication redirect, received ${protected_status}."
+            cat "${protected_headers}"
+            exit 1
+          fi
+
+          location_value="$(
+            awk '
+              BEGIN { IGNORECASE = 1 }
+              /^location:/ {
+                sub(/\r$/, "")
+                sub(/^[^:]+:[[:space:]]*/, "")
+                print
+                exit
+              }
+            ' "${protected_headers}"
+          )"
+
+          case "${location_value}" in
+            /login | /login\?* | "${APP_ORIGIN}/login" | "${APP_ORIGIN}/login?"*) ;;
+            *)
+              echo "::error title=Unsafe protected redirect::Dashboard did not redirect to the same-origin login route."
+              cat "${protected_headers}"
+              exit 1
+              ;;
+          esac
+
+          blocked_status="$(
+            curl \
+              --silent \
+              --show-error \
+              --proto '=https' \
+              --max-time 30 \
+              --output "${blocked_body}" \
+              --write-out '%{http_code}' \
+              "${APP_ORIGIN}/erp/healthz"
+          )"
+
+          if [[ "${blocked_status}" != "404" ]]; then
+            echo "::error title=Operational route exposure::Expected /erp/healthz to be blocked with HTTP 404, received ${blocked_status}."
+            head -c 4000 "${blocked_body}" || true
+            exit 1
+          fi
 
       - name: Build release notes
         if: steps.release_meta.outputs.release_required == 'true'
@@ -820,7 +1012,7 @@ jobs:
             echo
             echo "## Verification"
             echo
-            echo "- \`npm ci --include=dev\` completed"
+            echo "- \`npm ci\` completed"
             echo "- \`npm exec -- wrangler --version\` completed"
             echo "- \`npm run typecheck\` completed"
             echo "- \`npm run lint\` completed"
@@ -836,7 +1028,7 @@ jobs:
             echo "- OpenNext \`__name\` guard passed"
             echo "- Wrangler dry-run completed"
             echo "- Cloudflare Worker deploy completed"
-            echo "- Frontend \`/login\` smoke check completed"
+            echo "- Login, protected-route, same-origin redirect, and blocked-route smoke checks completed"
           } > "${notes_file}"
 
           echo "notes_file=${notes_file}" >> "${GITHUB_OUTPUT}"
@@ -875,7 +1067,7 @@ jobs:
             echo "| Version | ${{ steps.release_meta.outputs.package_version }} |"
             echo "| Commit | ${GITHUB_SHA} |"
             echo "| Release | ${{ steps.release_meta.outputs.release_tag }} |"
-            echo "| Smoke check | /login passed |"
+            echo "| Smoke checks | login, protected redirect, and blocked operational route passed |"
           } >> "${GITHUB_STEP_SUMMARY}"
 
       - name: No release summary
