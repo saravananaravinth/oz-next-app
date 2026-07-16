@@ -21,9 +21,9 @@ import {
   CardHeader,
 } from "@/components/ui/card";
 import { isApiHttpError } from "@/lib/api/problem";
-import { cn } from "@/lib/utils";
 import { idempotencyKey as createIdempotencyKey } from "@/lib/uuid";
 
+import { PublicFormStatusEmblem } from "../public-form-status-emblem";
 import { submitPublicLocation } from "./client";
 import { PublicLocationShell } from "./public-location-shell";
 import {
@@ -353,20 +353,7 @@ function StatusScreen({
       <section className="flex w-full max-w-2xl sm:block">
         <Card className="min-h-full w-full gap-0 overflow-hidden rounded-none border-x-0 border-y-0 border-border/70 bg-card/96 py-0 shadow-xl shadow-foreground/5 supports-[backdrop-filter]:backdrop-blur-xl sm:min-h-0 sm:rounded-3xl sm:border">
           <CardHeader className="items-center gap-5 px-5 py-8 text-center sm:px-8 sm:py-10">
-            <div
-              className={cn(
-                "flex size-16 items-center justify-center rounded-3xl border shadow-xs",
-                success
-                  ? "border-success/25 bg-success/10 text-success"
-                  : "border-destructive/20 bg-destructive/8 text-destructive",
-              )}
-            >
-              {success ? (
-                <CheckCircle2 aria-hidden="true" className="size-8" />
-              ) : (
-                <AlertTriangle aria-hidden="true" className="size-8" />
-              )}
-            </div>
+            <PublicFormStatusEmblem status={success ? "success" : "error"} />
 
             <div className="grid max-w-lg gap-2">
               <p className="text-overline text-primary">Location request</p>

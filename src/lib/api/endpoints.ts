@@ -26,6 +26,8 @@ export const ENGAGEMENT_ENDPOINTS = {
   ownerGuide: (ownerGuideId: string) =>
     `${ERP_PREFIX}/engagement/dealer/owner-guides/${encodeURIComponent(ownerGuideId)}` as const,
   ownerGuideSettings: `${ERP_PREFIX}/engagement/dealer/owner-guide-settings`,
+  warrantyDocumentDownload: (fileId: string) =>
+    `${ERP_PREFIX}/engagement/dealer/warranty-documents/${encodeURIComponent(fileId)}/download` as const,
 } as const;
 
 export type AuthStaticEndpoint = Exclude<

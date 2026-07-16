@@ -9,6 +9,7 @@ import { AUTH_ENDPOINTS } from "@/lib/api/endpoints";
 import { isApiHttpError } from "@/lib/api/problem";
 import { meResponseSchema, type MeResponse } from "@/lib/api/schemas";
 import { HTTP_STATUS } from "@/lib/constants";
+import { logger } from "@/lib/logger";
 import { isSessionTokenExpired } from "@/server/auth/jwt-metadata";
 import {
   clearServerAuthCookies,
@@ -16,6 +17,8 @@ import {
   getServerRefreshToken,
 } from "@/server/auth/session";
 import { serverFetch } from "@/server/fetch";
+
+import { schemaIssueDiagnosticsFromError } from "./auth-error-diagnostics";
 
 const LOGIN_PATH = "/login" satisfies Route;
 const REFRESH_PATH = "/api/auth/refresh" satisfies Route;
@@ -181,8 +184,9 @@ function logAuthGateFailure(
   }>,
 ): void {
   const upstreamRequestId = requestIdFromError(input.error);
+  const schemaDiagnostics = schemaIssueDiagnosticsFromError(input.error);
 
-  console.warn("auth.require_authenticated_me.failed", {
+  logger.warn("auth.require_authenticated_me.failed", {
     requestId: upstreamRequestId ?? input.context.requestId,
     phase: "require_authenticated_me",
     status: statusFromError(input.error),
@@ -191,6 +195,8 @@ function logAuthGateFailure(
     accessTokenExpired: input.accessTokenExpired,
     refreshCookiePresent: input.refreshCookiePresent,
     outcome: input.outcome,
+    schemaIssuePaths: schemaDiagnostics?.paths,
+    schemaIssueCodes: schemaDiagnostics?.codes,
   });
 }
 

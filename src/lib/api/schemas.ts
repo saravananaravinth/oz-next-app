@@ -300,6 +300,7 @@ const authTokenSessionViewSchema = z
     userId: nullableUuidSchema,
     customerId: nullableUuidSchema,
     expiresAt: isoDateTimeStringSchema,
+    clientId: clientIdSchema,
   })
   .strict();
 
@@ -310,6 +311,7 @@ const authTokenActorViewSchema = z
     tenantId: nullableUuidSchema,
     userId: nullableUuidSchema,
     customerId: nullableUuidSchema,
+    clientId: clientIdSchema,
     roles: z.array(roleNameSchema).readonly(),
     permissions: z.array(permissionStringSchema).readonly(),
   })
@@ -537,6 +539,7 @@ export const authActorViewSchema = z
     tenantId: nullableUuidSchema,
     orgUnitId: nullableUuidSchema,
     actorKind: actorKindSchema,
+    clientId: clientIdSchema.nullable(),
     roles: z.array(roleNameSchema).readonly(),
     permissions: z.array(permissionStringSchema).readonly(),
     customerId: nullableUuidSchema,
@@ -701,7 +704,7 @@ export const meResponseSchema = z.union([
 
       return {
         user_id: userId,
-        client_id: null,
+        client_id: value.actor.clientId,
         device_fp: null,
         tenant_id: value.actor.tenantId,
         permissions: value.effectivePermissions,

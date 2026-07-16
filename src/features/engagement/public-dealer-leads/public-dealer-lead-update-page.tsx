@@ -44,6 +44,7 @@ import { isApiHttpError } from "@/lib/api/problem";
 import { cn } from "@/lib/utils";
 import { idempotencyKey as createIdempotencyKey } from "@/lib/uuid";
 
+import { PublicFormStatusEmblem } from "../public-form-status-emblem";
 import { forwardPublicDealerLead, updatePublicDealerLead } from "./client";
 import { PublicDealerLeadShell } from "./public-dealer-lead-shell";
 import {
@@ -694,9 +695,7 @@ function LoadFailureScreen({
       <section className="w-full max-w-xl px-4 sm:px-0">
         <Card className="overflow-hidden border-border/70 bg-card/95 shadow-xl shadow-foreground/5 supports-[backdrop-filter]:backdrop-blur-xl">
           <CardHeader className="items-center gap-5 px-5 pt-7 text-center sm:px-8 sm:pt-9">
-            <span className="flex size-16 items-center justify-center rounded-3xl border border-destructive/20 bg-destructive/8 text-destructive shadow-xs">
-              <AlertTriangle aria-hidden="true" className="size-8" />
-            </span>
+            <PublicFormStatusEmblem status="error" />
             <div className="grid gap-2">
               <p className="text-overline text-muted-readable">
                 Vehicle enquiry follow-up
@@ -1171,7 +1170,7 @@ export function PublicDealerLeadUpdatePage({
   const expiryCopy = formatDateTime(lead.dealerUpdate.expiresAt);
 
   const footerActions = activeActionAvailable ? (
-    <div className="mx-auto grid w-full max-w-4xl gap-2.5">
+    <div className="mx-auto grid w-full max-w-4xl">
       <Button
         type="submit"
         form={activeFormId}
@@ -1196,10 +1195,6 @@ export function PublicDealerLeadUpdatePage({
               ? "Submit follow-up update"
               : "Route enquiry"}
       </Button>
-
-      <p className="text-center text-[0.6875rem] leading-relaxed text-muted-readable sm:text-caption">
-        Secure link expires {expiryCopy}. {remainingUseCopy(remainingUses)}.
-      </p>
     </div>
   ) : undefined;
 
@@ -1215,26 +1210,37 @@ export function PublicDealerLeadUpdatePage({
           className="w-full gap-0 overflow-hidden rounded-none border-x-0 border-y-0 border-border/70 bg-card/96 py-0 shadow-xl shadow-foreground/5 supports-[backdrop-filter]:backdrop-blur-xl sm:rounded-3xl sm:border"
         >
           <CardHeader className="gap-4 px-4 py-5 sm:px-7 sm:py-7">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div className="min-w-0 flex-1">
-                <p className="text-overline text-primary">
-                  Vehicle enquiry follow-up
-                </p>
-                <CardTitle
-                  id="dealer-lead-title"
-                  className="mt-1 text-section-title text-balance"
-                >
-                  Update customer follow-up
-                </CardTitle>
-                <CardDescription className="mt-1.5 max-w-2xl text-body-sm text-pretty text-muted-readable">
-                  Review the enquiry, record the latest customer outcome, or
-                  route it to the correct Ozotec EV workflow.
-                </CardDescription>
-              </div>
+            <div className="min-w-0">
+              <p className="text-overline text-primary">
+                Vehicle enquiry follow-up
+              </p>
+              <CardTitle
+                id="dealer-lead-title"
+                className="mt-1 text-section-title text-balance"
+              >
+                Update customer follow-up
+              </CardTitle>
+              <CardDescription className="mt-1.5 max-w-2xl text-body-sm text-pretty text-muted-readable">
+                Review the enquiry, record the latest customer outcome, or route
+                it to the correct Ozotec EV workflow.
+              </CardDescription>
 
-              <Badge variant="secondary" className="shrink-0 rounded-full">
-                {remainingUseCopy(remainingUses)}
-              </Badge>
+              <div
+                role="group"
+                aria-label="Secure link details"
+                className="mt-4 flex flex-col items-start gap-2 sm:flex-row sm:flex-wrap sm:items-center"
+              >
+                <p className="flex min-h-9 max-w-full items-center gap-2 rounded-full border border-border/70 bg-muted/35 px-3 py-1.5 text-caption leading-relaxed text-muted-readable">
+                  <Clock3 aria-hidden="true" className="size-4 shrink-0" />
+                  <span>Secure link expires {expiryCopy}</span>
+                </p>
+                <Badge
+                  variant="secondary"
+                  className="h-auto min-h-9 max-w-full rounded-full px-3 py-1.5 text-center whitespace-normal"
+                >
+                  {remainingUseCopy(remainingUses)}
+                </Badge>
+              </div>
             </div>
           </CardHeader>
 
@@ -1539,8 +1545,8 @@ export function PublicDealerLeadUpdatePage({
               <div className="flex items-start gap-3 rounded-2xl border border-info/20 bg-info/5 p-4 text-info dark:border-info/30 dark:bg-info/10">
                 <Clock3 aria-hidden="true" className="mt-0.5 size-5 shrink-0" />
                 <p className="text-body-sm leading-relaxed">
-                  This secure link expires on {expiryCopy}. Backend permissions
-                  and remaining-use limits are enforced for every action.
+                  Backend permissions and remaining-use limits are enforced for
+                  every action.
                 </p>
               </div>
             </div>

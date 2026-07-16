@@ -23,6 +23,7 @@ import {
   type MeResponse,
 } from "@/lib/api/schemas";
 import { API_CONFIG, HTTP_METHODS, HTTP_STATUS } from "@/lib/constants";
+import { logger } from "@/lib/logger";
 import { hasSessionTokenType } from "@/server/auth/jwt-metadata";
 import {
   clearServerAuthCookies,
@@ -30,6 +31,8 @@ import {
 } from "@/server/auth/session";
 import { serverEnvelopeFetch, serverFetch } from "@/server/fetch";
 import { assertSameOriginMutation } from "@/server/security/origin";
+
+import { schemaIssueDiagnostics } from "./auth-error-diagnostics";
 
 export type LoginVerifyActionError = Readonly<{
   message: string;
@@ -238,6 +241,28 @@ function toLoginVerifyActionError(error: unknown): LoginVerifyActionError {
   });
 }
 
+function logLoginVerifyFailure(
+  error: unknown,
+  actionError: LoginVerifyActionError,
+): void {
+  const schemaDiagnostics =
+    error instanceof z.ZodError ? schemaIssueDiagnostics(error) : null;
+  const fields = {
+    status: actionError.status,
+    code: actionError.code,
+    requestId: actionError.requestId,
+    schemaIssuePaths: schemaDiagnostics?.paths,
+    schemaIssueCodes: schemaDiagnostics?.codes,
+  } as const;
+
+  if (actionError.status >= HTTP_STATUS.INTERNAL_SERVER_ERROR) {
+    logger.error("auth.login.verify_failed", fields);
+    return;
+  }
+
+  logger.warn("auth.login.verify_failed", fields);
+}
+
 function assertSessionTokenType(
   token: string,
   expectedType: "access" | "refresh",
@@ -295,7 +320,11 @@ export async function loginVerifyAction(
   } catch (error) {
     await clearServerAuthCookies();
 
-    return { ok: false, error: toLoginVerifyActionError(error) };
+    const actionError = toLoginVerifyActionError(error);
+
+    logLoginVerifyFailure(error, actionError);
+
+    return { ok: false, error: actionError };
   }
 }
 

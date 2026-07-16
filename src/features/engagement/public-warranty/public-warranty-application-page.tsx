@@ -6,7 +6,6 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import {
   AlertTriangle,
   ArrowLeft,
-  CheckCircle2,
   FileCheck2,
   FileText,
   LoaderCircle,
@@ -42,6 +41,7 @@ import { isApiHttpError } from "@/lib/api/problem";
 import { cn } from "@/lib/utils";
 import { idempotencyKey as createIdempotencyKey } from "@/lib/uuid";
 
+import { PublicFormStatusEmblem } from "../public-form-status-emblem";
 import {
   isPublicWarrantyUploadError,
   submitPublicWarrantyApplication,
@@ -781,20 +781,7 @@ function StatusScreen({
       <section className="w-full max-w-xl px-4 sm:px-0">
         <Card className="overflow-hidden border-border/70 bg-card/95 shadow-xl shadow-foreground/5 supports-[backdrop-filter]:backdrop-blur-xl">
           <CardHeader className="items-center gap-5 px-5 pt-7 text-center sm:px-8 sm:pt-9">
-            <div
-              className={cn(
-                "flex size-16 items-center justify-center rounded-3xl border shadow-xs",
-                success
-                  ? "border-success/25 bg-success/10 text-success"
-                  : "border-destructive/20 bg-destructive/8 text-destructive",
-              )}
-            >
-              {success ? (
-                <CheckCircle2 aria-hidden="true" className="size-8" />
-              ) : (
-                <AlertTriangle aria-hidden="true" className="size-8" />
-              )}
-            </div>
+            <PublicFormStatusEmblem status={success ? "success" : "error"} />
 
             <div className="grid gap-2">
               <p className="text-overline text-muted-readable">Ozotec EV</p>
