@@ -55,7 +55,7 @@ export async function readDealerDashboardData(
 
   const ownerGuidesPromise = input.capabilities.canReadOwnerGuides
     ? dealerEngagementClient.request({
-        path: "/owner-guides",
+        path: "/happy-customers",
         query: { limit: 12 },
         schema: ownerGuidePreviewSchema,
         ...(input.actorContext !== undefined

@@ -1,7 +1,7 @@
 // oz-next-app/src/features/erp/shared/schemas/erp-common.schema.ts
 import { z } from "zod";
 
-import { actorKindSchema } from "@/lib/api/schemas";
+import { actorKindSchema, authCustomerLevelSchema } from "@/lib/api/schemas";
 
 const INTERNAL_BACKEND_PATH_SEGMENTS = [
   "tasks",
@@ -136,7 +136,9 @@ export const erpActorScopeSchema = z
     financierId: erpUuidSchema.nullable(),
     financierOrgUnitId: erpUuidSchema.nullable(),
     customerId: erpUuidSchema.nullable(),
+    customerLevels: z.array(authCustomerLevelSchema).max(16).readonly(),
     sessionId: z.string().trim().min(1).max(256).nullable(),
+    authorizationVersion: z.number().int().nonnegative().nullable(),
   })
   .strict();
 

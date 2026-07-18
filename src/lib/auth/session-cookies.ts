@@ -7,7 +7,7 @@ const ACCESS_MAX_AGE_MIN_SECONDS = 60;
 const ACCESS_MAX_AGE_MAX_SECONDS = 24 * 60 * 60;
 const REFRESH_MAX_AGE_FALLBACK_SECONDS = 30 * 24 * 60 * 60;
 const REFRESH_MAX_AGE_MIN_SECONDS = 60;
-const REFRESH_MAX_AGE_MAX_SECONDS = 60 * 24 * 60 * 60;
+const REFRESH_MAX_AGE_MAX_SECONDS = 366 * 24 * 60 * 60;
 
 export const ACCESS_SESSION_COOKIE = isProduction
   ? AUTH_COOKIE.HOST_ACCESS_TOKEN
@@ -15,6 +15,9 @@ export const ACCESS_SESSION_COOKIE = isProduction
 export const REFRESH_SESSION_COOKIE = isProduction
   ? AUTH_COOKIE.HOST_REFRESH_TOKEN
   : AUTH_COOKIE.REFRESH_TOKEN;
+export const DEVICE_FINGERPRINT_SESSION_COOKIE = isProduction
+  ? AUTH_COOKIE.HOST_DEVICE_FINGERPRINT
+  : AUTH_COOKIE.DEVICE_FINGERPRINT;
 export const SESSION_COOKIE = isProduction
   ? AUTH_COOKIE.HOST_SESSION
   : AUTH_COOKIE.SESSION;
@@ -22,12 +25,21 @@ export const LEGACY_ACCESS_SESSION_COOKIE = AUTH_COOKIE.ACCESS;
 export const LEGACY_REFRESH_SESSION_COOKIE = AUTH_COOKIE.REFRESH;
 export const LEGACY_OZO_ACCESS_SESSION_COOKIE = "ozo_access";
 export const LEGACY_OZO_REFRESH_SESSION_COOKIE = "ozo_refresh";
+export const REFRESH_ATTEMPT_COOKIE = isProduction
+  ? "__Host-oz_refresh_attempt"
+  : "oz_refresh_attempt";
+export const REFRESH_ATTEMPT_COOKIE_VALUE = "1" as const;
 
 export const SESSION_COOKIE_OPTIONS = {
   httpOnly: true,
   secure: isProduction,
-  sameSite: "lax",
+  sameSite: "strict",
   path: "/",
+} as const;
+
+export const REFRESH_ATTEMPT_COOKIE_OPTIONS = {
+  ...SESSION_COOKIE_OPTIONS,
+  maxAge: 60,
 } as const;
 
 function clamp(value: number, min: number, max: number): number {

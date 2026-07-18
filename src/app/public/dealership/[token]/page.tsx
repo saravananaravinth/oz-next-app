@@ -13,6 +13,7 @@ export const dynamic = "force-static";
 export const metadata = {
   title: PAGE_TITLE,
   description: PAGE_DESCRIPTION,
+  referrer: "no-referrer",
   robots: {
     index: false,
     follow: false,

@@ -8,6 +8,7 @@ import {
   buildPublicDealershipApplicationSubmitPath,
   dealershipApplicationSubmitRequestSchema,
   dealershipApplicationSubmitResponseSchema,
+  dealershipSubmissionIdempotencyKeySchema,
   type DealershipApplicationSubmitRequest,
   type DealershipApplicationSubmitResponse,
 } from "./schemas";
@@ -25,6 +26,9 @@ export async function submitPublicDealershipApplication(
   const body = dealershipApplicationSubmitRequestSchema.parse(
     input.application,
   );
+  const idempotencyKey = dealershipSubmissionIdempotencyKeySchema.parse(
+    input.idempotencyKey,
+  );
 
   return await apiClient.request(
     buildPublicDealershipApplicationSubmitPath(input.token),
@@ -33,8 +37,8 @@ export async function submitPublicDealershipApplication(
       auth: false,
       retry: 0,
       retryOnUnauthorized: false,
-      timeoutMs: 20_000,
-      idempotencyKey: input.idempotencyKey,
+      timeoutMs: 30_000,
+      idempotencyKey,
       body,
       schema: dealershipApplicationSubmitResponseSchema,
       ...(input.signal === undefined ? {} : { signal: input.signal }),

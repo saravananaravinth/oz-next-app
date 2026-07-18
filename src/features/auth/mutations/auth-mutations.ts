@@ -12,6 +12,7 @@ import {
   markClientSession,
 } from "@/lib/auth/session.client";
 import { API_CONFIG, HTTP_STATUS } from "@/lib/constants";
+import { idempotencyKey as createIdempotencyKey } from "@/lib/uuid";
 
 import {
   loginChallengeIdSchema,
@@ -252,16 +253,6 @@ function isValidationError(error: unknown): boolean {
   return error instanceof z.ZodError;
 }
 
-function createAuthIdempotencyKey(operation: string): string {
-  const normalizedOperation = operation
-    .trim()
-    .replace(/[^A-Za-z0-9._:-]/gu, "-")
-    .replace(/-+/gu, "-")
-    .slice(0, 48);
-
-  return `${normalizedOperation || "auth"}:${crypto.randomUUID()}`;
-}
-
 function classifyApiHttpError(error: ApiHttpError): LoginVerifyFailure {
   const code = normalizeCode(error.code);
   const attemptsRemaining = normalizeAttemptsRemaining(
@@ -395,8 +386,7 @@ export async function loginStartMutation(
   const response = await authPublicClient.loginStart({
     identifier: parsedInput.identifier,
     idempotencyKey:
-      parsedInput.idempotencyKey ??
-      createAuthIdempotencyKey("auth-login-start"),
+      parsedInput.idempotencyKey ?? createIdempotencyKey("auth-login-start"),
   });
 
   return loginStartResponseSchema.parse(response);

@@ -1,5 +1,8 @@
 // oz-next-app/next.config.ts
+import { initOpenNextCloudflareForDev } from "@opennextjs/cloudflare";
 import type { NextConfig } from "next";
+
+initOpenNextCloudflareForDev();
 
 type Header = Readonly<{
   key: string;

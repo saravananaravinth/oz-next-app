@@ -11,7 +11,7 @@ import {
   authListSessionsQuerySchema,
   authSessionSummarySchema,
   authSessionsMetaSchema,
-  authTokenResponseSchema,
+  authBodyTokenResponseSchema,
   loginVerifyRequestSchema,
   logoutResponseSchema,
   meResponseSchema,
@@ -32,7 +32,7 @@ import {
 import { serverEnvelopeFetch, serverFetch } from "@/server/fetch";
 import { assertSameOriginMutation } from "@/server/security/origin";
 
-import { schemaIssueDiagnostics } from "./auth-error-diagnostics";
+import { schemaIssueDiagnosticsFromError } from "./auth-error-diagnostics";
 
 export type LoginVerifyActionError = Readonly<{
   message: string;
@@ -245,8 +245,7 @@ function logLoginVerifyFailure(
   error: unknown,
   actionError: LoginVerifyActionError,
 ): void {
-  const schemaDiagnostics =
-    error instanceof z.ZodError ? schemaIssueDiagnostics(error) : null;
+  const schemaDiagnostics = schemaIssueDiagnosticsFromError(error);
   const fields = {
     status: actionError.status,
     code: actionError.code,
@@ -297,7 +296,7 @@ export async function loginVerifyAction(
       auth: false,
       body,
       cache: "no-store",
-      schema: authTokenResponseSchema,
+      schema: authBodyTokenResponseSchema,
     });
 
     assertSessionTokenType(
@@ -311,7 +310,9 @@ export async function loginVerifyAction(
       "login_refresh_token_invalid",
     );
 
-    await setServerAuthTokens(tokens);
+    await setServerAuthTokens(tokens, {
+      deviceFingerprint: body.deviceFingerprint ?? null,
+    });
 
     return {
       ok: true,

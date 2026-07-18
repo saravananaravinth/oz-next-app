@@ -4,8 +4,15 @@ const AUTH_QUERY_ROOT_KEY = ["auth"] as const;
 export type AuthSessionQueryScope = Readonly<{
   actorKind: string;
   tenantId: string | null;
+  orgUnitId: string | null;
+  dealerOrgUnitId: string | null;
+  financierId: string | null;
+  financierOrgUnitId: string | null;
   userId: string | null;
   customerId: string | null;
+  customerLevels: readonly string[];
+  sessionId: string | null;
+  authorizationVersion: number | null;
 }>;
 
 export const authQueryKeys = {
@@ -20,8 +27,17 @@ export const authQueryKeys = {
       "sessions",
       scope.actorKind,
       scope.tenantId,
+      scope.orgUnitId,
+      scope.dealerOrgUnitId,
+      scope.financierId,
+      scope.financierOrgUnitId,
       scope.userId,
       scope.customerId,
+      [...scope.customerLevels].sort((left, right) =>
+        left.localeCompare(right),
+      ),
+      scope.sessionId,
+      scope.authorizationVersion,
       input.limit,
       input.cursor,
     ] as const,

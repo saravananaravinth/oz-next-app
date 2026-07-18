@@ -15,11 +15,12 @@ import { API_CONFIG, HTTP_METHODS } from "@/lib/constants";
 
 type LoginStartClientInput = Omit<
   z.input<typeof loginStartRequestSchema>,
-  "clientId" | "project" | "device_fp"
+  "clientId" | "principalKind" | "project" | "device_fp"
 >;
 
 type PublicAuthDefaults = Readonly<{
   clientId: string;
+  principalKind: "AUTH_USER";
   project: typeof API_CONFIG.project;
   device_fp: string;
 }>;
@@ -33,6 +34,7 @@ function withPublicAuthDefaults<TInput extends Record<string, unknown>>(
       typeof input["clientId"] === "string"
         ? input["clientId"]
         : API_CONFIG.clientId,
+    principalKind: "AUTH_USER",
     project: API_CONFIG.project,
     device_fp:
       typeof input["device_fp"] === "string"
@@ -50,6 +52,9 @@ export const authPublicClient = {
       auth: false,
       body,
       schema: loginStartResponseSchema,
+      ...(body.idempotencyKey === undefined
+        ? {}
+        : { idempotencyKey: body.idempotencyKey }),
     });
   },
 } as const;

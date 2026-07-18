@@ -2,6 +2,7 @@
 import { z } from "zod";
 
 const SAFE_TOKEN_PATTERN = /^[A-Za-z0-9._~:-]+$/u;
+const SAFE_IDEMPOTENCY_KEY_PATTERN = /^[A-Za-z0-9._:-]+$/u;
 const INDIA_MOBILE_LOCAL_PATTERN = /^[6-9][0-9]{9}$/u;
 const INDIA_MOBILE_E164_PATTERN = /^\+91[6-9][0-9]{9}$/u;
 const PINCODE_PATTERN = /^[1-9][0-9]{5}$/u;
@@ -57,9 +58,16 @@ const optionalPostalCodeSchema = z
 export const publicDealershipTokenSchema = z
   .string()
   .trim()
-  .min(32)
-  .max(256)
-  .regex(SAFE_TOKEN_PATTERN);
+  .min(32, "The dealership application link is invalid.")
+  .max(256, "The dealership application link is invalid.")
+  .regex(SAFE_TOKEN_PATTERN, "The dealership application link is invalid.");
+
+export const dealershipSubmissionIdempotencyKeySchema = z
+  .string()
+  .trim()
+  .min(8, "The submission key is invalid.")
+  .max(128, "The submission key is invalid.")
+  .regex(SAFE_IDEMPOTENCY_KEY_PATTERN, "The submission key is invalid.");
 
 export const dealershipInterestFormSchema = z
   .object({

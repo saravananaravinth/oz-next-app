@@ -2,13 +2,10 @@
 import "server-only";
 
 import { getCloudflareContext } from "@opennextjs/cloudflare";
-import { cache } from "react";
 import { z, type ZodType } from "zod";
 
 import { AUTH_ENDPOINTS } from "@/lib/api/endpoints";
 import {
-  isInvalidTokenFailure,
-  isMalformedAuthFailure,
   readJsonPayload,
   throwForHttpError,
   unwrapApiEnvelope,
@@ -17,10 +14,10 @@ import {
 } from "@/lib/api/envelope";
 import { ApiHttpError } from "@/lib/api/problem";
 import {
-  authTokenResponseSchema,
+  authBodyTokenResponseSchema,
   jwtTokenSchema,
   refreshTokenRequestSchema,
-  type AuthTokenResponse,
+  type AuthBodyTokenResponse,
 } from "@/lib/api/schemas";
 import {
   API_CONFIG,
@@ -44,6 +41,7 @@ import {
 import {
   clearServerAuthCookies,
   getServerAccessToken,
+  getServerDeviceFingerprint,
   getServerRefreshToken,
   setServerAuthTokens,
 } from "@/server/auth/session";
@@ -130,8 +128,9 @@ const MAX_API_PATH_LENGTH = 2_048;
 const CONTROL_CHARACTER_MAX_CODE = 0x1f;
 const DELETE_CHARACTER_CODE = 0x7f;
 const MAX_DIAGNOSTIC_TEXT_LENGTH = 512;
-const ALLOW_PUBLIC_EDGE_FALLBACK =
-  API_CONFIG.appEnv !== "production" && API_CONFIG.appEnv !== "staging";
+const MAX_REFRESH_SINGLE_FLIGHTS = 128;
+const REQUIRE_ERP_EDGE_SERVICE_BINDING =
+  API_CONFIG.appEnv === "production" || API_CONFIG.appEnv === "staging";
 
 const UNSAFE_ENCODED_PATH_PATTERN = /%(?:00|2e|2f|5c)/iu;
 
@@ -329,31 +328,35 @@ async function dispatchEdgeRequest(
   url: string,
   init: ServerRequestInit,
 ): Promise<Response> {
-  const resolution = resolveErpEdgeServiceBinding();
   const target = readDiagnosticUrlParts(url);
   const requestId = readDiagnosticHeader(init, HDR.REQUEST_ID);
   const correlationId = readDiagnosticHeader(init, HDR.CORRELATION_ID);
   const method = init.method ?? HTTP_METHODS.GET;
 
-  const baseLogFields = {
+  const requestLogFields = {
     operation: "erp_edge_dispatch",
     method,
     requestId,
     correlationId,
     targetOrigin: target.origin,
     targetPathname: target.pathname,
-    bindingStatus: resolution.status,
-    contextErrorName: resolution.contextErrorName,
-    contextErrorMessage: resolution.contextErrorMessage,
+    appEnvironment: API_CONFIG.appEnv,
   };
 
-  if (resolution.binding !== null) {
+  if (!REQUIRE_ERP_EDGE_SERVICE_BINDING) {
+    logger.debug("erp_edge_public_fetch_selected", {
+      ...requestLogFields,
+      bindingStatus: "ignored_for_environment",
+      dispatchTarget: "public_fetch",
+    });
+
     try {
-      return await resolution.binding.fetch(toServiceBindingRequest(url, init));
+      return await fetch(url, toCloudflareFetchInit(init));
     } catch (error: unknown) {
-      logger.error("erp_edge_service_binding_dispatch_failed", {
-        ...baseLogFields,
-        dispatchTarget: "service_binding",
+      logger.error("erp_edge_public_fetch_dispatch_failed", {
+        ...requestLogFields,
+        bindingStatus: "ignored_for_environment",
+        dispatchTarget: "public_fetch",
         errorName: diagnosticErrorName(error),
         errorMessage: diagnosticErrorMessage(error),
       });
@@ -362,9 +365,17 @@ async function dispatchEdgeRequest(
     }
   }
 
-  if (!ALLOW_PUBLIC_EDGE_FALLBACK) {
+  const resolution = resolveErpEdgeServiceBinding();
+  const bindingLogFields = {
+    ...requestLogFields,
+    bindingStatus: resolution.status,
+    contextErrorName: resolution.contextErrorName,
+    contextErrorMessage: resolution.contextErrorMessage,
+  };
+
+  if (resolution.binding === null) {
     logger.error("erp_edge_service_binding_required", {
-      ...baseLogFields,
+      ...bindingLogFields,
       dispatchTarget: "none",
     });
 
@@ -375,17 +386,12 @@ async function dispatchEdgeRequest(
     });
   }
 
-  logger.warn("erp_edge_service_binding_unavailable", {
-    ...baseLogFields,
-    dispatchTarget: "public_fetch",
-  });
-
   try {
-    return await fetch(url, toCloudflareFetchInit(init));
+    return await resolution.binding.fetch(toServiceBindingRequest(url, init));
   } catch (error: unknown) {
-    logger.error("erp_edge_public_fetch_dispatch_failed", {
-      ...baseLogFields,
-      dispatchTarget: "public_fetch",
+    logger.error("erp_edge_service_binding_dispatch_failed", {
+      ...bindingLogFields,
+      dispatchTarget: "service_binding",
       errorName: diagnosticErrorName(error),
       errorMessage: diagnosticErrorMessage(error),
     });
@@ -577,9 +583,9 @@ async function attachAuthHeader(
     accessToken?: string | undefined;
     refreshOnUnauthorized?: boolean | undefined;
   }>,
-): Promise<void> {
+): Promise<boolean> {
   if (!options.auth) {
-    return;
+    return false;
   }
 
   const explicitToken = options.accessToken;
@@ -587,7 +593,7 @@ async function attachAuthHeader(
   if (explicitToken !== undefined) {
     const token = jwtTokenSchema.parse(explicitToken);
     outboundHeaders.set(HDR.AUTHORIZATION, `Bearer ${token}`);
-    return;
+    return false;
   }
 
   const accessToken = await getServerAccessToken();
@@ -597,7 +603,7 @@ async function attachAuthHeader(
     !isSessionTokenExpired(accessToken, ACCESS_TOKEN_EXPIRY_SKEW_SECONDS)
   ) {
     outboundHeaders.set(HDR.AUTHORIZATION, `Bearer ${accessToken}`);
-    return;
+    return false;
   }
 
   if (options.refreshOnUnauthorized === true) {
@@ -608,22 +614,43 @@ async function attachAuthHeader(
         HDR.AUTHORIZATION,
         `Bearer ${refreshed.access_token}`,
       );
+      return true;
     }
   }
+
+  return false;
 }
 
-async function refreshServerAuthTokens(): Promise<AuthTokenResponse | null> {
-  const refreshToken = await getServerRefreshToken();
+const refreshSingleFlights = new Map<
+  string,
+  Promise<AuthBodyTokenResponse | null>
+>();
 
-  if (refreshToken === null || !hasSessionTokenType(refreshToken, "refresh")) {
-    return null;
-  }
+async function refreshSingleFlightKey(
+  refreshToken: string,
+  deviceFingerprint: string | null,
+): Promise<string> {
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(
+      `${String(refreshToken.length)}:${refreshToken}:${deviceFingerprint ?? ""}`,
+    ),
+  );
 
+  return Array.from(new Uint8Array(digest), (value) =>
+    value.toString(16).padStart(2, "0"),
+  ).join("");
+}
+
+async function performServerAuthTokenRefresh(
+  refreshToken: string,
+  deviceFingerprint: string | null,
+): Promise<AuthBodyTokenResponse | null> {
   const body = refreshTokenRequestSchema.parse({
     clientId: API_CONFIG.clientId,
     refreshToken,
+    ...(deviceFingerprint === null ? {} : { deviceFingerprint }),
   });
-
   const timeout = withTimeoutSignal(undefined, API_CONFIG.timeoutMs);
 
   try {
@@ -640,26 +667,75 @@ async function refreshServerAuthTokens(): Promise<AuthTokenResponse | null> {
         signal: timeout.signal,
       },
     );
-
     const payload = await readJsonPayload(response);
 
     if (!response.ok) {
-      return null;
+      if (
+        response.status === HTTP_STATUS.UNAUTHORIZED ||
+        response.status === HTTP_STATUS.FORBIDDEN
+      ) {
+        return null;
+      }
+
+      throwForHttpError(response, payload);
     }
 
-    const tokens = unwrapApiPayload(payload, authTokenResponseSchema);
-
-    await setServerAuthTokens(tokens);
-
-    return tokens;
+    return unwrapApiPayload(payload, authBodyTokenResponseSchema);
   } finally {
     timeout.cleanup();
   }
 }
 
-export const refreshServerAuthTokensForMutableBoundary = cache(
-  refreshServerAuthTokens,
-);
+async function refreshServerAuthTokens(): Promise<AuthBodyTokenResponse | null> {
+  const [refreshToken, deviceFingerprint] = await Promise.all([
+    getServerRefreshToken(),
+    getServerDeviceFingerprint(),
+  ]);
+
+  if (refreshToken === null || !hasSessionTokenType(refreshToken, "refresh")) {
+    return null;
+  }
+
+  const singleFlightKey = await refreshSingleFlightKey(
+    refreshToken,
+    deviceFingerprint,
+  );
+  const existingFlight = refreshSingleFlights.get(singleFlightKey);
+
+  let tokens: AuthBodyTokenResponse | null;
+
+  if (existingFlight !== undefined) {
+    tokens = await existingFlight;
+  } else {
+    const refreshOperation = performServerAuthTokenRefresh(
+      refreshToken,
+      deviceFingerprint,
+    );
+
+    if (refreshSingleFlights.size >= MAX_REFRESH_SINGLE_FLIGHTS) {
+      tokens = await refreshOperation;
+    } else {
+      refreshSingleFlights.set(singleFlightKey, refreshOperation);
+
+      try {
+        tokens = await refreshOperation;
+      } finally {
+        if (refreshSingleFlights.get(singleFlightKey) === refreshOperation) {
+          refreshSingleFlights.delete(singleFlightKey);
+        }
+      }
+    }
+  }
+
+  if (tokens !== null) {
+    await setServerAuthTokens(tokens, { deviceFingerprint });
+  }
+
+  return tokens;
+}
+
+export const refreshServerAuthTokensForMutableBoundary =
+  refreshServerAuthTokens;
 
 function withTimeoutSignal(
   signal: AbortSignal | undefined,
@@ -712,7 +788,7 @@ async function fetchOnceEnvelope<TData, TMeta = undefined>(
     outboundHeaders.set(HDR.IDEMPOTENCY_KEY, normalized.idempotencyKey);
   }
 
-  await attachAuthHeader(outboundHeaders, {
+  const refreshedBeforeRequest = await attachAuthHeader(outboundHeaders, {
     auth: normalized.auth,
     accessToken: options.accessToken,
     refreshOnUnauthorized: options.refreshOnUnauthorized,
@@ -743,7 +819,7 @@ async function fetchOnceEnvelope<TData, TMeta = undefined>(
         normalized.auth &&
         options.refreshOnUnauthorized === true &&
         options.accessToken === undefined &&
-        (isInvalidTokenFailure(payload) || isMalformedAuthFailure(payload))
+        !refreshedBeforeRequest
       ) {
         const refreshed = await refreshServerAuthTokens();
 
@@ -760,6 +836,14 @@ async function fetchOnceEnvelope<TData, TMeta = undefined>(
           );
         }
 
+        await clearServerAuthCookies();
+      }
+
+      if (
+        response.status === HTTP_STATUS.UNAUTHORIZED &&
+        normalized.auth &&
+        refreshedBeforeRequest
+      ) {
         await clearServerAuthCookies();
       }
 

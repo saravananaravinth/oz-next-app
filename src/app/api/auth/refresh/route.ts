@@ -3,6 +3,12 @@ import "server-only";
 
 import { NextResponse, type NextRequest } from "next/server";
 
+import { isApiHttpError } from "@/lib/api/problem";
+import {
+  REFRESH_ATTEMPT_COOKIE,
+  REFRESH_ATTEMPT_COOKIE_OPTIONS,
+  REFRESH_ATTEMPT_COOKIE_VALUE,
+} from "@/lib/auth/session-cookies";
 import { CACHE_CONTROL, CT, HDR, HTTP_STATUS } from "@/lib/constants";
 import { logger } from "@/lib/logger";
 import { refreshServerAuthTokensForMutableBoundary } from "@/server/api/server-client";
@@ -41,22 +47,24 @@ const PUBLIC_OR_UNSAFE_PREFIXES = [
   "/.well-known/",
 ] as const;
 
-const SAME_ORIGIN_FETCH_SITES = new Set([
-  "same-origin",
-  "same-site",
-  "none",
-] as const);
+const SAME_ORIGIN_FETCH_SITES = new Set(["same-origin", "none"] as const);
 
-type SameOriginFetchSite = "same-origin" | "same-site" | "none";
+type SameOriginFetchSite = "same-origin" | "none";
 
 type RefreshOutcome =
   | "missing_refresh_cookie"
   | "refresh_ok"
   | "refresh_failed"
+  | "refresh_rate_limited"
+  | "refresh_unavailable"
   | "blocked_cross_origin";
 
 type RefreshProblemCode =
-  "missing_refresh_cookie" | "refresh_failed" | "cross_origin_refresh_blocked";
+  | "missing_refresh_cookie"
+  | "refresh_failed"
+  | "refresh_rate_limited"
+  | "refresh_unavailable"
+  | "cross_origin_refresh_blocked";
 
 type RefreshBoundaryResult =
   | Readonly<{
@@ -65,9 +73,14 @@ type RefreshBoundaryResult =
     }>
   | Readonly<{
       ok: false;
-      status: typeof HTTP_STATUS.UNAUTHORIZED | typeof HTTP_STATUS.FORBIDDEN;
+      status:
+        | typeof HTTP_STATUS.UNAUTHORIZED
+        | typeof HTTP_STATUS.FORBIDDEN
+        | typeof HTTP_STATUS.TOO_MANY_REQUESTS
+        | typeof HTTP_STATUS.SERVICE_UNAVAILABLE;
       code: RefreshProblemCode;
       message: string;
+      retryAfterSeconds?: number | undefined;
     }>;
 
 type RefreshBoundaryFailureResult = Extract<
@@ -84,7 +97,11 @@ type RefreshSuccessJsonBody = Readonly<{
 type RefreshProblemJsonBody = Readonly<{
   type: string;
   title: string;
-  status: typeof HTTP_STATUS.UNAUTHORIZED | typeof HTTP_STATUS.FORBIDDEN;
+  status:
+    | typeof HTTP_STATUS.UNAUTHORIZED
+    | typeof HTTP_STATUS.FORBIDDEN
+    | typeof HTTP_STATUS.TOO_MANY_REQUESTS
+    | typeof HTTP_STATUS.SERVICE_UNAVAILABLE;
   detail: string;
   code: RefreshProblemCode;
   request_id: string;
@@ -143,6 +160,25 @@ function safeNextPath(value: string | null): string {
   return isSafeRelativeNextPath(normalized) ? normalized : DEFAULT_NEXT_PATH;
 }
 
+function loginUnavailablePath(nextPath: string): string {
+  const params = new URLSearchParams({
+    reason: "backend-unavailable",
+    next: nextPath,
+  });
+
+  return `/login?${params.toString()}`;
+}
+
+function markSuccessfulRefresh(response: NextResponse): NextResponse {
+  response.cookies.set(
+    REFRESH_ATTEMPT_COOKIE,
+    REFRESH_ATTEMPT_COOKIE_VALUE,
+    REFRESH_ATTEMPT_COOKIE_OPTIONS,
+  );
+
+  return response;
+}
+
 function safeRequestId(request: NextRequest): string {
   const value = request.headers.get(HDR.REQUEST_ID)?.trim() ?? "";
 
@@ -155,8 +191,13 @@ function isSameOriginFetchSite(value: string): value is SameOriginFetchSite {
 
 function isSameOriginRefreshRequest(request: NextRequest): boolean {
   const origin = request.headers.get(HDR.ORIGIN)?.trim() ?? "";
+  const requiresOrigin = request.method !== "GET";
 
-  if (origin.length > 0) {
+  if (origin.length === 0) {
+    if (requiresOrigin) {
+      return false;
+    }
+  } else {
     try {
       if (new URL(origin).origin !== request.nextUrl.origin) {
         return false;
@@ -170,7 +211,7 @@ function isSameOriginRefreshRequest(request: NextRequest): boolean {
     request.headers.get("sec-fetch-site")?.trim().toLowerCase() ?? "";
 
   if (fetchSite.length === 0) {
-    return true;
+    return !requiresOrigin || origin.length > 0;
   }
 
   return isSameOriginFetchSite(fetchSite);
@@ -289,7 +330,47 @@ async function executeRefreshBoundary(
     };
   }
 
-  const refreshed = await refreshServerAuthTokensForMutableBoundary();
+  let refreshed: Awaited<
+    ReturnType<typeof refreshServerAuthTokensForMutableBoundary>
+  >;
+
+  try {
+    refreshed = await refreshServerAuthTokensForMutableBoundary();
+  } catch (error) {
+    if (
+      isApiHttpError(error) &&
+      error.status === HTTP_STATUS.TOO_MANY_REQUESTS
+    ) {
+      logRefreshOutcome({
+        request,
+        accessCookiePresent,
+        refreshCookiePresent,
+        outcome: "refresh_rate_limited",
+      });
+
+      return {
+        ok: false,
+        status: HTTP_STATUS.TOO_MANY_REQUESTS,
+        code: "refresh_rate_limited",
+        message: "Session refresh is temporarily rate limited.",
+        retryAfterSeconds: error.retryAfterSeconds,
+      };
+    }
+
+    logRefreshOutcome({
+      request,
+      accessCookiePresent,
+      refreshCookiePresent,
+      outcome: "refresh_unavailable",
+    });
+
+    return {
+      ok: false,
+      status: HTTP_STATUS.SERVICE_UNAVAILABLE,
+      code: "refresh_unavailable",
+      message: "Session refresh is temporarily unavailable.",
+    };
+  }
 
   if (refreshed === null) {
     await clearAuthCookiesBestEffort();
@@ -337,7 +418,13 @@ function problemBody(
   return {
     type: `urn:oz-next-app:problem:${result.code}`,
     title:
-      result.status === HTTP_STATUS.FORBIDDEN ? "Forbidden" : "Unauthorized",
+      result.status === HTTP_STATUS.FORBIDDEN
+        ? "Forbidden"
+        : result.status === HTTP_STATUS.TOO_MANY_REQUESTS
+          ? "Too Many Requests"
+          : result.status === HTTP_STATUS.SERVICE_UNAVAILABLE
+            ? "Service Unavailable"
+            : "Unauthorized",
     status: result.status,
     detail: result.message,
     code: result.code,
@@ -367,6 +454,17 @@ async function blockedCrossOriginResult(
   };
 }
 
+function withRetryAfter(
+  response: NextResponse,
+  result: RefreshBoundaryFailureResult,
+): NextResponse {
+  if (result.retryAfterSeconds !== undefined) {
+    response.headers.set(HDR.RETRY_AFTER, String(result.retryAfterSeconds));
+  }
+
+  return response;
+}
+
 export async function GET(request: NextRequest): Promise<NextResponse> {
   const nextPath = safeNextPath(request.nextUrl.searchParams.get("next"));
 
@@ -377,7 +475,20 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
   const result = await executeRefreshBoundary(request);
 
-  return redirectResponse(request, result.ok ? nextPath : LOGIN_EXPIRED_PATH);
+  if (result.ok) {
+    return markSuccessfulRefresh(redirectResponse(request, nextPath));
+  }
+
+  return withRetryAfter(
+    redirectResponse(
+      request,
+      result.status === HTTP_STATUS.SERVICE_UNAVAILABLE ||
+        result.status === HTTP_STATUS.TOO_MANY_REQUESTS
+        ? loginUnavailablePath(nextPath)
+        : LOGIN_EXPIRED_PATH,
+    ),
+    result,
+  );
 }
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
@@ -390,8 +501,13 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const result = await executeRefreshBoundary(request);
 
   if (!result.ok) {
-    return jsonResponse(problemBody(request, result), result.status);
+    return withRetryAfter(
+      jsonResponse(problemBody(request, result), result.status),
+      result,
+    );
   }
 
-  return jsonResponse(successBody(result.expiresInSeconds), HTTP_STATUS.OK);
+  return markSuccessfulRefresh(
+    jsonResponse(successBody(result.expiresInSeconds), HTTP_STATUS.OK),
+  );
 }

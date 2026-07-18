@@ -3,7 +3,8 @@ export const DEFAULT_AUTH_SUCCESS_PATH = "/dashboard";
 
 export type AuthSuccessPath = `/${string}`;
 
-type LoginNoticeKind = "session-expired" | "signed-out" | "unauthorized";
+type LoginNoticeKind =
+  "session-expired" | "signed-out" | "unauthorized" | "backend-unavailable";
 
 export type LoginNotice = Readonly<{
   kind: LoginNoticeKind;
@@ -29,6 +30,12 @@ const LOGIN_NOTICE_BY_REASON = {
     kind: "unauthorized",
     title: "Sign-in required",
     description: "Your workspace requires a verified session.",
+  },
+  "backend-unavailable": {
+    kind: "backend-unavailable",
+    title: "Authentication is temporarily unavailable",
+    description:
+      "Your existing session was preserved. Retry when connectivity is restored.",
   },
 } as const satisfies Record<LoginNoticeKind, LoginNotice>;
 
@@ -81,7 +88,8 @@ function isLoginNoticeKind(value: string): value is LoginNoticeKind {
   return (
     value === "session-expired" ||
     value === "signed-out" ||
-    value === "unauthorized"
+    value === "unauthorized" ||
+    value === "backend-unavailable"
   );
 }
 

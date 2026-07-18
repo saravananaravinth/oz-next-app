@@ -6,7 +6,7 @@ import { revalidatePath } from "next/cache";
 import { requireAuthenticatedMe } from "@/features/auth/server/require-auth";
 import { createErpFeatureClient } from "@/features/erp/shared/clients/erp-feature.server";
 import { ENGAGEMENT_ENDPOINTS } from "@/lib/api/endpoints";
-import { isApiHttpError } from "@/lib/api/problem";
+import { ApiHttpError, isApiHttpError } from "@/lib/api/problem";
 import { API_CONFIG, HTTP_METHODS } from "@/lib/constants";
 import type { ServerActorContextHeaders } from "@/server/api/request-context";
 import { assertSameOriginMutation } from "@/server/security/origin";
@@ -112,7 +112,12 @@ async function requireActionContext(
     access.kind === "context_required" ||
     !access.capabilities[capability]
   ) {
-    throw new Error("dealer_dashboard_action_forbidden");
+    throw new ApiHttpError({
+      message:
+        "Dealer dashboard action is not permitted for this actor context.",
+      status: 403,
+      code: "dealer_dashboard_action_forbidden",
+    });
   }
 
   return access.actorContext === undefined
@@ -140,7 +145,7 @@ export async function onboardOwnerGuideAction(
 
     await dealerEngagementClient.request({
       method: HTTP_METHODS.POST,
-      path: "/owner-guides",
+      path: "/happy-customers",
       body: {
         mobileNumber: values.mobileNumber,
         displayName: values.displayName,
@@ -203,7 +208,7 @@ export async function updateOwnerGuideAction(
 
     await dealerEngagementClient.request({
       method: HTTP_METHODS.PATCH,
-      path: `/owner-guides/${ownerGuideId}`,
+      path: `/happy-customers/${ownerGuideId}`,
       body: {
         displayName: values.displayName,
         vehicleModel: nullableText(values.vehicleModel),
@@ -257,7 +262,7 @@ export async function updateOwnerGuideAssignmentEligibilityAction(
 
     await dealerEngagementClient.request({
       method: HTTP_METHODS.PATCH,
-      path: `/owner-guides/${ownerGuideId}`,
+      path: `/happy-customers/${ownerGuideId}`,
       body: {
         assignmentEnabled: values.assignmentEnabled,
         rowVersion: values.rowVersion,
@@ -313,7 +318,7 @@ export async function ownerGuideLifecycleAction(
     );
     const commonOptions = {
       method: HTTP_METHODS.POST,
-      path: `/owner-guides/${ownerGuideId}/${validatedOperationInput.operation}`,
+      path: `/happy-customers/${ownerGuideId}/${validatedOperationInput.operation}`,
       idempotencyKey: validatedOperationInput.idempotencyKey,
       refreshOnUnauthorized: false,
       ...(secured.actorContext !== undefined

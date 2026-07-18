@@ -42,11 +42,12 @@ let refreshInFlight: Promise<boolean> | null = null;
 
 type LoginStartClientInput = Omit<
   z.input<typeof loginStartRequestSchema>,
-  "clientId" | "project" | "device_fp"
+  "clientId" | "principalKind" | "project" | "device_fp"
 >;
 
 type BrowserAuthDefaults = Readonly<{
   clientId: string;
+  principalKind: "AUTH_USER";
   project: typeof API_CONFIG.project;
   device_fp: string;
 }>;
@@ -60,6 +61,7 @@ function withAuthDefaults<TInput extends Record<string, unknown>>(
       typeof input["clientId"] === "string"
         ? input["clientId"]
         : API_CONFIG.clientId,
+    principalKind: "AUTH_USER",
     project: API_CONFIG.project,
     device_fp:
       typeof input["device_fp"] === "string"
@@ -87,7 +89,13 @@ async function refreshOnce(): Promise<boolean> {
     });
 
     if (!response.ok) {
-      clearSessionTokens();
+      if (
+        response.status === HTTP_STATUS.UNAUTHORIZED ||
+        response.status === HTTP_STATUS.FORBIDDEN
+      ) {
+        clearSessionTokens();
+      }
+
       return false;
     }
 
@@ -105,7 +113,6 @@ async function refreshOnce(): Promise<boolean> {
     markClientSession({ expiresInSeconds });
     return true;
   } catch {
-    clearSessionTokens();
     return false;
   }
 }
@@ -127,6 +134,9 @@ export const authClient = {
       auth: false,
       body,
       schema: loginStartResponseSchema,
+      ...(body.idempotencyKey === undefined
+        ? {}
+        : { idempotencyKey: body.idempotencyKey }),
     });
   },
 

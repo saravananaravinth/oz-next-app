@@ -23,6 +23,22 @@ function stringValue(value: unknown): string | null {
     : null;
 }
 
+function nonNegativeIntegerValue(value: unknown): number | null {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0
+    ? value
+    : null;
+}
+
+function customerLevelsValue(value: unknown): readonly string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.filter(
+    (item): item is string => typeof item === "string" && item.length > 0,
+  );
+}
+
 function readNestedActor(
   me: MeResponse,
 ): Readonly<Record<string, unknown>> | null {
@@ -89,9 +105,16 @@ export function erpActorScopeFromMe(me: MeResponse): ErpActorScope {
       readField(actor, "customerId"),
       readField(actor, "customer_id"),
     ),
+    customerLevels: customerLevelsValue(
+      readField(actor, "customerLevels") ?? readField(actor, "customer_levels"),
+    ),
     sessionId: firstString(
       readField(actor, "sessionId"),
       readField(actor, "session_id"),
+    ),
+    authorizationVersion: nonNegativeIntegerValue(
+      readField(actor, "authorizationVersion") ??
+        readField(actor, "authorization_version"),
     ),
   });
 
@@ -109,7 +132,9 @@ export function erpActorScopeFromMe(me: MeResponse): ErpActorScope {
     financierId: null,
     financierOrgUnitId: null,
     customerId: null,
+    customerLevels: [],
     sessionId: null,
+    authorizationVersion: null,
   };
 }
 
@@ -124,6 +149,10 @@ export function erpActorScopeKeyInput(scope: ErpActorScope) {
     financierId: scope.financierId,
     financierOrgUnitId: scope.financierOrgUnitId,
     customerId: scope.customerId,
+    customerLevels: [...scope.customerLevels].sort((left, right) =>
+      left.localeCompare(right),
+    ),
     sessionId: scope.sessionId,
+    authorizationVersion: scope.authorizationVersion,
   } as const;
 }

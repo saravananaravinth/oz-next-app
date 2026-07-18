@@ -12,10 +12,10 @@ import {
 
 const PERMISSION = {
   DASHBOARD_READ: "engagement:dashboard:read",
-  OWNER_GUIDE_READ: "engagement:owner-guide:read",
-  OWNER_GUIDE_CREATE: "engagement:owner-guide:create",
-  OWNER_GUIDE_UPDATE: "engagement:owner-guide:update",
-  OWNER_GUIDE_DISABLE: "engagement:owner-guide:disable",
+  HAPPY_CUSTOMER_READ: "engagement:happy-customer:read",
+  HAPPY_CUSTOMER_CREATE: "engagement:happy-customer:create",
+  HAPPY_CUSTOMER_UPDATE: "engagement:happy-customer:update",
+  HAPPY_CUSTOMER_DISABLE: "engagement:happy-customer:disable",
 } as const;
 
 export type DealerDashboardCapabilities = Readonly<{
@@ -93,20 +93,19 @@ const SUPER_ADMIN_CAPABILITIES = {
 } as const satisfies DealerDashboardCapabilities;
 
 function normalizedRoles(me: MeResponse): ReadonlySet<string> {
-  const canonicalRoles = me.auth?.actor.roles ?? [];
+  const roles = me.auth?.actor.roles ?? me.roles;
 
-  return new Set(
-    [...me.roles, ...canonicalRoles].map((role) => role.trim().toLowerCase()),
-  );
+  return new Set(roles.map((role) => role.trim().toLowerCase()));
 }
 
 function effectivePermissions(me: MeResponse): ReadonlySet<string> {
-  const canonicalPermissions = me.auth?.effectivePermissions ?? [];
+  const permissions =
+    me.auth?.permissionResolution?.effectivePermissions ??
+    me.auth?.effectivePermissions ??
+    me.permissions;
 
   return new Set(
-    [...me.permissions, ...canonicalPermissions].map((permission) =>
-      permission.trim().toLowerCase(),
-    ),
+    permissions.map((permission) => permission.trim().toLowerCase()),
   );
 }
 
@@ -130,25 +129,28 @@ function permissionCapabilities(
 ): DealerDashboardCapabilities {
   const canUpdateOwnerGuide = hasPermission(
     permissions,
-    PERMISSION.OWNER_GUIDE_UPDATE,
+    PERMISSION.HAPPY_CUSTOMER_UPDATE,
   );
 
   return {
     canViewDashboard: hasPermission(permissions, PERMISSION.DASHBOARD_READ),
-    canReadOwnerGuides: hasPermission(permissions, PERMISSION.OWNER_GUIDE_READ),
+    canReadOwnerGuides: hasPermission(
+      permissions,
+      PERMISSION.HAPPY_CUSTOMER_READ,
+    ),
     canCreateOwnerGuide: hasPermission(
       permissions,
-      PERMISSION.OWNER_GUIDE_CREATE,
+      PERMISSION.HAPPY_CUSTOMER_CREATE,
     ),
     canUpdateOwnerGuide,
     canDisableOwnerGuide: hasPermission(
       permissions,
-      PERMISSION.OWNER_GUIDE_DISABLE,
+      PERMISSION.HAPPY_CUSTOMER_DISABLE,
     ),
     canSendOwnerGuideAppLink: canUpdateOwnerGuide,
     canReadOwnerGuideSettings: hasPermission(
       permissions,
-      PERMISSION.OWNER_GUIDE_READ,
+      PERMISSION.HAPPY_CUSTOMER_READ,
     ),
     canUpdateOwnerGuideSettings: canUpdateOwnerGuide,
   };

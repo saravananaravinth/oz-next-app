@@ -7,6 +7,7 @@ export {
   dealershipApplicationSubmitResponseSchema,
   dealershipInterestFormSchema,
   dealershipLocationModeSchema,
+  dealershipSubmissionIdempotencyKeySchema,
   publicDealershipTokenSchema,
   type DealershipApplicationSubmitRequest,
   type DealershipApplicationSubmitResponse,

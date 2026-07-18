@@ -91,6 +91,11 @@ type StepMeta = Readonly<{
   description: string;
 }>;
 
+type SubmissionIntent = Readonly<{
+  idempotencyKey: string;
+  serializedApplication: string;
+}>;
+
 const FORM_ID = "public-dealership-application-form";
 const GEOLOCATION_TIMEOUT_MS = 15_000;
 const GEO_PERMISSION_DENIED = 1;
@@ -165,7 +170,7 @@ const RUNNING_EV_BUSINESS_OPTIONS = [
   {
     value: "YES",
     label: "Yes",
-    description: "I currently operate an EV-related business.",
+    description: "I currently operate an automobile related business.",
   },
   {
     value: "NO",
@@ -195,7 +200,7 @@ const STATE_COPY: Record<
   idle: {
     title: "Dealership application",
     description:
-      "Complete the application to help Ozotec EV evaluate your dealership request.",
+      "Apply securely from an Ozotec campaign, QR code, social post, website, or private invitation.",
   },
   locating: {
     title: "Finding your location",
@@ -213,9 +218,9 @@ const STATE_COPY: Record<
       "Thank you. Ozotec EV has received your dealership application for evaluation.",
   },
   "invalid-link": {
-    title: "Invalid application link",
+    title: "Application link unavailable",
     description:
-      "This dealership application link is invalid. Please use the latest link sent by Ozotec EV.",
+      "This dealership application link is invalid, inactive, or expired. Open the original Ozotec campaign or invitation again.",
   },
   "unsupported-browser": {
     title: "Location is not supported",
@@ -327,6 +332,22 @@ function getCurrentPosition(): Promise<GeolocationPosition> {
   });
 }
 
+function retryAfterDescription(seconds: number | undefined): string {
+  if (seconds === undefined || !Number.isFinite(seconds) || seconds <= 0) {
+    return "Please wait briefly before trying to submit this application again.";
+  }
+
+  const roundedSeconds = Math.max(1, Math.ceil(seconds));
+
+  if (roundedSeconds < 60) {
+    return `Please wait approximately ${String(roundedSeconds)} seconds before trying again.`;
+  }
+
+  const roundedMinutes = Math.ceil(roundedSeconds / 60);
+
+  return `Please wait approximately ${String(roundedMinutes)} minute${roundedMinutes === 1 ? "" : "s"} before trying again.`;
+}
+
 function errorFromUnknown(error: unknown): UserFacingError {
   if (isApiHttpError(error)) {
     const code = error.code.toUpperCase();
@@ -336,27 +357,38 @@ function errorFromUnknown(error: unknown): UserFacingError {
 
     if (
       error.status === 404 ||
-      error.status === 409 ||
+      error.status === 410 ||
       code.includes("EXPIRED") ||
       code.includes("USED") ||
       code.includes("NOT_FOUND")
     ) {
       baseError = {
-        title: "Link expired or already used",
+        title: "Application link unavailable",
         description:
-          "This dealership application link is no longer active. Please use the latest link from Ozotec EV.",
+          "This dealership application link is invalid, inactive, expired, or already completed. Open the original Ozotec campaign or invitation again.",
+      };
+    } else if (error.status === 409) {
+      baseError = {
+        title: "Submission details changed",
+        description:
+          "A previous attempt used a different version of these details. Review the application and submit again to start a fresh protected attempt.",
+      };
+    } else if (error.status === 400 || error.status === 422) {
+      baseError = {
+        title: "Some details were rejected",
+        description:
+          "Review all application fields and submit again. Your entered details remain on this page.",
       };
     } else if (error.status === 429) {
       baseError = {
         title: "Too many submission attempts",
-        description:
-          "Please wait briefly before trying to submit this application again.",
+        description: retryAfterDescription(error.retryAfterSeconds),
       };
     } else if (error.status >= 500) {
       baseError = {
         title: "Service temporarily unavailable",
         description:
-          "The application service is temporarily unavailable. Your entered details remain on this page; try again shortly.",
+          "The application service is temporarily unavailable. Your entered details remain on this page; retry with the same details shortly.",
       };
     } else {
       baseError = {
@@ -437,22 +469,15 @@ function truncateText(value: string, maxLength: number): string {
   return `${normalized.slice(0, Math.max(0, maxLength - 1)).trimEnd()}…`;
 }
 
-function buildNotes(
-  values: DealershipInterestFormValues,
-  location: CapturedLocation | null,
-): string {
+function buildNotes(values: DealershipInterestFormValues): string {
   const parts = [
-    "Dealership intake details",
+    "Dealership qualification details",
     `Investment timeline: ${labelFor(INVESTMENT_TIMELINE_OPTIONS, values.investmentTimeline)}`,
     `Prepared investment: ${labelFor(INVESTMENT_BUDGET_OPTIONS, values.investmentBudget)}`,
-    `Already running EV business: ${labelFor(RUNNING_EV_BUSINESS_OPTIONS, values.alreadyRunningEvBusiness)}`,
-    `Location method: ${labelFor(LOCATION_MODE_OPTIONS, values.locationMode)}`,
-    location?.accuracyMeters === undefined
-      ? null
-      : `GPS accuracy: ${String(Math.round(location.accuracyMeters))} meters`,
+    `Existing automobile or EV business: ${labelFor(RUNNING_EV_BUSINESS_OPTIONS, values.alreadyRunningEvBusiness)}`,
     optionalNonEmpty(values.notes) === undefined
       ? null
-      : `Additional notes: ${truncateText(values.notes, 1_000)}`,
+      : `Additional notes: ${truncateText(values.notes, 1_200)}`,
   ].filter((value): value is string => value !== null);
 
   return truncateText(parts.join("\n"), MAX_NOTES_LENGTH);
@@ -468,7 +493,7 @@ function toSubmitRequest(
     ...(businessName === undefined ? {} : { businessName }),
     mobileNumber: `${INDIA_DIAL_CODE}${values.mobileNumber.trim()}`,
     email: values.email.trim(),
-    notes: buildNotes(values, location),
+    notes: buildNotes(values),
   } as const;
 
   if (values.locationMode === "GPS") {
@@ -579,6 +604,75 @@ function ChoiceCards<TValue extends string>({
         );
       })}
     </RadioGroup>
+  );
+}
+
+function ReviewItem({
+  label,
+  value,
+}: Readonly<{ label: string; value: string }>): React.ReactElement {
+  return (
+    <div className="grid gap-1 rounded-xl border border-border/70 bg-background/70 px-3 py-2.5">
+      <dt className="text-caption text-muted-readable">{label}</dt>
+      <dd className="break-words text-body-sm text-foreground [font-weight:var(--typography-emphasis-weight)]">
+        {value}
+      </dd>
+    </div>
+  );
+}
+
+function ApplicationReview({
+  values,
+}: Readonly<{ values: DealershipInterestFormValues }>): React.ReactElement {
+  const businessName = optionalNonEmpty(values.businessName) ?? "Not provided";
+  const mobileNumber =
+    values.mobileNumber.trim().length === INDIA_MOBILE_MAX_LENGTH
+      ? `${INDIA_DIAL_CODE} ${values.mobileNumber.trim()}`
+      : "Not provided";
+
+  return (
+    <section
+      aria-labelledby="dealership-review-title"
+      className="grid gap-4 rounded-2xl border border-border/70 bg-muted/25 p-4 sm:p-5"
+    >
+      <div className="grid gap-1">
+        <h2 id="dealership-review-title" className="text-card-title">
+          Review your application
+        </h2>
+        <p className="text-body-sm leading-relaxed text-muted-readable">
+          Confirm these details before submission. Use Back to make changes.
+        </p>
+      </div>
+
+      <dl className="grid gap-3 sm:grid-cols-2">
+        <ReviewItem label="Applicant" value={values.applicantName.trim()} />
+        <ReviewItem label="Business" value={businessName} />
+        <ReviewItem label="Mobile" value={mobileNumber} />
+        <ReviewItem label="Email" value={values.email.trim()} />
+        <ReviewItem
+          label="Investment timeline"
+          value={labelFor(
+            INVESTMENT_TIMELINE_OPTIONS,
+            values.investmentTimeline,
+          )}
+        />
+        <ReviewItem
+          label="Prepared investment"
+          value={labelFor(INVESTMENT_BUDGET_OPTIONS, values.investmentBudget)}
+        />
+        <ReviewItem
+          label="Existing automobile or EV business"
+          value={labelFor(
+            RUNNING_EV_BUSINESS_OPTIONS,
+            values.alreadyRunningEvBusiness,
+          )}
+        />
+        <ReviewItem
+          label="Location method"
+          value={labelFor(LOCATION_MODE_OPTIONS, values.locationMode)}
+        />
+      </dl>
+    </section>
   );
 }
 
@@ -711,7 +805,7 @@ export function PublicDealershipApplicationPage(): React.ReactElement {
   const mountedRef = React.useRef(false);
   const submissionLockRef = React.useRef(false);
   const locationLockRef = React.useRef(false);
-  const idempotencyKeyRef = React.useRef<string | null>(null);
+  const submissionIntentRef = React.useRef<SubmissionIntent | null>(null);
   const abortControllerRef = React.useRef<AbortController | null>(null);
 
   const form = useForm<DealershipInterestFormValues>({
@@ -889,20 +983,26 @@ export function PublicDealershipApplicationPage(): React.ReactElement {
         return;
       }
 
-      const idempotencyKey =
-        idempotencyKeyRef.current ?? createIdempotencyKey("dealership");
-      idempotencyKeyRef.current = idempotencyKey;
+      const application = toSubmitRequest(values, resolvedLocation);
+      const serializedApplication = JSON.stringify(application);
+      const existingIntent = submissionIntentRef.current;
+      const submissionIntent =
+        existingIntent?.serializedApplication === serializedApplication
+          ? existingIntent
+          : {
+              idempotencyKey: createIdempotencyKey("dealership"),
+              serializedApplication,
+            };
+      submissionIntentRef.current = submissionIntent;
 
       const controller = new AbortController();
       abortControllerRef.current?.abort();
       abortControllerRef.current = controller;
       setSubmitState("submitting");
 
-      const application = toSubmitRequest(values, resolvedLocation);
-
       await submitPublicDealershipApplication({
         token: parsedToken,
-        idempotencyKey,
+        idempotencyKey: submissionIntent.idempotencyKey,
         application,
         signal: controller.signal,
       });
@@ -916,6 +1016,10 @@ export function PublicDealershipApplicationPage(): React.ReactElement {
     } catch (caught) {
       if (caught instanceof DOMException && caught.name === "AbortError") {
         return;
+      }
+
+      if (isApiHttpError(caught) && caught.status === 409) {
+        submissionIntentRef.current = null;
       }
 
       setSubmitState("api-error");
@@ -938,6 +1042,7 @@ export function PublicDealershipApplicationPage(): React.ReactElement {
   }
 
   const currentStep = STEP_META[step] ?? STEP_META[0];
+  const reviewValues = step === FINAL_STEP_INDEX ? form.getValues() : null;
   const footerActions = (
     <div className="mx-auto grid w-full max-w-3xl gap-2.5">
       <div className="grid grid-cols-2 gap-3">
@@ -996,8 +1101,8 @@ export function PublicDealershipApplicationPage(): React.ReactElement {
       </div>
 
       <p className="text-center text-[0.6875rem] leading-relaxed text-muted-readable sm:text-caption">
-        Review each detail before submission. This link may expire or be limited
-        to one completed application.
+        Safe retry protection prevents duplicate applications. Public campaign
+        links may remain active; private invitation links can expire.
       </p>
     </div>
   );
@@ -1298,6 +1403,10 @@ export function PublicDealershipApplicationPage(): React.ReactElement {
 
                 {step === 3 ? (
                   <>
+                    {reviewValues === null ? null : (
+                      <ApplicationReview values={reviewValues} />
+                    )}
+
                     <FieldSet disabled={disabled}>
                       <FieldLegend>
                         How would you like to provide the location?

@@ -24,6 +24,16 @@ function cleanQueryKeyPart(value: string | null | undefined): string {
   return normalized.length > 0 ? normalized : EMPTY_SCOPE_VALUE;
 }
 
+function authorizationVersionKeyPart(value: number | null): string {
+  return value === null ? EMPTY_SCOPE_VALUE : String(value);
+}
+
+function customerLevelsKeyPart(values: readonly string[]): string {
+  return values.length === 0
+    ? EMPTY_SCOPE_VALUE
+    : [...values].sort((left, right) => left.localeCompare(right)).join(",");
+}
+
 export function erpActorScopeQueryKey(scope: ErpActorScope) {
   const input = erpActorScopeKeyInput(scope);
 
@@ -37,8 +47,10 @@ export function erpActorScopeQueryKey(scope: ErpActorScope) {
     cleanQueryKeyPart(input.financierId),
     cleanQueryKeyPart(input.financierOrgUnitId),
     cleanQueryKeyPart(input.customerId),
+    customerLevelsKeyPart(input.customerLevels),
     cleanQueryKeyPart(input.userId),
     cleanQueryKeyPart(input.sessionId),
+    authorizationVersionKeyPart(input.authorizationVersion),
   ] as const;
 }
 

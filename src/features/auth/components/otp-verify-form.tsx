@@ -2,7 +2,14 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useEffect, useId, useMemo, useState, type ReactNode } from "react";
+import {
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { Controller, useForm, useWatch } from "react-hook-form";
 
 import { Button } from "@/components/ui/button";
@@ -20,6 +27,7 @@ import {
 } from "@/components/ui/input-otp";
 import { Spinner } from "@/components/ui/spinner";
 import { useToast } from "@/hooks/use-toast";
+import { idempotencyKey as createIdempotencyKey } from "@/lib/uuid";
 
 import { useLoginStart } from "../hooks/use-login-start";
 import { useLoginVerify } from "../hooks/use-login-verify";
@@ -39,6 +47,11 @@ const DEFAULT_OTP_LENGTH = 6;
 const MIN_OTP_LENGTH = 4;
 const MAX_OTP_LENGTH = 8;
 const OTP_DIGIT_PATTERN = /\D/gu;
+
+type LoginResendIntent = Readonly<{
+  identifier: string;
+  idempotencyKey: string;
+}>;
 
 type OtpVerifyFormProps = Readonly<{
   identifier: string;
@@ -130,6 +143,7 @@ function OtpVerifyFormInner(props: OtpVerifyFormProps) {
   const toast = useToast();
   const verifyMutation = useLoginVerify();
   const resendMutation = useLoginStart();
+  const resendIntentRef = useRef<LoginResendIntent | null>(null);
   const expectedLength = clampOtpLength(props.expectedLength);
   const attemptsRemaining = normalizeAttemptsRemaining(props.attemptsRemaining);
   const [formError, setFormError] = useState<UserFacingAuthError | null>(null);
@@ -250,10 +264,23 @@ function OtpVerifyFormInner(props: OtpVerifyFormProps) {
     setFormError(null);
 
     try {
+      const existingIntent = resendIntentRef.current;
+      const resendIntent =
+        existingIntent?.identifier === props.identifier
+          ? existingIntent
+          : {
+              identifier: props.identifier,
+              idempotencyKey: createIdempotencyKey("auth-login-resend"),
+            };
+
+      resendIntentRef.current = resendIntent;
+
       const response = await resendMutation.mutateAsync({
         identifier: props.identifier,
+        idempotencyKey: resendIntent.idempotencyKey,
       });
 
+      resendIntentRef.current = null;
       form.reset({ code: "" });
       props.onResendSuccess(response);
 

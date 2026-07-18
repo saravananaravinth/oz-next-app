@@ -40,6 +40,11 @@ export const clientIdSchema = z
   .regex(SAFE_SLUG_RE);
 export const projectSchema = z.enum(["ERP", "CHARZO", "CONZO", "PUBLIC"]);
 export const principalKindSchema = z.enum(["AUTH_USER", "CUSTOMER"]);
+export const authCustomerLevelSchema = z.enum(["HAPPY_CUSTOMER"]);
+export const authRefreshTokenTransportSchema = z.enum([
+  "BODY",
+  "HTTP_ONLY_COOKIE",
+]);
 export const authOtpDeliveryChannelSchema = z.enum([
   "EMAIL",
   "SMS",
@@ -56,6 +61,12 @@ export const actorKindSchema = z.enum([
 ]);
 
 const safeTextSchema = z.string().trim().min(1).max(512);
+export const deviceFingerprintSchema = z
+  .string()
+  .trim()
+  .min(16)
+  .max(128)
+  .regex(SAFE_SLUG_RE);
 const nullableUuidSchema = uuidSchema.nullable();
 const optionalNullableUuidSchema = uuidSchema.nullable().optional();
 const permissionStringSchema = z
@@ -144,16 +155,42 @@ export const authLoginOtpRequestBodySchema = z
   .object({
     clientId: clientIdSchema,
     tenantId: uuidSchema.optional(),
+    principalKind: principalKindSchema,
     identifier: loginIdentifierSchema,
     preferredChannel: authOtpDeliveryChannelSchema.optional(),
     idempotencyKey: idempotencyKeySchema.optional(),
   })
-  .strict();
+  .strict()
+  .superRefine((value, context) => {
+    if (
+      value.identifier.type === "EMAIL" &&
+      value.preferredChannel !== undefined &&
+      value.preferredChannel !== "EMAIL"
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["preferredChannel"],
+        message: "EMAIL identifiers can only use EMAIL delivery.",
+      });
+    }
+
+    if (
+      value.identifier.type === "PHONE" &&
+      value.preferredChannel === "EMAIL"
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["preferredChannel"],
+        message: "PHONE identifiers can only use SMS or WHATSAPP delivery.",
+      });
+    }
+  });
 
 export const loginStartRequestSchema = z
   .object({
     clientId: clientIdSchema,
     tenantId: uuidSchema.optional(),
+    principalKind: principalKindSchema.optional(),
     identifier: z
       .union([z.string().trim().min(3).max(320), loginIdentifierSchema])
       .optional(),
@@ -175,7 +212,7 @@ export const loginStartRequestSchema = z
       });
     }
   })
-  .transform((value): z.infer<typeof authLoginOtpRequestBodySchema> => {
+  .transform((value): z.input<typeof authLoginOtpRequestBodySchema> => {
     const source = value.identifier ?? value.email;
     const identifier =
       typeof source === "string"
@@ -184,6 +221,7 @@ export const loginStartRequestSchema = z
 
     return {
       clientId: value.clientId,
+      principalKind: value.principalKind ?? "AUTH_USER",
       identifier,
       ...(value.tenantId !== undefined ? { tenantId: value.tenantId } : {}),
       ...(value.preferredChannel !== undefined
@@ -193,7 +231,8 @@ export const loginStartRequestSchema = z
         ? { idempotencyKey: value.idempotencyKey }
         : {}),
     };
-  });
+  })
+  .pipe(authLoginOtpRequestBodySchema);
 
 const legacyLoginStartResponseSchema = z
   .object({
@@ -271,7 +310,7 @@ export const loginVerifyRequestSchema = z
       .string()
       .trim()
       .regex(/^\d{4,8}$/u),
-    deviceFingerprint: safeTextSchema.nullable().optional(),
+    deviceFingerprint: deviceFingerprintSchema.nullable().optional(),
   })
   .strict()
   .transform((value) => ({
@@ -292,6 +331,12 @@ const userSummarySchema = z
   })
   .loose();
 
+const authorizationVersionSchema = z.number().int().nonnegative().nullable();
+const customerLevelsSchema = z
+  .array(authCustomerLevelSchema)
+  .max(16)
+  .readonly();
+
 const authTokenSessionViewSchema = z
   .object({
     sessionId: uuidSchema,
@@ -299,8 +344,10 @@ const authTokenSessionViewSchema = z
     tenantId: nullableUuidSchema,
     userId: nullableUuidSchema,
     customerId: nullableUuidSchema,
+    customerLevels: customerLevelsSchema,
     expiresAt: isoDateTimeStringSchema,
     clientId: clientIdSchema,
+    authorizationVersion: authorizationVersionSchema,
   })
   .strict();
 
@@ -311,27 +358,46 @@ const authTokenActorViewSchema = z
     tenantId: nullableUuidSchema,
     userId: nullableUuidSchema,
     customerId: nullableUuidSchema,
+    customerLevels: customerLevelsSchema,
     clientId: clientIdSchema,
     roles: z.array(roleNameSchema).readonly(),
     permissions: z.array(permissionStringSchema).readonly(),
+    authorizationVersion: authorizationVersionSchema,
   })
   .strict();
 
-const backendAuthTokenPairResultSchema = z
+const backendAuthTokenPairSharedShape = {
+  tokenType: z.literal("Bearer"),
+  accessToken: jwtTokenSchema,
+  expiresInSeconds: z.number().int().min(1).max(MAX_ACCESS_TTL_SECONDS),
+  refreshExpiresInSeconds: z.number().int().min(1).max(MAX_REFRESH_TTL_SECONDS),
+  session: authTokenSessionViewSchema,
+  actor: authTokenActorViewSchema,
+} as const;
+
+const backendBodyAuthTokenPairResultSchema = z
   .object({
-    tokenType: z.literal("Bearer"),
-    accessToken: jwtTokenSchema,
-    expiresInSeconds: z.number().int().min(1).max(MAX_ACCESS_TTL_SECONDS),
+    ...backendAuthTokenPairSharedShape,
     refreshToken: jwtTokenSchema,
-    refreshExpiresInSeconds: z
-      .number()
-      .int()
-      .min(1)
-      .max(MAX_REFRESH_TTL_SECONDS),
-    session: authTokenSessionViewSchema,
-    actor: authTokenActorViewSchema,
+    refreshTokenTransport: z.literal("BODY"),
   })
   .strict();
+
+const backendCookieAuthTokenPairResultSchema = z
+  .object({
+    ...backendAuthTokenPairSharedShape,
+    refreshToken: z.null(),
+    refreshTokenTransport: z.literal("HTTP_ONLY_COOKIE"),
+  })
+  .strict();
+
+const backendAuthTokenPairResultSchema = z.discriminatedUnion(
+  "refreshTokenTransport",
+  [
+    backendBodyAuthTokenPairResultSchema,
+    backendCookieAuthTokenPairResultSchema,
+  ],
+);
 
 const legacyCamelAuthTokenResponseSchema = z
   .object({
@@ -347,31 +413,62 @@ const snakeAuthTokenResponseSchema = z
   .object({
     access_token: jwtTokenSchema,
     refresh_token: jwtTokenSchema,
+    refresh_token_transport: z.literal("BODY").optional(),
     token_type: z.literal("Bearer"),
     expires_in: z.number().int().min(1).max(MAX_ACCESS_TTL_SECONDS),
     refresh_expires_at: isoDateTimeStringSchema.optional(),
     user: userSummarySchema.optional(),
     permissions: z.array(permissionStringSchema).readonly().default([]),
+    customer_levels: customerLevelsSchema.default([]),
+    authorization_version: authorizationVersionSchema.optional(),
     session: authTokenSessionViewSchema.optional(),
     actor: authTokenActorViewSchema.optional(),
   })
   .loose();
 
 type UserSummary = z.infer<typeof userSummarySchema>;
-type AuthTokenSessionView = z.infer<typeof authTokenSessionViewSchema>;
 type AuthTokenActorView = z.infer<typeof authTokenActorViewSchema>;
 
-type NormalizedAuthTokenResponse = Readonly<{
-  access_token: string;
-  refresh_token: string;
-  token_type: "Bearer";
-  expires_in: number;
-  refresh_expires_at?: string | undefined;
-  user?: UserSummary | undefined;
-  permissions: readonly string[];
-  session?: AuthTokenSessionView | undefined;
-  actor?: AuthTokenActorView | undefined;
-}>;
+const normalizedAuthTokenSharedShape = {
+  access_token: jwtTokenSchema,
+  token_type: z.literal("Bearer"),
+  expires_in: z.number().int().min(1).max(MAX_ACCESS_TTL_SECONDS),
+  refresh_expires_at: isoDateTimeStringSchema.optional(),
+  user: userSummarySchema.optional(),
+  permissions: z.array(permissionStringSchema).readonly(),
+  customer_levels: customerLevelsSchema,
+  authorization_version: authorizationVersionSchema,
+  session: authTokenSessionViewSchema.optional(),
+  actor: authTokenActorViewSchema.optional(),
+} as const;
+
+const normalizedBodyAuthTokenResponseSchema = z
+  .object({
+    ...normalizedAuthTokenSharedShape,
+    refresh_token: jwtTokenSchema,
+    refresh_token_transport: z.literal("BODY"),
+  })
+  .strict();
+
+const normalizedCookieAuthTokenResponseSchema = z
+  .object({
+    ...normalizedAuthTokenSharedShape,
+    refresh_token: z.null(),
+    refresh_token_transport: z.literal("HTTP_ONLY_COOKIE"),
+  })
+  .strict();
+
+const normalizedAuthTokenResponseSchema = z.discriminatedUnion(
+  "refresh_token_transport",
+  [
+    normalizedBodyAuthTokenResponseSchema,
+    normalizedCookieAuthTokenResponseSchema,
+  ],
+);
+
+type NormalizedAuthTokenResponse = z.infer<
+  typeof normalizedAuthTokenResponseSchema
+>;
 
 function normalizedUserFromTokenActor(
   actor: AuthTokenActorView,
@@ -388,56 +485,92 @@ function normalizedUserFromTokenActor(
   };
 }
 
-export const authTokenResponseSchema = z.union([
-  backendAuthTokenPairResultSchema.transform(
-    (value): NormalizedAuthTokenResponse => ({
-      access_token: value.accessToken,
-      refresh_token: value.refreshToken,
-      token_type: value.tokenType,
-      expires_in: value.expiresInSeconds,
-      refresh_expires_at: secondsUntilIso(value.refreshExpiresInSeconds),
-      permissions: value.actor.permissions,
-      ...(normalizedUserFromTokenActor(value.actor) !== undefined
-        ? { user: normalizedUserFromTokenActor(value.actor) }
-        : {}),
-      session: value.session,
-      actor: value.actor,
-    }),
-  ),
-  legacyCamelAuthTokenResponseSchema.transform(
-    (value): NormalizedAuthTokenResponse => ({
-      access_token: value.accessToken,
-      refresh_token: value.refreshToken,
-      token_type: value.tokenType,
-      expires_in: value.expiresIn,
-      ...(value.refreshExpiresAt !== undefined
-        ? { refresh_expires_at: value.refreshExpiresAt }
-        : {}),
-      permissions: [],
-    }),
-  ),
-  snakeAuthTokenResponseSchema.transform(
-    (value): NormalizedAuthTokenResponse => ({
-      access_token: value.access_token,
-      refresh_token: value.refresh_token,
-      token_type: value.token_type,
-      expires_in: value.expires_in,
-      ...(value.refresh_expires_at !== undefined
-        ? { refresh_expires_at: value.refresh_expires_at }
-        : {}),
-      ...(value.user !== undefined ? { user: value.user } : {}),
-      permissions: value.permissions,
-      ...(value.session !== undefined ? { session: value.session } : {}),
-      ...(value.actor !== undefined ? { actor: value.actor } : {}),
-    }),
-  ),
-]);
+export const authTokenResponseSchema = z
+  .union([
+    backendAuthTokenPairResultSchema.transform(
+      (value): NormalizedAuthTokenResponse => {
+        const normalizedUser = normalizedUserFromTokenActor(value.actor);
+        const shared = {
+          access_token: value.accessToken,
+          token_type: value.tokenType,
+          expires_in: value.expiresInSeconds,
+          refresh_expires_at: secondsUntilIso(value.refreshExpiresInSeconds),
+          permissions: value.actor.permissions,
+          customer_levels: value.actor.customerLevels,
+          authorization_version: value.actor.authorizationVersion,
+          ...(normalizedUser !== undefined ? { user: normalizedUser } : {}),
+          session: value.session,
+          actor: value.actor,
+        } as const;
 
-export const authSessionResponseSchema = authTokenResponseSchema.transform(
+        return value.refreshTokenTransport === "BODY"
+          ? {
+              ...shared,
+              refresh_token: value.refreshToken,
+              refresh_token_transport: value.refreshTokenTransport,
+            }
+          : {
+              ...shared,
+              refresh_token: null,
+              refresh_token_transport: value.refreshTokenTransport,
+            };
+      },
+    ),
+    legacyCamelAuthTokenResponseSchema.transform(
+      (value): z.infer<typeof normalizedBodyAuthTokenResponseSchema> => ({
+        access_token: value.accessToken,
+        refresh_token: value.refreshToken,
+        refresh_token_transport: "BODY",
+        token_type: value.tokenType,
+        expires_in: value.expiresIn,
+        ...(value.refreshExpiresAt !== undefined
+          ? { refresh_expires_at: value.refreshExpiresAt }
+          : {}),
+        permissions: [],
+        customer_levels: [],
+        authorization_version: null,
+      }),
+    ),
+    snakeAuthTokenResponseSchema.transform(
+      (value): z.infer<typeof normalizedBodyAuthTokenResponseSchema> => ({
+        access_token: value.access_token,
+        refresh_token: value.refresh_token,
+        refresh_token_transport: "BODY",
+        token_type: value.token_type,
+        expires_in: value.expires_in,
+        ...(value.refresh_expires_at !== undefined
+          ? { refresh_expires_at: value.refresh_expires_at }
+          : {}),
+        ...(value.user !== undefined ? { user: value.user } : {}),
+        permissions: value.permissions,
+        customer_levels:
+          value.actor?.customerLevels ??
+          value.session?.customerLevels ??
+          value.customer_levels,
+        authorization_version:
+          value.actor?.authorizationVersion ??
+          value.session?.authorizationVersion ??
+          value.authorization_version ??
+          null,
+        ...(value.session !== undefined ? { session: value.session } : {}),
+        ...(value.actor !== undefined ? { actor: value.actor } : {}),
+      }),
+    ),
+  ])
+  .pipe(normalizedAuthTokenResponseSchema);
+
+export const authBodyTokenResponseSchema = authTokenResponseSchema.pipe(
+  normalizedBodyAuthTokenResponseSchema,
+);
+
+export const authSessionResponseSchema = authBodyTokenResponseSchema.transform(
   (value) => ({
     authenticated: true as const,
     token_type: value.token_type,
     expires_in: value.expires_in,
+    refresh_token_transport: value.refresh_token_transport,
+    customer_levels: value.customer_levels,
+    authorization_version: value.authorization_version,
     ...(value.refresh_expires_at !== undefined
       ? { refresh_expires_at: value.refresh_expires_at }
       : {}),
@@ -450,7 +583,7 @@ export const refreshRequestSchema = z
   .object({
     clientId: clientIdSchema,
     refreshToken: jwtTokenSchema,
-    deviceFingerprint: safeTextSchema.nullable().optional(),
+    deviceFingerprint: deviceFingerprintSchema.nullable().optional(),
   })
   .strict()
   .transform((value) => ({
@@ -543,10 +676,12 @@ export const authActorViewSchema = z
     roles: z.array(roleNameSchema).readonly(),
     permissions: z.array(permissionStringSchema).readonly(),
     customerId: nullableUuidSchema,
+    customerLevels: customerLevelsSchema,
     dealerOrgUnitId: nullableUuidSchema,
     financierId: nullableUuidSchema,
     financierOrgUnitId: nullableUuidSchema,
     sessionId: uuidSchema.nullable(),
+    authorizationVersion: authorizationVersionSchema,
     requestId: z.string().trim().min(1).max(128),
     correlationId: z.string().trim().min(1).max(128),
   })
@@ -599,7 +734,18 @@ export const authCustomerProfileSchema = z
     primaryPhoneId: uuidSchema.nullable(),
     preferredMsgChannel: z.string().trim().min(1).max(64).nullable(),
     preferredMsgLanguage: z.string().trim().min(1).max(64).nullable(),
+    levels: customerLevelsSchema,
     createdAt: isoDateTimeStringSchema,
+  })
+  .strict();
+
+export const authUserPermissionResolutionSchema = z
+  .object({
+    rolePermissions: z.array(permissionStringSchema).readonly(),
+    directAllows: z.array(permissionStringSchema).readonly(),
+    directDenies: z.array(permissionStringSchema).readonly(),
+    effectivePermissions: z.array(permissionStringSchema).readonly(),
+    usesRoleFallback: z.boolean(),
   })
   .strict();
 
@@ -612,6 +758,7 @@ export const authMeResultSchema = z
     roles: z.array(authRoleGrantSchema).readonly(),
     tenants: z.array(authTenantMembershipSchema).default([]),
     effectivePermissions: z.array(permissionStringSchema).readonly(),
+    permissionResolution: authUserPermissionResolutionSchema.nullable(),
   })
   .strict();
 
@@ -724,6 +871,10 @@ export const meResponseSchema = z.union([
 
 export type Project = z.infer<typeof projectSchema>;
 export type PrincipalKind = z.infer<typeof principalKindSchema>;
+export type AuthCustomerLevel = z.infer<typeof authCustomerLevelSchema>;
+export type AuthRefreshTokenTransport = z.infer<
+  typeof authRefreshTokenTransportSchema
+>;
 export type AuthOtpDeliveryChannel = z.infer<
   typeof authOtpDeliveryChannelSchema
 >;
@@ -732,6 +883,7 @@ export type LoginStartRequest = z.infer<typeof loginStartRequestSchema>;
 export type LoginStartResponse = z.infer<typeof loginStartResponseSchema>;
 export type LoginVerifyRequest = z.infer<typeof loginVerifyRequestSchema>;
 export type AuthTokenResponse = z.infer<typeof authTokenResponseSchema>;
+export type AuthBodyTokenResponse = z.infer<typeof authBodyTokenResponseSchema>;
 export type AuthSessionResponse = z.infer<typeof authSessionResponseSchema>;
 export type RefreshRequest = z.infer<typeof refreshRequestSchema>;
 export type RefreshTokenRequest = z.infer<typeof refreshTokenRequestSchema>;
@@ -739,6 +891,9 @@ export type LogoutRequest = z.infer<typeof logoutRequestSchema>;
 export type LogoutTokenRequest = z.infer<typeof logoutTokenRequestSchema>;
 export type LogoutResponse = z.infer<typeof logoutResponseSchema>;
 export type TenantMembership = z.infer<typeof tenantMembershipSchema>;
+export type AuthUserPermissionResolution = z.infer<
+  typeof authUserPermissionResolutionSchema
+>;
 export type AuthMeResult = z.infer<typeof authMeResultSchema>;
 export type AuthSessionSummary = z.infer<typeof authSessionSummarySchema>;
 export type AuthPagination = z.infer<typeof authPaginationSchema>;

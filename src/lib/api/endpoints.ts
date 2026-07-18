@@ -22,10 +22,10 @@ export const AUTH_ENDPOINTS = {
 export const ENGAGEMENT_ENDPOINTS = {
   dealerBase: `${ERP_PREFIX}/engagement/dealer`,
   dealerDashboard: `${ERP_PREFIX}/engagement/dealer/dashboard`,
-  ownerGuides: `${ERP_PREFIX}/engagement/dealer/owner-guides`,
-  ownerGuide: (ownerGuideId: string) =>
-    `${ERP_PREFIX}/engagement/dealer/owner-guides/${encodeURIComponent(ownerGuideId)}` as const,
-  ownerGuideSettings: `${ERP_PREFIX}/engagement/dealer/owner-guide-settings`,
+  happyCustomers: `${ERP_PREFIX}/engagement/dealer/happy-customers`,
+  happyCustomer: (ownerGuideId: string) =>
+    `${ERP_PREFIX}/engagement/dealer/happy-customers/${encodeURIComponent(ownerGuideId)}` as const,
+  happyCustomerSettings: `${ERP_PREFIX}/engagement/dealer/happy-customer-settings`,
   warrantyDocumentDownload: (fileId: string) =>
     `${ERP_PREFIX}/engagement/dealer/warranty-documents/${encodeURIComponent(fileId)}/download` as const,
 } as const;

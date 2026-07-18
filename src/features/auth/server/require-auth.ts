@@ -2,12 +2,16 @@
 import "server-only";
 
 import type { Route } from "next";
-import { headers } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 
 import { AUTH_ENDPOINTS } from "@/lib/api/endpoints";
 import { isApiHttpError } from "@/lib/api/problem";
 import { meResponseSchema, type MeResponse } from "@/lib/api/schemas";
+import {
+  REFRESH_ATTEMPT_COOKIE,
+  REFRESH_ATTEMPT_COOKIE_VALUE,
+} from "@/lib/auth/session-cookies";
 import { HTTP_STATUS } from "@/lib/constants";
 import { logger } from "@/lib/logger";
 import { isSessionTokenExpired } from "@/server/auth/jwt-metadata";
@@ -29,7 +33,6 @@ const MAX_NEXT_PATH_LENGTH = 1_500;
 const ACCESS_TOKEN_EXPIRY_SKEW_SECONDS = 30;
 const SESSION_EXPIRED_STATUS = 419;
 const DELETE_CONTROL_CHARACTER_CODE = 127;
-
 const SAFE_REQUEST_ID_PATTERN = /^[A-Za-z0-9_.:/@-]{1,128}$/u;
 
 const UNSAFE_ENCODED_PATH_MARKERS = ["%00", "%2e", "%2f", "%5c"] as const;
@@ -39,6 +42,7 @@ type LoginReason = "unauthorized" | "session-expired";
 type AuthGateContext = Readonly<{
   requestId: string | null;
   nextPath: string;
+  refreshAttempted: boolean;
 }>;
 
 type TokenState = Readonly<{
@@ -129,11 +133,14 @@ function refreshRedirectPath(nextPath: string): Route {
 }
 
 async function authGateContext(): Promise<AuthGateContext> {
-  const headerStore = await headers();
+  const [headerStore, cookieStore] = await Promise.all([headers(), cookies()]);
 
   return {
     requestId: normalizeRequestId(headerStore.get(REQUEST_ID_HEADER)),
     nextPath: safeNextPath(headerStore.get(CURRENT_PATH_HEADER)),
+    refreshAttempted:
+      cookieStore.get(REFRESH_ATTEMPT_COOKIE)?.value ===
+      REFRESH_ATTEMPT_COOKIE_VALUE,
   };
 }
 
@@ -145,12 +152,8 @@ async function clearAuthCookiesBestEffort(): Promise<void> {
   }
 }
 
-function isUnauthenticatedError(error: unknown): boolean {
-  return (
-    isApiHttpError(error) &&
-    (error.status === HTTP_STATUS.UNAUTHORIZED ||
-      error.status === HTTP_STATUS.FORBIDDEN)
-  );
+function isUnauthorizedError(error: unknown): boolean {
+  return isApiHttpError(error) && error.status === HTTP_STATUS.UNAUTHORIZED;
 }
 
 function isSessionExpiredError(error: unknown): boolean {
@@ -250,7 +253,7 @@ export async function getAuthenticatedMe(): Promise<MeResponse | null> {
       accessToken,
     });
   } catch (error) {
-    if (isUnauthenticatedError(error) || isSessionExpiredError(error)) {
+    if (isUnauthorizedError(error) || isSessionExpiredError(error)) {
       return null;
     }
 
@@ -261,11 +264,15 @@ export async function getAuthenticatedMe(): Promise<MeResponse | null> {
 export async function requireAuthenticatedMe(): Promise<MeResponse> {
   const context = await authGateContext();
   const tokenState = await resolveTokenState();
+  const refreshRequired =
+    tokenState.accessToken === null || tokenState.accessTokenExpired;
 
-  if (
-    tokenState.refreshToken !== null &&
-    (tokenState.accessToken === null || tokenState.accessTokenExpired)
-  ) {
+  if (tokenState.refreshToken !== null && refreshRequired) {
+    if (context.refreshAttempted) {
+      await redirectToLogin("session-expired", context.nextPath);
+      throwIfRedirectReturned();
+    }
+
     redirectToRefreshBoundary(context.nextPath);
   }
 
@@ -276,8 +283,10 @@ export async function requireAuthenticatedMe(): Promise<MeResponse> {
     throwIfRedirectReturned();
   }
 
+  let me: MeResponse;
+
   try {
-    return await serverFetch(AUTH_ENDPOINTS.me, {
+    me = await serverFetch(AUTH_ENDPOINTS.me, {
       method: "GET",
       auth: true,
       refreshOnUnauthorized: false,
@@ -291,8 +300,8 @@ export async function requireAuthenticatedMe(): Promise<MeResponse> {
 
     if (
       refreshCookiePresent &&
-      isUnauthenticatedError(error) &&
-      (!accessCookiePresent || tokenState.accessTokenExpired)
+      isUnauthorizedError(error) &&
+      !context.refreshAttempted
     ) {
       logAuthGateFailure({
         context,
@@ -304,24 +313,6 @@ export async function requireAuthenticatedMe(): Promise<MeResponse> {
       });
 
       redirectToRefreshBoundary(context.nextPath);
-    }
-
-    if (
-      isUnauthenticatedError(error) &&
-      accessCookiePresent &&
-      !tokenState.accessTokenExpired
-    ) {
-      logAuthGateFailure({
-        context,
-        error,
-        accessCookiePresent,
-        accessTokenExpired: tokenState.accessTokenExpired,
-        refreshCookiePresent,
-        outcome: "login_redirect",
-      });
-
-      await redirectToLogin("unauthorized", context.nextPath);
-      throwIfRedirectReturned();
     }
 
     if (isSessionExpiredError(error)) {
@@ -338,7 +329,7 @@ export async function requireAuthenticatedMe(): Promise<MeResponse> {
       throwIfRedirectReturned();
     }
 
-    if (isUnauthenticatedError(error)) {
+    if (isUnauthorizedError(error)) {
       logAuthGateFailure({
         context,
         error,
@@ -363,4 +354,6 @@ export async function requireAuthenticatedMe(): Promise<MeResponse> {
 
     throw error;
   }
+
+  return me;
 }

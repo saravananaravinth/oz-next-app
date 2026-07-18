@@ -13,8 +13,11 @@ export type ActorQueryScope = Readonly<{
   orgUnitId?: string | null;
   dealerOrgUnitId?: string | null;
   financierId?: string | null;
+  financierOrgUnitId?: string | null;
   customerId?: string | null;
+  customerLevels?: readonly string[];
   sessionId?: string | null;
+  authorizationVersion?: number | null;
 }>;
 
 const EMPTY_SCOPE_VALUE = "none" as const;
@@ -43,6 +46,28 @@ function cleanScopeValue(value: string | null | undefined): string {
   return normalized.length > 0 ? normalized : EMPTY_SCOPE_VALUE;
 }
 
+function customerLevelsScopeValue(
+  values: readonly string[] | undefined,
+): string {
+  if (values === undefined || values.length === 0) {
+    return EMPTY_SCOPE_VALUE;
+  }
+
+  const normalized = [...new Set(values.map((value) => cleanScopeValue(value)))]
+    .filter((value) => value !== EMPTY_SCOPE_VALUE)
+    .sort((left, right) => left.localeCompare(right));
+
+  return normalized.length > 0 ? normalized.join(",") : EMPTY_SCOPE_VALUE;
+}
+
+function authorizationVersionScopeValue(
+  value: number | null | undefined,
+): string {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0
+    ? String(value)
+    : EMPTY_SCOPE_VALUE;
+}
+
 export function actorScopeKey(scope: ActorQueryScope | null | undefined) {
   return [
     "scope",
@@ -52,9 +77,12 @@ export function actorScopeKey(scope: ActorQueryScope | null | undefined) {
     cleanScopeValue(scope?.orgUnitId),
     cleanScopeValue(scope?.dealerOrgUnitId),
     cleanScopeValue(scope?.financierId),
+    cleanScopeValue(scope?.financierOrgUnitId),
     cleanScopeValue(scope?.customerId),
+    customerLevelsScopeValue(scope?.customerLevels),
     cleanScopeValue(scope?.userId),
     cleanScopeValue(scope?.sessionId),
+    authorizationVersionScopeValue(scope?.authorizationVersion),
   ] as const;
 }
 

@@ -15,6 +15,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { useToast } from "@/hooks/use-toast";
+import { idempotencyKey as createIdempotencyKey } from "@/lib/uuid";
 
 import { useLoginStart } from "../hooks/use-login-start";
 import {
@@ -36,6 +37,11 @@ type LoginStartFormProps = Readonly<{
   ) => void;
 }>;
 
+type LoginStartIntent = Readonly<{
+  identifier: string;
+  idempotencyKey: string;
+}>;
+
 function describedBy(
   input: Readonly<{ helpId: string; errorId: string; hasError: boolean }>,
 ): string {
@@ -48,6 +54,8 @@ export function LoginStartForm(props: LoginStartFormProps) {
   const identifierErrorId = useId();
   const toast = useToast();
   const [formError, setFormError] = useState<UserFacingAuthError | null>(null);
+  const [submissionIntent, setSubmissionIntent] =
+    useState<LoginStartIntent | null>(null);
   const mutation = useLoginStart();
   const defaultIdentifier = useMemo(
     () => props.initialIdentifier?.trim() ?? "",
@@ -78,7 +86,22 @@ export function LoginStartForm(props: LoginStartFormProps) {
 
     try {
       const identifier = values.identifier.trim();
-      const response = await mutation.mutateAsync({ identifier });
+      const nextSubmissionIntent =
+        submissionIntent?.identifier === identifier
+          ? submissionIntent
+          : {
+              identifier,
+              idempotencyKey: createIdempotencyKey("auth-login-start"),
+            };
+
+      setSubmissionIntent(nextSubmissionIntent);
+
+      const response = await mutation.mutateAsync({
+        identifier,
+        idempotencyKey: nextSubmissionIntent.idempotencyKey,
+      });
+
+      setSubmissionIntent(null);
 
       toast.success({
         title: "Verification code sent",
@@ -129,6 +152,8 @@ export function LoginStartForm(props: LoginStartFormProps) {
                 ref={field.ref}
                 value={field.value}
                 onChange={(event) => {
+                  setSubmissionIntent(null);
+
                   if (formError !== null) {
                     setFormError(null);
                   }
