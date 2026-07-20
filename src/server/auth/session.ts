@@ -8,7 +8,7 @@ import {
   deviceFingerprintSchema,
   jwtTokenSchema,
   type AuthBodyTokenResponse,
-} from "@/lib/api/schemas";
+} from "@/lib/api/contracts";
 import {
   ACCESS_SESSION_COOKIE,
   clampAccessMaxAge,
@@ -21,7 +21,7 @@ import {
   REFRESH_SESSION_COOKIE,
   refreshMaxAgeFromExpiresAt,
   SESSION_COOKIE_OPTIONS,
-} from "@/lib/auth/session-cookies";
+} from "@/server/auth/session-cookie-policy";
 import {
   hasSessionTokenType,
   type SessionTokenType,

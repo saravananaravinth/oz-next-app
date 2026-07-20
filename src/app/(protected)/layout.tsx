@@ -3,10 +3,10 @@ import "server-only";
 
 import type { ReactElement, ReactNode } from "react";
 
-import { SidebarWrapper } from "@/components/app-shell/sidebar-wrapper";
+import { SidebarWrapper } from "@/features/app-shell/ui/sidebar-wrapper";
 import { requireAuthenticatedMe } from "@/features/auth/server/require-auth";
-import { ErpActorScopeCacheBoundary } from "@/features/erp/shared/components/erp-actor-scope-cache-boundary";
-import { erpActorScopeFromMe } from "@/features/erp/shared/queries/erp-query-scope";
+import { ErpActorScopeCacheBoundary } from "@/features/erp-core/ui/erp-actor-scope-cache-boundary";
+import { erpActorScopeFromMe } from "@/features/erp-core/queries/erp-query-scope";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;

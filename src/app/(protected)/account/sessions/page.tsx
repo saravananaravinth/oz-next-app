@@ -3,9 +3,9 @@ import type { Metadata } from "next";
 import type { ReactElement } from "react";
 
 import { AuthSessionsPage } from "@/features/auth";
-import { listAuthSessionsAction } from "@/features/auth/server/auth-actions";
+import { listAuthSessionsAction } from "@/features/auth/actions/auth.actions";
 import { requireAuthenticatedMe } from "@/features/auth/server/require-auth";
-import { authListSessionsQuerySchema } from "@/lib/api/schemas";
+import { authListSessionsQuerySchema } from "@/lib/api/contracts";
 
 const PAGE_TITLE = "Active sessions";
 const PAGE_DESCRIPTION = "Review and revoke authenticated Ozotec ERP sessions.";

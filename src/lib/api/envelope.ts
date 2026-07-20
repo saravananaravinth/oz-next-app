@@ -7,7 +7,7 @@ import {
   type ProblemDetails,
   type RateLimitMetadata,
 } from "@/lib/api/problem";
-import { HDR, HTTP_STATUS } from "@/lib/constants";
+import { HDR, HTTP_STATUS } from "@/lib/api/http-contract";
 
 const MAX_RESPONSE_BODY_BYTES = 10 * 1024 * 1024;
 const MAX_VALIDATION_ISSUES = 8;
@@ -174,6 +174,10 @@ export function unwrapApiEnvelope<TData, TMeta = undefined>(
 
 export function unwrapApiPayload<T>(payload: unknown, schema: ZodType<T>): T {
   return unwrapApiEnvelope(payload, schema).data;
+}
+
+export function validateApiPayload<T>(payload: unknown, schema: ZodType<T>): T {
+  return parseWithSchema(payload, schema, "api_response_validation_failed");
 }
 
 function finiteHeaderInteger(value: string | null): number | undefined {

@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import type { ReactElement } from "react";
 
 import { requireAuthenticatedMe } from "@/features/auth/server/require-auth";
-import { WelcomeDashboard } from "@/features/dashboard/components/welcome-dashboard";
+import { WelcomeDashboard } from "@/features/dashboard/ui/welcome-dashboard";
 import {
   DealerDashboardPage,
   SuperAdminDealerContext,

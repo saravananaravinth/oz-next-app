@@ -4,16 +4,14 @@
 import { AlertTriangle, RotateCcw } from "lucide-react";
 import { useCallback, useMemo, type ReactElement } from "react";
 
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Button } from "@/components/ui/button";
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import { PublicDealerLeadShell } from "@/features/engagement/public-dealer-leads/public-dealer-lead-shell";
+  ContentFormActions,
+  ContentRoot,
+  ContentSection,
+  ContentStatus,
+} from "@/components/common/content-shell";
+import { Button } from "@/components/ui/button";
+import { PublicDealerLeadShell } from "@/features/engagement/dealer-lead-updates/ui/dealer-lead-shell";
 
 export type PublicDealerLeadErrorProps = Readonly<{
   error: Error & {
@@ -47,16 +45,16 @@ export default function PublicDealerLeadError({
   }, [reset]);
 
   const footerActions = (
-    <div className="mx-auto w-full max-w-xl">
+    <ContentFormActions className="mx-auto w-full max-w-xl border-0 bg-transparent p-0 shadow-none supports-[backdrop-filter]:bg-transparent">
       <Button
         type="button"
         onClick={handleReset}
-        className="h-12 w-full rounded-2xl"
+        className="min-h-11 w-full touch-manipulation sm:w-auto"
       >
-        <RotateCcw aria-hidden="true" className="size-4" />
+        <RotateCcw aria-hidden="true" />
         Try again
       </Button>
-    </div>
+    </ContentFormActions>
   );
 
   return (
@@ -65,51 +63,52 @@ export default function PublicDealerLeadError({
       mainLabelledBy="dealer-lead-error-title"
       mainClassName="items-center"
     >
-      <section className="w-full max-w-xl px-4 sm:px-0">
-        <Card className="overflow-hidden border-border/70 bg-card/95 shadow-xl shadow-foreground/5 supports-[backdrop-filter]:backdrop-blur-xl">
-          <CardHeader className="items-center gap-5 px-5 pt-7 text-center sm:px-8 sm:pt-9">
-            <span className="flex size-16 items-center justify-center rounded-3xl border border-destructive/20 bg-destructive/8 text-destructive shadow-xs">
-              <AlertTriangle aria-hidden="true" className="size-8" />
-            </span>
-            <div className="grid gap-2">
-              <p className="text-overline text-muted-readable">
-                Vehicle enquiry follow-up
-              </p>
-              <CardTitle
-                id="dealer-lead-error-title"
-                className="text-section-title text-balance"
-              >
-                Enquiry page could not be opened
-              </CardTitle>
-              <CardDescription className="mx-auto max-w-md text-body-sm text-pretty text-muted-readable">
-                Retry the secure page. No customer follow-up action was
-                submitted.
-              </CardDescription>
+      <ContentRoot
+        width="narrow"
+        density="compact"
+        className="px-3 py-8 sm:px-0 sm:py-6"
+      >
+        <ContentSection
+          className="border-destructive/20 bg-card/95 shadow-lg shadow-destructive/5"
+          title={
+            <h1 id="dealer-lead-error-title" className="text-section-title">
+              Enquiry page could not be opened
+            </h1>
+          }
+          description="Retry the secure page. No customer follow-up action was submitted."
+        >
+          <div className="grid gap-5">
+            <div className="flex justify-center">
+              <span className="flex size-14 items-center justify-center rounded-2xl border border-destructive/20 bg-destructive/8 text-destructive shadow-xs">
+                <AlertTriangle aria-hidden="true" className="size-7" />
+              </span>
             </div>
-          </CardHeader>
 
-          <CardContent className="px-5 pb-7 sm:px-8 sm:pb-9">
-            <Alert variant="destructive" role="alert">
-              <AlertTriangle aria-hidden="true" />
-              <AlertTitle>Page failed safely</AlertTitle>
-              <AlertDescription>
-                <p>
-                  The vehicle enquiry page could not render safely. Try again
-                  using the same link.
-                </p>
-                {errorReference === null ? null : (
-                  <p className="mt-1 text-caption">
-                    Reference:{" "}
-                    <code className="break-all text-tabular">
-                      {errorReference}
-                    </code>
+            <ContentStatus
+              variant="destructive"
+              role="alert"
+              icon={<AlertTriangle aria-hidden="true" />}
+              title="Page failed safely"
+              description={
+                <>
+                  <p>
+                    The vehicle enquiry page could not render safely. Try again
+                    using the same link.
                   </p>
-                )}
-              </AlertDescription>
-            </Alert>
-          </CardContent>
-        </Card>
-      </section>
+                  {errorReference === null ? null : (
+                    <p className="mt-2 text-caption">
+                      Reference:{" "}
+                      <code className="break-all text-tabular">
+                        {errorReference}
+                      </code>
+                    </p>
+                  )}
+                </>
+              }
+            />
+          </div>
+        </ContentSection>
+      </ContentRoot>
     </PublicDealerLeadShell>
   );
 }

@@ -7,22 +7,22 @@ import { redirect } from "next/navigation";
 
 import { AUTH_ENDPOINTS } from "@/lib/api/endpoints";
 import { isApiHttpError } from "@/lib/api/problem";
-import { meResponseSchema, type MeResponse } from "@/lib/api/schemas";
+import { meResponseSchema, type MeResponse } from "@/lib/api/contracts";
 import {
   REFRESH_ATTEMPT_COOKIE,
   REFRESH_ATTEMPT_COOKIE_VALUE,
-} from "@/lib/auth/session-cookies";
-import { HTTP_STATUS } from "@/lib/constants";
-import { logger } from "@/lib/logger";
+} from "@/server/auth/session-cookie-policy";
+import { HTTP_STATUS } from "@/lib/api/http-contract";
+import { logger } from "@/lib/observability/logger";
 import { isSessionTokenExpired } from "@/server/auth/jwt-metadata";
 import {
   clearServerAuthCookies,
   getServerAccessToken,
   getServerRefreshToken,
 } from "@/server/auth/session";
-import { serverFetch } from "@/server/fetch";
+import { serverFetch } from "@/server/api/edge-fetch";
 
-import { schemaIssueDiagnosticsFromError } from "./auth-error-diagnostics";
+import { schemaIssueDiagnosticsFromError } from "@/features/auth/server/auth-error-diagnostics";
 
 const LOGIN_PATH = "/login" satisfies Route;
 const REFRESH_PATH = "/api/auth/refresh" satisfies Route;

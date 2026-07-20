@@ -5,11 +5,11 @@ import type { ReactElement } from "react";
 import {
   getPublicDealerLeadByToken,
   PublicDealerLeadUpdatePage,
-} from "@/features/engagement/public-dealer-leads";
+} from "@/features/engagement/dealer-lead-updates";
 
-const PAGE_TITLE = "Vehicle enquiry follow-up";
+const PAGE_TITLE = "Customer enquiry follow-up";
 const PAGE_DESCRIPTION =
-  "Update or route an Ozotec EV customer enquiry securely.";
+  "Update, schedule, or route an Ozotec EV customer enquiry securely.";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;

@@ -7,8 +7,8 @@ import {
   type QueryClient,
 } from "@tanstack/react-query";
 
-import { logoutMutation } from "../mutations/auth-mutations";
-import { authMutationKeys } from "../queries/auth-query-keys";
+import { logoutMutation } from "@/features/auth/api/auth.client";
+import { authMutationKeys } from "@/features/auth/api/auth-query-keys";
 
 const SIGNED_OUT_LOGIN_PATH = "/login?reason=signed-out";
 

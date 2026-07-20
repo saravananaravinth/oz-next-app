@@ -3,4 +3,4 @@ export {
   LEGACY_UI_STORAGE_KEYS,
   UI_STORAGE_KEYS,
   type UiStorageKey,
-} from "./storage-keys";
+} from "@/lib/ui-preferences/storage-keys";

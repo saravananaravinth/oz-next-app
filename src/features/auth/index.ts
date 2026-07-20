@@ -2,25 +2,32 @@
 export {
   AuthSessionsPage,
   type AuthSessionsPageProps,
-} from "./components/auth-sessions-page";
-export { AuthErrorAlert } from "./components/auth-error-alert";
-export { LoginBrandMark } from "./components/login-brand-mark";
-export { LoginClient } from "./components/login-client";
-export { LoginClientFallback } from "./components/login-client-fallback";
-export { LoginStartForm } from "./components/login-start-form";
-export { OtpVerifyForm } from "./components/otp-verify-form";
-export { SessionExpiredCard } from "./components/session-expired-card";
+} from "@/features/auth/ui/auth-sessions-page";
+export { AuthErrorAlert } from "@/features/auth/ui/auth-error-alert";
+export { LoginBrandMark } from "@/features/auth/ui/login-brand-mark";
+export { LoginClient } from "@/features/auth/ui/login-client";
+export { LoginClientFallback } from "@/features/auth/ui/login-client-fallback";
+export { LoginStartForm } from "@/features/auth/ui/login-start-form";
+export { OtpVerifyForm } from "@/features/auth/ui/otp-verify-form";
+export { SessionExpiredCard } from "@/features/auth/ui/session-expired-card";
 
 export {
   useLoginStart,
   type UseLoginStartResult,
-} from "./hooks/use-login-start";
+} from "@/features/auth/hooks/use-login-start";
 export {
   useLoginVerify,
   type UseLoginVerifyResult,
-} from "./hooks/use-login-verify";
-export { useLogout, type UseLogoutResult } from "./hooks/use-logout";
-export { useMe, type UseMeOptions, type UseMeResult } from "./hooks/use-me";
+} from "@/features/auth/hooks/use-login-verify";
+export {
+  useLogout,
+  type UseLogoutResult,
+} from "@/features/auth/hooks/use-logout";
+export {
+  useMe,
+  type UseMeOptions,
+  type UseMeResult,
+} from "@/features/auth/hooks/use-me";
 
 export {
   loginStartMutation,
@@ -34,20 +41,20 @@ export {
   type LoginVerifyFailureKind,
   type LoginVerifyMutationInput,
   type UserFacingAuthError,
-} from "./mutations/auth-mutations";
+} from "@/features/auth/api/auth.client";
 
 export {
   authMutationKeys,
   authQueryKeys,
   type AuthMutationKey,
   type AuthQueryKey,
-} from "./queries/auth-query-keys";
+} from "@/features/auth/api/auth-query-keys";
 
 export type {
   LoginStartFormValues,
   LoginStartResult,
   OtpVerifyFormValues,
-} from "./schemas/auth-form-schemas";
+} from "@/features/auth/contracts/auth-form.schema";
 
 export {
   DEFAULT_AUTH_SUCCESS_PATH,
@@ -55,5 +62,5 @@ export {
   safeNextPath,
   type AuthSuccessPath,
   type LoginNotice,
-} from "./utils/auth-redirect";
-export { maskIdentifier } from "./utils/mask-identifier";
+} from "@/features/auth/utils/auth-redirect";
+export { maskIdentifier } from "@/features/auth/utils/mask-identifier";

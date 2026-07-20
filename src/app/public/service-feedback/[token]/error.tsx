@@ -4,16 +4,15 @@
 import { AlertTriangle, RotateCcw } from "lucide-react";
 import { useCallback, useMemo, type ReactElement } from "react";
 
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Button } from "@/components/ui/button";
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-} from "@/components/ui/card";
-import { PublicServiceFeedbackShell } from "@/features/engagement/public-service-feedback";
+  ContentFormActions,
+  ContentRoot,
+  ContentSection,
+  ContentStatus,
+} from "@/components/common/content-shell";
+import { Button } from "@/components/ui/button";
+import { PublicServiceFeedbackShell } from "@/features/engagement/service-feedback";
+import { PublicFormStatusEmblem } from "@/features/engagement/shared/ui/public-form-status-emblem";
 
 export type ServiceFeedbackErrorProps = Readonly<{
   error: Error & {
@@ -46,72 +45,68 @@ export default function ServiceFeedbackError({
     reset();
   }, [reset]);
 
+  const footerActions = (
+    <ContentFormActions className="mx-auto w-full max-w-xl border-0 bg-transparent p-0 shadow-none supports-[backdrop-filter]:bg-transparent">
+      <Button
+        type="button"
+        onClick={handleReset}
+        className="min-h-11 w-full touch-manipulation sm:w-auto"
+      >
+        <RotateCcw aria-hidden="true" />
+        Try again
+      </Button>
+    </ContentFormActions>
+  );
+
   return (
     <PublicServiceFeedbackShell
+      footerActions={footerActions}
       mainLabelledBy="service-feedback-error-title"
       mainClassName="items-center"
     >
-      <section className="w-full max-w-xl px-4 sm:px-0">
-        <Card className="overflow-hidden border-border/70 bg-card/95 shadow-xl shadow-foreground/5 supports-[backdrop-filter]:backdrop-blur-xl">
-          <CardHeader className="items-center gap-5 px-5 pt-7 text-center sm:px-8 sm:pt-9">
-            <span className="flex size-16 items-center justify-center rounded-3xl border border-destructive/20 bg-destructive/8 text-destructive shadow-xs">
-              <AlertTriangle aria-hidden="true" className="size-8" />
+      <ContentRoot
+        width="narrow"
+        density="compact"
+        className="px-3 py-8 sm:px-0 sm:py-4"
+      >
+        <div className="grid justify-items-center">
+          <PublicFormStatusEmblem status="error" />
+        </div>
+
+        <ContentSection
+          className="border-destructive/20 shadow-lg shadow-destructive/5"
+          title={
+            <span id="service-feedback-error-title">
+              Feedback form could not be opened
             </span>
-
-            <div className="grid gap-2">
-              <p className="text-overline text-muted-readable">Ozotec EV</p>
-              <h1
-                id="service-feedback-error-title"
-                className="text-section-title text-balance"
-              >
-                Feedback form could not be opened
-              </h1>
-              <CardDescription className="mx-auto max-w-md text-body-sm text-pretty text-muted-readable">
-                Retry the form. Your feedback was not submitted or changed.
-              </CardDescription>
-            </div>
-          </CardHeader>
-
-          <CardContent className="grid gap-4 px-5 sm:px-8">
-            <Alert
-              variant="destructive"
-              role="alert"
-              aria-live="assertive"
-              aria-atomic="true"
-            >
-              <AlertTriangle aria-hidden="true" />
-              <AlertTitle>Form loading failed</AlertTitle>
-              <AlertDescription>
-                <p>
-                  The public feedback form could not render safely. Try again
-                  using the same secure link.
-                </p>
+          }
+          description="Retry the form. No feedback was submitted or changed by this failure."
+        >
+          <ContentStatus
+            variant="destructive"
+            role="alert"
+            aria-live="assertive"
+            aria-atomic="true"
+            icon={<AlertTriangle aria-hidden="true" />}
+            title="Form loading failed safely"
+            description={
+              <>
+                The public feedback form could not render safely. Try again
+                using the same secure link.
                 {errorReference === null ? null : (
-                  <p className="mt-1 text-caption">
-                    Reference:{" "}
-                    <code className="break-all text-tabular">
-                      {errorReference}
-                    </code>
-                  </p>
+                  <span className="mt-2 block text-caption">
+                    Reference: <code>{errorReference}</code>
+                  </span>
                 )}
-              </AlertDescription>
-            </Alert>
+              </>
+            }
+          />
 
-            <Button
-              type="button"
-              onClick={handleReset}
-              className="h-12 rounded-2xl"
-            >
-              <RotateCcw aria-hidden="true" className="size-4" />
-              Try again
-            </Button>
-          </CardContent>
-
-          <CardFooter className="justify-center border-t border-border/70 bg-muted/30 px-5 py-4 text-center text-caption text-muted-readable sm:px-8">
-            <p>No internal ERP diagnostics are exposed on this public page.</p>
-          </CardFooter>
-        </Card>
-      </section>
+          <p className="mt-4 text-center text-caption text-muted-readable">
+            No internal ERP diagnostics are exposed on this public page.
+          </p>
+        </ContentSection>
+      </ContentRoot>
     </PublicServiceFeedbackShell>
   );
 }

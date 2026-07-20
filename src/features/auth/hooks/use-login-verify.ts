@@ -11,8 +11,8 @@ import {
 import {
   loginVerifyMutation,
   type LoginVerifyMutationInput,
-} from "../mutations/auth-mutations";
-import { authMutationKeys } from "../queries/auth-query-keys";
+} from "@/features/auth/api/auth.client";
+import { authMutationKeys } from "@/features/auth/api/auth-query-keys";
 
 type LoginVerifyMutationResult = Awaited<
   ReturnType<typeof loginVerifyMutation>

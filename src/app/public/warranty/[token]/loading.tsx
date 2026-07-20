@@ -1,19 +1,28 @@
 // oz-next-app/src/app/public/warranty/[token]/loading.tsx
 import type { ReactElement } from "react";
 
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import {
+  ContentFormActions,
+  ContentHeader,
+  ContentRoot,
+  ContentSection,
+  ContentSplit,
+} from "@/components/common/content-shell";
 import { Skeleton } from "@/components/ui/skeleton";
-import { PublicWarrantyShell } from "@/features/engagement/public-warranty/public-warranty-shell";
+import { PublicWarrantyShell } from "@/features/engagement/warranty-applications";
 
 export default function WarrantyApplicationLoading(): ReactElement {
   const footerActions = (
-    <div className="mx-auto grid w-full max-w-3xl gap-2.5">
-      <div className="grid grid-cols-2 gap-3">
-        <Skeleton className="h-12 w-full rounded-2xl" />
-        <Skeleton className="h-12 w-full rounded-2xl" />
+    <ContentFormActions
+      aria-hidden="true"
+      className="mx-auto w-full max-w-7xl border-0 bg-transparent p-0 shadow-none supports-[backdrop-filter]:bg-transparent sm:justify-between"
+    >
+      <Skeleton className="hidden h-10 w-48 sm:block" />
+      <div className="grid w-full grid-cols-2 gap-2 sm:w-72">
+        <Skeleton className="h-11 w-full" />
+        <Skeleton className="h-11 w-full" />
       </div>
-      <Skeleton className="mx-auto h-4 w-80 max-w-full" />
-    </div>
+    </ContentFormActions>
   );
 
   return (
@@ -21,54 +30,75 @@ export default function WarrantyApplicationLoading(): ReactElement {
       footerActions={footerActions}
       mainLabelledBy="warranty-loading-title"
     >
-      <section aria-busy="true" className="flex w-full max-w-3xl sm:px-0">
-        <p
-          id="warranty-loading-title"
-          className="sr-only"
-          role="status"
-          aria-live="polite"
-        >
-          Preparing warranty application…
-        </p>
+      <p
+        id="warranty-loading-title"
+        className="sr-only"
+        role="status"
+        aria-live="polite"
+      >
+        Preparing warranty application…
+      </p>
 
-        <Card
-          aria-hidden="true"
-          className="w-full gap-0 overflow-hidden rounded-none border-x-0 border-y-0 border-border/70 bg-card/96 py-0 shadow-xl shadow-foreground/5 supports-[backdrop-filter]:backdrop-blur-xl sm:rounded-3xl sm:border"
-        >
-          <CardHeader className="gap-5 px-4 py-5 sm:px-7 sm:py-7">
-            <div className="grid gap-2">
-              <Skeleton className="h-3 w-40" />
-              <Skeleton className="h-8 w-64 max-w-full" />
-              <Skeleton className="h-5 w-full max-w-xl" />
+      <ContentRoot
+        width="wide"
+        density="compact"
+        className="px-3 py-3 sm:px-0 sm:py-0"
+        aria-busy="true"
+      >
+        <ContentHeader
+          variant="compact"
+          eyebrow={<Skeleton className="h-6 w-44 rounded-full" />}
+          title={<Skeleton className="h-8 w-64 max-w-full" />}
+          description={<Skeleton className="h-5 w-full max-w-xl" />}
+          meta={
+            <div className="grid w-full gap-2 sm:grid-cols-3">
+              <Skeleton className="h-10 w-full rounded-xl" />
+              <Skeleton className="h-10 w-full rounded-xl" />
+              <Skeleton className="hidden h-10 w-full rounded-xl sm:block" />
             </div>
-
-            <div className="grid gap-3">
-              <div className="flex justify-between gap-4">
-                <Skeleton className="h-4 w-20" />
-                <Skeleton className="h-4 w-24" />
-              </div>
-              <Skeleton className="h-1.5 w-full rounded-full" />
+          }
+          cardClassName="border-primary/20 bg-card/92 shadow-lg shadow-primary/5"
+        >
+          <div className="mt-4 grid gap-3 border-t border-border/70 pt-4">
+            <div className="flex justify-between gap-4">
+              <Skeleton className="h-4 w-20" />
+              <Skeleton className="h-4 w-24" />
             </div>
-          </CardHeader>
+            <Skeleton className="h-2 w-full rounded-full" />
+          </div>
+        </ContentHeader>
 
-          <CardContent className="grid gap-5 px-4 pb-6 sm:px-7 sm:pb-7">
+        <ContentSplit
+          variant="main-context"
+          className="gap-4 lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start lg:gap-6"
+        >
+          <ContentSection className="border-primary/15 bg-card/94 shadow-md">
             <div className="grid gap-5 sm:grid-cols-2">
               <div className="grid gap-2">
                 <Skeleton className="h-4 w-32" />
-                <Skeleton className="h-11 w-full rounded-xl" />
+                <Skeleton className="h-11 w-full" />
               </div>
               <div className="grid gap-2">
                 <Skeleton className="h-4 w-32" />
-                <Skeleton className="h-11 w-full rounded-xl" />
+                <Skeleton className="h-11 w-full" />
               </div>
               <div className="grid gap-2 sm:col-span-2">
                 <Skeleton className="h-4 w-40" />
-                <Skeleton className="h-11 w-full rounded-xl" />
+                <Skeleton className="h-11 w-full" />
               </div>
             </div>
-          </CardContent>
-        </Card>
-      </section>
+          </ContentSection>
+
+          <ContentSection className="hidden bg-card/90 shadow-md lg:block">
+            <div className="grid gap-3">
+              <Skeleton className="h-5 w-36" />
+              <Skeleton className="h-16 w-full" />
+              <Skeleton className="h-16 w-full" />
+              <Skeleton className="h-24 w-full" />
+            </div>
+          </ContentSection>
+        </ContentSplit>
+      </ContentRoot>
     </PublicWarrantyShell>
   );
 }

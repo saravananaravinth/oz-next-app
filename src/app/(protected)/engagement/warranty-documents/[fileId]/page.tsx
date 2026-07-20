@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 
 import { ENGAGEMENT_ENDPOINTS } from "@/lib/api/endpoints";
-import { serverApiClient } from "@/lib/api-server";
+import { serverApiClient } from "@/server/api/edge-api-client";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;

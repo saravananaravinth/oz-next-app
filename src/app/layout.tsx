@@ -3,14 +3,14 @@ import type { Metadata, Viewport } from "next";
 import Script from "next/script";
 import type { ReactElement, ReactNode } from "react";
 
-import { env } from "@/lib/env";
-import Providers from "@/providers/providers";
+import { env } from "@/lib/env/public-env";
+import Providers from "@/app/_providers/app-providers";
 
 import {
   DISPLAY_SCALE_ZOOM_BOOTSTRAP_SCRIPT,
   THEME_BOOTSTRAP_SCRIPT,
-} from "./bootstrap";
-import "./globals.css";
+} from "@/app/layout-bootstrap";
+import "@/app/globals.css";
 
 const ROOT_APP_NAME = "Ozotec EV" as const;
 const ROOT_APP_DESCRIPTION =

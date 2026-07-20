@@ -3,8 +3,8 @@
 
 import { useQuery } from "@tanstack/react-query";
 
-import { meQuery } from "../mutations/auth-mutations";
-import { authQueryKeys } from "../queries/auth-query-keys";
+import { meQuery } from "@/features/auth/api/auth.client";
+import { authQueryKeys } from "@/features/auth/api/auth-query-keys";
 
 const DEFAULT_ME_STALE_TIME_MS = 0;
 const DEFAULT_ME_GC_TIME_MS = 30_000;

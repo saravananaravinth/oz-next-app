@@ -1,3 +1,3 @@
 // oz-next-app/src/lib/query/index.ts
-export * from "./keys";
-export * from "./query-client";
+export * from "@/lib/query/keys";
+export * from "@/lib/query/query-client";

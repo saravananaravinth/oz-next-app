@@ -8,10 +8,10 @@ import {
   REFRESH_ATTEMPT_COOKIE,
   REFRESH_ATTEMPT_COOKIE_OPTIONS,
   REFRESH_ATTEMPT_COOKIE_VALUE,
-} from "@/lib/auth/session-cookies";
-import { CACHE_CONTROL, CT, HDR, HTTP_STATUS } from "@/lib/constants";
-import { logger } from "@/lib/logger";
-import { refreshServerAuthTokensForMutableBoundary } from "@/server/api/server-client";
+} from "@/server/auth/session-cookie-policy";
+import { CACHE_CONTROL, CT, HDR, HTTP_STATUS } from "@/lib/api/http-contract";
+import { logger } from "@/lib/observability/logger";
+import { refreshServerAuthTokensForMutableBoundary } from "@/server/api/edge-api-client";
 import {
   clearServerAuthCookies,
   getServerAccessToken,

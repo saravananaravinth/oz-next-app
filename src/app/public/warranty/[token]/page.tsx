@@ -2,13 +2,14 @@
 import type { Metadata, Viewport } from "next";
 import type { ReactElement } from "react";
 
-import { PublicWarrantyApplicationPage } from "@/features/engagement/public-warranty";
+import { PublicWarrantyApplicationPage } from "@/features/engagement/warranty-applications";
 
 const PAGE_TITLE = "Warranty application";
 const PAGE_DESCRIPTION = "Submit your Ozotec EV warranty application securely.";
 
-export const dynamic = "force-static";
-export const revalidate = false;
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+export const fetchCache = "force-no-store";
 
 export const viewport = {
   width: "device-width",
@@ -24,10 +25,14 @@ export const viewport = {
 export const metadata = {
   title: PAGE_TITLE,
   description: PAGE_DESCRIPTION,
+  referrer: "no-referrer",
   robots: {
     index: false,
     follow: false,
     nocache: true,
+    noarchive: true,
+    nosnippet: true,
+    noimageindex: true,
   },
   openGraph: {
     title: PAGE_TITLE,
@@ -46,6 +51,14 @@ export const metadata = {
   },
 } satisfies Metadata;
 
-export default function WarrantyApplicationRoutePage(): ReactElement {
-  return <PublicWarrantyApplicationPage />;
+type WarrantyApplicationRoutePageProps = Readonly<{
+  params: Promise<Readonly<{ token: string }>>;
+}>;
+
+export default async function WarrantyApplicationRoutePage({
+  params,
+}: WarrantyApplicationRoutePageProps): Promise<ReactElement> {
+  const { token } = await params;
+
+  return <PublicWarrantyApplicationPage token={token} />;
 }

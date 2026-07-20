@@ -18,10 +18,11 @@
     "lint:fix": "eslint . --fix",
     "format": "prettier . --write",
     "format:check": "prettier . --check",
-    "test": "node --test --test-reporter=spec",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "audit:prod": "npm audit --omit=dev --audit-level=high",
     "security:audit": "npm audit --omit=dev --audit-level=high",
-    "check": "npm run typecheck && npm run lint && npm run format:check && npm run test",
+    "check": "npm run architecture:check && npm run cycles:check && npm run typecheck && npm run lint && npm run format:check && npm run test",
     "verify": "npm run check && npm run build && npm run audit:prod",
     "ci": "npm run check && npm run build && npm run build:cf && npm run audit:prod",
     "build:cf": "opennextjs-cloudflare build",
@@ -29,7 +30,9 @@
     "upload": "npm run build:cf && opennextjs-cloudflare upload",
     "deploy": "npm run verify && npm run build:cf && opennextjs-cloudflare deploy",
     "cf:typegen": "wrangler types --env-interface CloudflareEnv ./cloudflare-env.d.ts",
-    "cf-typegen": "npm run cf:typegen"
+    "cf-typegen": "npm run cf:typegen",
+    "architecture:check": "node scripts/verify-architecture.mjs",
+    "cycles:check": "node scripts/verify-cycles.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.5.0",
@@ -63,8 +66,8 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@eslint/js": "^9.39.1",
     "@eslint/eslintrc": "^3.3.1",
+    "@eslint/js": "^9.39.1",
     "@opennextjs/cloudflare": "^1.19.11",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^24.10.1",
@@ -79,6 +82,7 @@
     "tailwindcss": "^4",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.63.0",
+    "vitest": "^4.1.10",
     "wrangler": "^4.100.0"
   },
   "overrides": {
@@ -90,7 +94,7 @@
     "esbuild@0.28.1": true,
     "sharp@0.34.5": true,
     "unrs-resolver@1.12.2": true,
-    "workerd@1.20260702.1": true
+    "workerd@1.20260714.1": true
   },
-  "packageManager": "npm@11.16.0"
+  "packageManager": "npm@12.0.1"
 }

@@ -1,7 +1,11 @@
 // oz-next-app/src/app/(protected)/dashboard/loading.tsx
 import type { ReactElement } from "react";
 
-import { ContentGrid, ContentMetrics, ContentRoot } from "@/components/content";
+import {
+  ContentGrid,
+  ContentMetrics,
+  ContentRoot,
+} from "@/components/common/content-shell";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 

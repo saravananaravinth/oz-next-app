@@ -1,16 +1,23 @@
 // oz-next-app/src/app/public/location/[token]/loading.tsx
 import type { ReactElement } from "react";
 
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import {
+  ContentFormActions,
+  ContentRoot,
+  ContentSplit,
+} from "@/components/common/content-shell";
+import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { PublicLocationShell } from "@/features/engagement/public-location/public-location-shell";
+import { PublicLocationShell } from "@/features/engagement/location-requests/ui/location-request-shell";
 
 export default function PublicLocationLoading(): ReactElement {
   const footerActions = (
-    <div className="mx-auto grid w-full max-w-2xl gap-2.5" aria-hidden="true">
-      <Skeleton className="h-12 w-full rounded-2xl" />
-      <Skeleton className="mx-auto h-3 w-80 max-w-full rounded-full" />
-    </div>
+    <ContentFormActions
+      aria-hidden="true"
+      className="mx-auto w-full max-w-7xl border-0 bg-transparent p-0 shadow-none supports-[backdrop-filter]:bg-transparent sm:justify-end"
+    >
+      <Skeleton className="h-11 w-full rounded-2xl sm:w-64" />
+    </ContentFormActions>
   );
 
   return (
@@ -18,38 +25,66 @@ export default function PublicLocationLoading(): ReactElement {
       footerActions={footerActions}
       mainLabelledBy="public-location-loading-title"
     >
-      <section aria-busy="true" className="flex w-full max-w-2xl">
-        <p className="sr-only" role="status" aria-live="polite">
-          Preparing secure location request…
-        </p>
+      <ContentRoot
+        width="wide"
+        density="compact"
+        aria-busy="true"
+        className="px-3 py-3 sm:px-0 sm:py-0"
+      >
+        <div className="sr-only" role="status" aria-live="polite">
+          <h1 id="public-location-loading-title">
+            Preparing secure location request
+          </h1>
+        </div>
 
-        <Card
-          aria-hidden="true"
-          className="min-h-full w-full gap-0 overflow-hidden rounded-none border-x-0 border-y-0 border-border/70 bg-card/96 py-0 shadow-xl shadow-foreground/5 supports-[backdrop-filter]:backdrop-blur-xl sm:min-h-0 sm:rounded-3xl sm:border"
-        >
-          <CardHeader className="gap-5 px-4 py-5 sm:px-7 sm:py-7">
-            <div className="grid gap-2">
-              <Skeleton className="h-3 w-32 rounded-full" />
-              <h1 id="public-location-loading-title">
-                <Skeleton className="h-8 w-72 max-w-full rounded-full" />
-              </h1>
-              <Skeleton className="h-5 w-full max-w-xl rounded-full" />
-              <Skeleton className="h-5 w-4/5 max-w-lg rounded-full" />
-            </div>
-          </CardHeader>
-
-          <CardContent className="grid gap-5 px-4 pb-7 sm:px-7 sm:pb-8">
-            <Skeleton className="h-56 w-full rounded-2xl" />
-
-            <div className="grid gap-4 sm:grid-cols-2">
-              <Skeleton className="h-32 w-full rounded-2xl" />
-              <Skeleton className="h-32 w-full rounded-2xl" />
+        <Card aria-hidden="true">
+          <CardContent className="grid gap-5 p-5 sm:p-6">
+            <div className="grid gap-3">
+              <div className="flex flex-wrap gap-2">
+                <Skeleton className="h-6 w-32 rounded-full" />
+                <Skeleton className="h-6 w-36 rounded-full" />
+              </div>
+              <Skeleton className="h-9 w-72 max-w-full rounded-xl" />
+              <Skeleton className="h-5 w-full max-w-2xl rounded-full" />
             </div>
 
-            <Skeleton className="h-24 w-full rounded-2xl" />
+            <div className="grid gap-2 sm:grid-cols-3">
+              <Skeleton className="h-12 rounded-xl" />
+              <Skeleton className="h-12 rounded-xl" />
+              <Skeleton className="h-12 rounded-xl" />
+            </div>
           </CardContent>
         </Card>
-      </section>
+
+        <ContentSplit
+          variant="main-context"
+          className="gap-4 lg:grid-cols-[minmax(0,1fr)_20rem] lg:gap-6 2xl:grid-cols-[minmax(0,1fr)_20rem]"
+        >
+          <Card aria-hidden="true">
+            <CardContent className="grid gap-5 p-5 sm:p-6">
+              <Skeleton className="h-7 w-56 rounded-xl" />
+              <Skeleton className="h-5 w-full max-w-xl rounded-full" />
+              <Skeleton className="h-56 w-full rounded-3xl" />
+              <div className="grid gap-3 sm:grid-cols-3">
+                <Skeleton className="h-24 rounded-2xl" />
+                <Skeleton className="h-24 rounded-2xl" />
+                <Skeleton className="h-24 rounded-2xl" />
+              </div>
+              <Skeleton className="h-24 rounded-2xl" />
+            </CardContent>
+          </Card>
+
+          <Card aria-hidden="true" className="hidden lg:block">
+            <CardContent className="grid gap-4 p-5">
+              <Skeleton className="h-7 w-40 rounded-xl" />
+              <Skeleton className="h-20 rounded-2xl" />
+              <Skeleton className="h-20 rounded-2xl" />
+              <Skeleton className="h-20 rounded-2xl" />
+              <Skeleton className="h-24 rounded-2xl" />
+            </CardContent>
+          </Card>
+        </ContentSplit>
+      </ContentRoot>
     </PublicLocationShell>
   );
 }

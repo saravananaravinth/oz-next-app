@@ -13,7 +13,7 @@ import {
 } from "react";
 
 import { Button } from "@/components/ui/button";
-import { isDevelopment } from "@/lib/env";
+import { isClientDevelopment } from "@/lib/env/client-public-env";
 
 type AppErrorBoundaryProps = Readonly<{
   error: Error & {
@@ -168,7 +168,7 @@ export default function RootError({
   }, [reset]);
 
   useEffect(() => {
-    if (!isDevelopment) {
+    if (!isClientDevelopment) {
       return;
     }
 

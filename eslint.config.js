@@ -93,9 +93,9 @@ const rawFetchRestrictedFiles = [
   "src/app/**/*.{ts,tsx}",
   "src/components/**/*.{ts,tsx}",
   "src/features/**/*.{ts,tsx}",
-  "src/hooks/**/*.{ts,tsx}",
+  "src/shared/hooks/**/*.{ts,tsx}",
   "src/lib/**/*.{ts,tsx}",
-  "src/providers/**/*.{ts,tsx}",
+  "src/app/_providers/**/*.{ts,tsx}",
 ];
 
 const rawFetchAllowedFiles = [
@@ -107,11 +107,12 @@ const rawFetchAllowedFiles = [
 
 const clientFiles = [
   "src/components/**/*.{ts,tsx}",
-  "src/features/**/components/**/*.{ts,tsx}",
+  "src/app/**/error.tsx",
+  "src/features/**/ui/**/*.{ts,tsx}",
   "src/features/**/hooks/**/*.{ts,tsx}",
-  "src/hooks/**/*.{ts,tsx}",
-  "src/providers/**/*.{ts,tsx}",
-  "src/lib/api/client.{ts,tsx}",
+  "src/shared/hooks/**/*.{ts,tsx}",
+  "src/app/_providers/**/*.{ts,tsx}",
+  "src/lib/api/browser-client.{ts,tsx}",
   "src/lib/auth/**/*.client.{ts,tsx}",
   "src/**/*.client.{ts,tsx}",
 ];
@@ -121,7 +122,8 @@ const serverFiles = [
   "src/server/**/*.{ts,tsx}",
   "src/app/api/**/*.{ts,tsx}",
   "src/**/*.server.{ts,tsx}",
-  "src/lib/auth/**/*.{ts,tsx}",
+  "src/features/**/server/**/*.{ts,tsx}",
+  "src/features/**/actions/**/*.{ts,tsx}",
   "src/lib/security/**/*.{ts,tsx}",
   "src/lib/env/**/*.{ts,tsx}",
 ];
@@ -130,12 +132,10 @@ const authSensitiveFiles = [
   "src/app/**/auth/**/*.{ts,tsx}",
   "src/app/api/auth/**/*.{ts,tsx}",
   "src/features/auth/**/*.{ts,tsx}",
-  "src/lib/auth/**/*.{ts,tsx}",
   "src/server/auth/**/*.{ts,tsx}",
 ];
 
 const envAllowedFiles = [
-  "src/lib/env.{ts,tsx}",
   "src/lib/env/**/*.{ts,tsx}",
   "src/server/env.{ts,tsx}",
   "src/server/env/**/*.{ts,tsx}",
@@ -164,33 +164,25 @@ const heavyweightNodeRuntimeImports = [
   "node:vm",
 ];
 
-const serverOnlyImportPatterns = [
-  "@/server/*",
-  "@/server/**",
-  "@/lib/api/server",
-  "@/lib/api/server/*",
-  "@/lib/api/server/**",
-  "@/lib/auth/server",
-  "@/lib/auth/server/*",
-  "@/lib/auth/server/**",
-  "@/lib/env/*",
-  "@/lib/env/**",
-  "@/features/*/server/*",
-  "@/features/*/server/**",
+const serverOnlyImportPatternGroups = [
+  ["@/server/*", "@/server/**"],
+  ["@/lib/api/server", "@/lib/api/server/*", "@/lib/api/server/**"],
+  ["@/lib/auth/server", "@/lib/auth/server/*", "@/lib/auth/server/**"],
+  ["@/features/**/server/*", "@/features/**/server/**"],
 ];
 
-const clientOnlyImportPatterns = [
-  "@/lib/api/client",
-  "@/lib/api/client/*",
-  "@/lib/api/client/**",
-  "@/lib/auth/*.client",
-  "@/lib/auth/**/*.client",
-  "@/features/*/hooks/*",
-  "@/features/*/hooks/**",
-  "@/hooks/*",
-  "@/hooks/**",
-  "@/providers/*",
-  "@/providers/**",
+const serverOnlyImportPaths = ["@/lib/env", "@/lib/env/public-env"];
+
+const clientOnlyImportPatternGroups = [
+  [
+    "@/lib/api/browser-client",
+    "@/lib/api/browser-client/*",
+    "@/lib/api/browser-client/**",
+  ],
+  ["@/lib/auth/*.client", "@/lib/auth/**/*.client"],
+  ["@/features/*/hooks/*", "@/features/*/hooks/**"],
+  ["@/shared/hooks/*", "@/shared/hooks/**"],
+  ["@/app/_providers/*", "@/app/_providers/**"],
 ];
 
 const restrictedBrowserStorageSelectors = [
@@ -339,6 +331,13 @@ export default defineConfig(
   },
 
   {
+    files: ["src/**/*.d.ts"],
+    rules: {
+      "@typescript-eslint/consistent-type-definitions": "off",
+    },
+  },
+
+  {
     files: requestPathFiles,
     rules: {
       "no-restricted-imports": [
@@ -381,8 +380,13 @@ export default defineConfig(
       "no-restricted-imports": [
         "error",
         {
-          patterns: serverOnlyImportPatterns.map((group) => ({
-            group: [group],
+          paths: serverOnlyImportPaths.map((name) => ({
+            name,
+            message:
+              "Client/browser code must not import server-validated environment modules. Import the explicit client-public environment module instead.",
+          })),
+          patterns: serverOnlyImportPatternGroups.map((group) => ({
+            group,
             message:
               "Client/browser code must not import server-only modules. Keep tokens, cookies, bindings, and server API callers behind server boundaries.",
           })),
@@ -397,8 +401,8 @@ export default defineConfig(
       "no-restricted-imports": [
         "error",
         {
-          patterns: clientOnlyImportPatterns.map((group) => ({
-            group: [group],
+          patterns: clientOnlyImportPatternGroups.map((group) => ({
+            group,
             message:
               "Server-only code must not import browser/client modules. Use server API clients, server session helpers, and server-safe utilities.",
           })),
@@ -423,7 +427,7 @@ export default defineConfig(
           object: "process",
           property: "env",
           message:
-            "Do not read process.env directly outside src/lib/env. Validate environment variables with Zod and import typed env values.",
+            "Do not read process.env directly outside src/lib/env/**. Validate environment variables with Zod and import typed env values.",
         },
       ],
     },

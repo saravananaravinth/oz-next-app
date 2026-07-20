@@ -6,8 +6,8 @@ import { useMutation, type UseMutationResult } from "@tanstack/react-query";
 import {
   loginStartMutation,
   type LoginStartMutationInput,
-} from "../mutations/auth-mutations";
-import { authMutationKeys } from "../queries/auth-query-keys";
+} from "@/features/auth/api/auth.client";
+import { authMutationKeys } from "@/features/auth/api/auth-query-keys";
 
 type LoginStartMutationResult = Awaited<ReturnType<typeof loginStartMutation>>;
 

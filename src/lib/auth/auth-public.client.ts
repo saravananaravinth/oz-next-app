@@ -3,15 +3,15 @@
 
 import type { z } from "zod";
 
-import { edgeFetch } from "../api/client";
+import { edgeFetch } from "@/lib/api/browser-client";
 import { AUTH_ENDPOINTS } from "@/lib/api/endpoints";
 import {
   loginStartRequestSchema,
   loginStartResponseSchema,
   type LoginStartResponse,
-} from "@/lib/api/schemas";
-import { getDeviceFingerprint } from "./device-fingerprint.client";
-import { API_CONFIG, HTTP_METHODS } from "@/lib/constants";
+} from "@/lib/api/contracts";
+import { getDeviceFingerprint } from "@/lib/auth/device-fingerprint.client";
+import { API_CONFIG, HTTP_METHODS } from "@/lib/api/http-contract";
 
 type LoginStartClientInput = Omit<
   z.input<typeof loginStartRequestSchema>,

@@ -1,3 +1,4 @@
+// oz-next-app/src/server/auth/session-cookie-chunks.ts
 export type CookieValue = Readonly<{ name: string; value: string }>;
 
 export type CookieReadResult =

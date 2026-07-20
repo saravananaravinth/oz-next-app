@@ -3,7 +3,11 @@
 
 import { z } from "zod";
 
-import { edgeFetch, registerUnauthorizedRefreshHandler } from "../api/client";
+import {
+  edgeFetch,
+  registerUnauthorizedRefreshHandler,
+} from "@/lib/api/browser-client";
+import { sameOriginFetch } from "@/lib/api/same-origin-client";
 import { AUTH_ENDPOINTS } from "@/lib/api/endpoints";
 import { ApiHttpError } from "@/lib/api/problem";
 import {
@@ -14,10 +18,13 @@ import {
   type LoginVerifyRequest,
   type LogoutResponse,
   type MeResponse,
-} from "@/lib/api/schemas";
-import { getDeviceFingerprint } from "./device-fingerprint.client";
-import { clearSessionTokens, markClientSession } from "./session.client";
-import { API_CONFIG, HTTP_METHODS, HTTP_STATUS } from "@/lib/constants";
+} from "@/lib/api/contracts";
+import { getDeviceFingerprint } from "@/lib/auth/device-fingerprint.client";
+import {
+  clearSessionTokens,
+  markClientSession,
+} from "@/lib/auth/session.client";
+import { API_CONFIG, HTTP_METHODS, HTTP_STATUS } from "@/lib/api/http-contract";
 
 const localRefreshResponseSchema = z
   .object({
@@ -80,39 +87,24 @@ function serverAuthBoundaryError(code: string): ApiHttpError {
 
 async function refreshOnce(): Promise<boolean> {
   try {
-    const response = await fetch(LOCAL_REFRESH_ENDPOINT, {
+    const payload = await sameOriginFetch(LOCAL_REFRESH_ENDPOINT, {
       method: HTTP_METHODS.POST,
-      headers: { accept: "application/json" },
-      cache: "no-store",
-      credentials: "include",
-      redirect: "error",
+      schema: localRefreshResponseSchema,
     });
 
-    if (!response.ok) {
-      if (
-        response.status === HTTP_STATUS.UNAUTHORIZED ||
-        response.status === HTTP_STATUS.FORBIDDEN
-      ) {
-        clearSessionTokens();
-      }
-
-      return false;
-    }
-
-    const payload = (await response.json()) as unknown;
-    const parsed = localRefreshResponseSchema.safeParse(payload);
-
-    if (!parsed.success) {
-      clearSessionTokens();
-      return false;
-    }
-
-    const expiresInSeconds =
-      parsed.data.data?.expires_in ?? parsed.data.expires_in;
+    const expiresInSeconds = payload.data?.expires_in ?? payload.expires_in;
 
     markClientSession({ expiresInSeconds });
     return true;
-  } catch {
+  } catch (error) {
+    if (
+      error instanceof ApiHttpError &&
+      (error.status === HTTP_STATUS.UNAUTHORIZED ||
+        error.status === HTTP_STATUS.FORBIDDEN)
+    ) {
+      clearSessionTokens();
+    }
+
     return false;
   }
 }

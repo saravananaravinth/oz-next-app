@@ -2,21 +2,34 @@
 import type { Metadata, Viewport } from "next";
 import type { ReactElement } from "react";
 
-import { PublicLocationRequestPage } from "@/features/engagement/public-location";
+import { PublicLocationRequestPage } from "@/features/engagement/location-requests";
 
 const PAGE_TITLE = "Share location";
 const PAGE_DESCRIPTION = "Securely share your current location with Ozotec EV.";
 
-export const dynamic = "force-static";
-export const revalidate = false;
+type PublicLocationPageProps = Readonly<{
+  params: Promise<
+    Readonly<{
+      token: string;
+    }>
+  >;
+}>;
+
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+export const fetchCache = "force-no-store";
 
 export const metadata = {
   title: PAGE_TITLE,
   description: PAGE_DESCRIPTION,
+  referrer: "no-referrer",
   robots: {
     index: false,
     follow: false,
     nocache: true,
+    noarchive: true,
+    nosnippet: true,
+    noimageindex: true,
   },
   openGraph: {
     title: PAGE_TITLE,
@@ -41,6 +54,10 @@ export const viewport = {
   ],
 } satisfies Viewport;
 
-export default function PublicLocationPage(): ReactElement {
-  return <PublicLocationRequestPage />;
+export default async function PublicLocationPage({
+  params,
+}: PublicLocationPageProps): Promise<ReactElement> {
+  const { token } = await params;
+
+  return <PublicLocationRequestPage token={token} />;
 }

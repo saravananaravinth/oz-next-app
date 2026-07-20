@@ -4,15 +4,15 @@
 import { AlertTriangle, RotateCcw } from "lucide-react";
 import { useCallback, useMemo, type ReactElement } from "react";
 
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Button } from "@/components/ui/button";
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-} from "@/components/ui/card";
-import { PublicLocationShell } from "@/features/engagement/public-location/public-location-shell";
+  ContentFormActions,
+  ContentRoot,
+  ContentSection,
+  ContentStatus,
+} from "@/components/common/content-shell";
+import { Button } from "@/components/ui/button";
+import { PublicLocationShell } from "@/features/engagement/location-requests/ui/location-request-shell";
+import { PublicFormStatusEmblem } from "@/features/engagement/shared/ui/public-form-status-emblem";
 
 type PublicLocationErrorProps = Readonly<{
   error: Error & {
@@ -43,75 +43,65 @@ export default function PublicLocationError({
   }, [reset]);
 
   const footerActions = (
-    <div className="mx-auto grid w-full max-w-2xl gap-2.5">
-      <Button
-        type="button"
-        onClick={handleReset}
-        className="h-12 w-full rounded-2xl"
-      >
-        <RotateCcw aria-hidden="true" className="size-4" />
+    <ContentFormActions className="mx-auto w-full max-w-2xl border-0 bg-transparent p-0 shadow-none supports-[backdrop-filter]:bg-transparent">
+      <Button type="button" onClick={handleReset} className="min-h-11 w-full">
+        <RotateCcw aria-hidden="true" />
         Try again
       </Button>
-      <p className="text-center text-[0.6875rem] leading-relaxed text-muted-readable sm:text-caption">
-        Retrying does not submit a location until you approve browser access.
-      </p>
-    </div>
+    </ContentFormActions>
   );
 
   return (
     <PublicLocationShell
       footerActions={footerActions}
       mainLabelledBy="public-location-error-title"
-      mainClassName="items-stretch sm:items-center"
+      mainClassName="items-center"
     >
-      <section className="flex w-full max-w-2xl sm:block">
-        <Card className="min-h-full w-full gap-0 overflow-hidden rounded-none border-x-0 border-y-0 border-border/70 bg-card/96 py-0 shadow-xl shadow-foreground/5 supports-[backdrop-filter]:backdrop-blur-xl sm:min-h-0 sm:rounded-3xl sm:border">
-          <CardHeader className="items-center gap-5 px-5 py-8 text-center sm:px-8 sm:py-10">
-            <span className="flex size-16 items-center justify-center rounded-3xl border border-destructive/20 bg-destructive/8 text-destructive shadow-xs">
-              <AlertTriangle aria-hidden="true" className="size-8" />
+      <ContentRoot
+        width="narrow"
+        density="compact"
+        className="px-3 py-8 sm:px-0 sm:py-4"
+      >
+        <div className="grid justify-items-center">
+          <PublicFormStatusEmblem status="error" />
+        </div>
+
+        <ContentSection
+          className="border-destructive/20 shadow-lg shadow-destructive/5"
+          title={
+            <span id="public-location-error-title">
+              Location page could not be opened
             </span>
-
-            <div className="grid max-w-lg gap-2">
-              <p className="text-overline text-primary">Location request</p>
-              <h1
-                id="public-location-error-title"
-                className="text-section-title text-balance"
-              >
-                Location page could not be opened
-              </h1>
-              <CardDescription className="text-body-sm text-pretty text-muted-readable">
-                Retry the secure location page. No location was captured or
-                submitted by this failure.
-              </CardDescription>
-            </div>
-          </CardHeader>
-
-          <CardContent className="grid gap-4 px-5 pb-8 sm:px-8 sm:pb-10">
-            <Alert
-              variant="destructive"
-              role="alert"
-              aria-live="assertive"
-              aria-atomic="true"
-            >
-              <AlertTriangle aria-hidden="true" />
-              <AlertTitle>Page failed safely</AlertTitle>
-              <AlertDescription>
-                <p>
-                  The public location request could not render safely. Try again
-                  using the same link.
-                </p>
-
+          }
+          description="Retry the secure location page. No location was captured or submitted by this failure."
+        >
+          <ContentStatus
+            variant="destructive"
+            role="alert"
+            aria-live="assertive"
+            aria-atomic="true"
+            icon={<AlertTriangle aria-hidden="true" />}
+            title="The page failed safely"
+            description={
+              <>
+                The public location request could not render safely. Try again
+                using the same link.
                 {reference === null ? null : (
-                  <p className="mt-1 text-caption">
+                  <span className="mt-2 block text-caption">
                     Reference:{" "}
                     <code className="break-all text-tabular">{reference}</code>
-                  </p>
+                  </span>
                 )}
-              </AlertDescription>
-            </Alert>
-          </CardContent>
-        </Card>
-      </section>
+              </>
+            }
+          />
+
+          <p className="mt-4 text-center text-caption text-muted-readable">
+            Retrying does not submit a location until browser permission is
+            approved.
+          </p>
+        </ContentSection>
+      </ContentRoot>
     </PublicLocationShell>
   );
 }

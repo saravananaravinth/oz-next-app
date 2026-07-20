@@ -18,7 +18,7 @@ import {
   ContentRoot,
   ContentSection,
   ContentStatus,
-} from "@/components/content";
+} from "@/components/common/content-shell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 

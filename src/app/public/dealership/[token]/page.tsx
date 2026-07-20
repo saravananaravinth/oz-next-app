@@ -2,13 +2,23 @@
 import type { Metadata } from "next";
 import type { ReactElement } from "react";
 
-import { PublicDealershipApplicationPage } from "@/features/engagement/public-dealership";
+import { PublicDealershipApplicationPage } from "@/features/engagement/dealership-applications";
 
 const PAGE_TITLE = "Dealership application";
 const PAGE_DESCRIPTION =
   "Submit your Ozotec EV dealership application securely.";
 
-export const dynamic = "force-static";
+type PublicDealershipFormRouteProps = Readonly<{
+  params: Promise<
+    Readonly<{
+      token: string;
+    }>
+  >;
+}>;
+
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+export const fetchCache = "force-no-store";
 
 export const metadata = {
   title: PAGE_TITLE,
@@ -18,6 +28,9 @@ export const metadata = {
     index: false,
     follow: false,
     nocache: true,
+    noarchive: true,
+    nosnippet: true,
+    noimageindex: true,
   },
   openGraph: {
     title: PAGE_TITLE,
@@ -31,6 +44,10 @@ export const metadata = {
   },
 } satisfies Metadata;
 
-export default function PublicDealershipFormRoute(): ReactElement {
-  return <PublicDealershipApplicationPage />;
+export default async function PublicDealershipFormRoute({
+  params,
+}: PublicDealershipFormRouteProps): Promise<ReactElement> {
+  const { token } = await params;
+
+  return <PublicDealershipApplicationPage token={token} />;
 }
