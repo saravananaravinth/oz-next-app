@@ -39,7 +39,7 @@ jobs:
       CI: "true"
       NEXT_TELEMETRY_DISABLED: "1"
       NODE_VERSION: "24"
-      NPM_VERSION: "11.16.0"
+      NPM_VERSION: "12.0.1"
 
       WORKER_NAME: oz-next-app
       WORKER_ROUTE: erp.ozotecev.com/*
@@ -117,8 +117,8 @@ jobs:
             exit 1
           fi
 
-          if [[ "${NPM_VERSION}" != "11.16.0" ]]; then
-            echo "::error title=Unexpected npm contract::NPM_VERSION must remain 11.16.0."
+          if [[ "${NPM_VERSION}" != "12.0.1" ]]; then
+            echo "::error title=Unexpected npm contract::NPM_VERSION must remain 12.0.1."
             exit 1
           fi
 
@@ -526,6 +526,16 @@ jobs:
             expectedPackageManager,
             `packageManager must be ${expectedPackageManager}.`,
           );
+          assert.equal(
+            packageJson.engines?.node,
+            ">=24.15.0 <25.0.0",
+            "Node.js engine must remain >=24.15.0 <25.0.0.",
+          );
+          assert.equal(
+            packageJson.engines?.npm,
+            ">=12.0.1 <13.0.0",
+            "npm engine must remain >=12.0.1 <13.0.0.",
+          );
           assert.equal(packageLock?.lockfileVersion, 3, "package-lock.json must use lockfileVersion 3.");
           assert.ok(
             typeof rootLock === "object" && rootLock !== null,
@@ -533,6 +543,11 @@ jobs:
           );
           assert.equal(rootLock.name, packageJson.name, "Lockfile package name is out of sync.");
           assert.equal(rootLock.version, packageJson.version, "Lockfile package version is out of sync.");
+          assert.deepEqual(
+            rootLock.engines,
+            packageJson.engines,
+            "engines in package-lock.json are not synchronized with package.json.",
+          );
 
           for (const section of [
             "dependencies",
@@ -563,23 +578,8 @@ jobs:
         shell: bash
         run: npm exec -- wrangler --version
 
-      - name: Typecheck
-        run: npm run typecheck
-
-      - name: Lint
-        run: npm run lint
-
-      - name: Format check
-        run: npm run format:check
-
-      - name: Test
-        run: npm run test
-
-      - name: Build Next.js production
-        run: npm run build
-
-      - name: Production dependency audit
-        run: npm audit --omit=dev --audit-level=high
+      - name: Verify application
+        run: npm run verify
 
       - name: Resolve release metadata
         id: release_meta
@@ -669,56 +669,55 @@ jobs:
             release_type="patch"
           fi
 
+          release_required=false
+          package_version="${base_version}"
+          app_version="${base_version}+build.${GITHUB_RUN_NUMBER}.${short_sha}"
+          release_tag=""
+          release_title=""
+
           if [[ "${release_type}" == "none" ]]; then
-            echo "::notice title=No production release::No releasable Conventional Commit was found. Verification completed; Worker deploy and GitHub release steps will be skipped."
-            {
-              echo "release_required=false"
-              echo "release_type=none"
-              echo "base_version=${base_version}"
-              echo "previous_tag=${previous_tag}"
-              echo "commit_range=${commit_range}"
-              echo "short_sha=${short_sha}"
-            } >> "${GITHUB_OUTPUT}"
-            exit 0
-          fi
-
-          IFS='.' read -r current_major current_minor current_patch <<< "${base_version}"
-
-          if [[ "${first_release}" == "true" ]]; then
-            next_version="${base_version}"
-          elif [[ "${release_type}" == "major" ]]; then
-            next_version="$((current_major + 1)).0.0"
-          elif [[ "${release_type}" == "minor" ]]; then
-            next_version="${current_major}.$((current_minor + 1)).0"
+            echo "::notice title=Deployment without GitHub release::No releasable Conventional Commit was found. The verified commit will deploy with runtime version ${app_version}."
           else
-            next_version="${current_major}.${current_minor}.$((current_patch + 1))"
-          fi
+            IFS='.' read -r current_major current_minor current_patch <<< "${base_version}"
 
-          release_tag="${RELEASE_NAME}-v${next_version}"
-          release_title="${RELEASE_NAME} v${next_version}"
+            if [[ "${first_release}" == "true" ]]; then
+              package_version="${base_version}"
+            elif [[ "${release_type}" == "major" ]]; then
+              package_version="$((current_major + 1)).0.0"
+            elif [[ "${release_type}" == "minor" ]]; then
+              package_version="${current_major}.$((current_minor + 1)).0"
+            else
+              package_version="${current_major}.${current_minor}.$((current_patch + 1))"
+            fi
 
-          if gh release view "${release_tag}" >/dev/null 2>&1; then
-            echo "::error title=Release already exists::${release_tag} already exists. Use a new Conventional Commit or manual release_type override after the next commit."
-            exit 1
-          fi
+            release_required=true
+            app_version="${package_version}"
+            release_tag="${RELEASE_NAME}-v${package_version}"
+            release_title="${RELEASE_NAME} v${package_version}"
 
-          if git rev-parse -q --verify "refs/tags/${release_tag}" >/dev/null; then
-            echo "::error title=Tag already exists::${release_tag} already exists in Git."
-            exit 1
-          fi
+            if gh release view "${release_tag}" >/dev/null 2>&1; then
+              echo "::error title=Release already exists::${release_tag} already exists. Use a new Conventional Commit or manual release_type override after the next commit."
+              exit 1
+            fi
 
-          existing_release_titles="$(gh release list --limit 100 --json name --jq '.[].name' 2>/dev/null || true)"
-          if printf '%s\n' "${existing_release_titles}" | grep -Fxq "${release_title}"; then
-            echo "::error title=Release title already exists::${release_title} already exists."
-            exit 1
+            if git rev-parse -q --verify "refs/tags/${release_tag}" >/dev/null; then
+              echo "::error title=Tag already exists::${release_tag} already exists in Git."
+              exit 1
+            fi
+
+            existing_release_titles="$(gh release list --limit 100 --json name --jq '.[].name' 2>/dev/null || true)"
+            if printf '%s\n' "${existing_release_titles}" | grep -Fxq "${release_title}"; then
+              echo "::error title=Release title already exists::${release_title} already exists."
+              exit 1
+            fi
           fi
 
           {
-            echo "release_required=true"
+            echo "release_required=${release_required}"
             echo "release_type=${release_type}"
             echo "base_version=${base_version}"
-            echo "package_version=${next_version}"
-            echo "app_version=${next_version}"
+            echo "package_version=${package_version}"
+            echo "app_version=${app_version}"
             echo "short_sha=${short_sha}"
             echo "previous_tag=${previous_tag}"
             echo "commit_range=${commit_range}"
@@ -727,7 +726,6 @@ jobs:
           } >> "${GITHUB_OUTPUT}"
 
       - name: Patch public runtime version
-        if: steps.release_meta.outputs.release_required == 'true'
         shell: bash
         env:
           APP_VERSION: ${{ steps.release_meta.outputs.app_version }}
@@ -753,8 +751,10 @@ jobs:
             }
           }
 
-          if (!/^[0-9]+\.[0-9]+\.[0-9]+$/.test(values.NEXT_PUBLIC_APP_VERSION)) {
-            throw new Error("NEXT_PUBLIC_APP_VERSION must be SemVer major.minor.patch.");
+          if (!/^[0-9]+\.[0-9]+\.[0-9]+(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/.test(values.NEXT_PUBLIC_APP_VERSION)) {
+            throw new Error(
+              "NEXT_PUBLIC_APP_VERSION must be SemVer major.minor.patch with optional build metadata.",
+            );
           }
 
           const escapeRegExp = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -777,14 +777,12 @@ jobs:
           grep -E '^(NEXT_PUBLIC_APP_ENV|NEXT_PUBLIC_APP_ORIGIN|NEXT_PUBLIC_API_BASE_URL|NEXT_PUBLIC_AUTH_CLIENT_ID|NEXT_PUBLIC_APP_VERSION) = ' wrangler.toml
 
       - name: Build OpenNext Cloudflare bundle
-        if: steps.release_meta.outputs.release_required == 'true'
         shell: bash
         env:
           NEXT_PUBLIC_APP_VERSION: ${{ steps.release_meta.outputs.app_version }}
         run: npm run build:cf
 
       - name: Validate OpenNext output
-        if: steps.release_meta.outputs.release_required == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -809,7 +807,6 @@ jobs:
           fi
 
       - name: Wrangler dry-run bundle
-        if: steps.release_meta.outputs.release_required == 'true'
         shell: bash
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -817,7 +814,6 @@ jobs:
         run: npm exec -- wrangler deploy --dry-run
 
       - name: Deploy Cloudflare Worker
-        if: steps.release_meta.outputs.release_required == 'true'
         shell: bash
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -825,7 +821,6 @@ jobs:
         run: npm exec -- wrangler deploy
 
       - name: Smoke check production application
-        if: steps.release_meta.outputs.release_required == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -1014,15 +1009,10 @@ jobs:
             echo
             echo "- \`npm ci\` completed"
             echo "- \`npm exec -- wrangler --version\` completed"
-            echo "- \`npm run typecheck\` completed"
-            echo "- \`npm run lint\` completed"
-            echo "- \`npm run format:check\` completed"
-            echo "- \`npm run test\` completed"
-            echo "- \`npm run build\` completed"
-            echo "- \`npm audit --omit=dev --audit-level=high\` completed"
+            echo "- \`npm run verify\` completed (architecture, cycle detection, typecheck, lint, formatting, Vitest, production build, and audit)"
             echo "- Worker deployment manifest validated using TOML parsing"
             echo "- \`keep_names = false\` enforced for OpenNext Cloudflare runtime"
-            echo "- Public runtime version patched to \`${package_version}\`"
+            echo "- Public runtime version patched to \`${{ steps.release_meta.outputs.app_version }}\`"
             echo "- \`npm run build:cf\` completed"
             echo "- OpenNext output validated"
             echo "- OpenNext \`__name\` guard passed"
@@ -1048,10 +1038,15 @@ jobs:
             --latest
 
       - name: Deployment summary
-        if: steps.release_meta.outputs.release_required == 'true'
         shell: bash
         run: |
           set -euo pipefail
+
+          release_tag="${{ steps.release_meta.outputs.release_tag }}"
+          release_status="not created"
+          if [[ -n "${release_tag}" ]]; then
+            release_status="${release_tag}"
+          fi
 
           {
             echo "## oz-next-app deployment"
@@ -1064,27 +1059,9 @@ jobs:
             echo "| API origin | ${NEXT_PUBLIC_API_BASE_URL} |"
             echo "| Release type | ${{ steps.release_meta.outputs.release_type }} |"
             echo "| Previous version | ${{ steps.release_meta.outputs.base_version }} |"
-            echo "| Version | ${{ steps.release_meta.outputs.package_version }} |"
+            echo "| Package version | ${{ steps.release_meta.outputs.package_version }} |"
+            echo "| Runtime version | ${{ steps.release_meta.outputs.app_version }} |"
             echo "| Commit | ${GITHUB_SHA} |"
-            echo "| Release | ${{ steps.release_meta.outputs.release_tag }} |"
+            echo "| GitHub release | ${release_status} |"
             echo "| Smoke checks | login, protected redirect, and blocked operational route passed |"
-          } >> "${GITHUB_STEP_SUMMARY}"
-
-      - name: No release summary
-        if: steps.release_meta.outputs.release_required != 'true'
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          {
-            echo "## oz-next-app verification completed"
-            echo ""
-            echo "No production Worker deploy or GitHub release was created because no releasable Conventional Commit was detected."
-            echo ""
-            echo "| Field | Value |"
-            echo "|---|---|"
-            echo "| Requested release type | ${REQUESTED_RELEASE_TYPE} |"
-            echo "| Base version | ${{ steps.release_meta.outputs.base_version }} |"
-            echo "| Previous tag | ${{ steps.release_meta.outputs.previous_tag }} |"
-            echo "| Commit | ${GITHUB_SHA} |"
           } >> "${GITHUB_STEP_SUMMARY}"
