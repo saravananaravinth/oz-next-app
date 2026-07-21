@@ -660,6 +660,33 @@ function FormErrorAlert({
   );
 }
 
+function StatusNextStep({
+  number,
+  title,
+  description,
+}: Readonly<{
+  number: "1" | "2" | "3";
+  title: string;
+  description: string;
+}>): React.ReactElement {
+  return (
+    <li className="grid grid-cols-[2.25rem_minmax(0,1fr)] items-start gap-3">
+      <span
+        aria-hidden="true"
+        className="flex size-9 items-center justify-center rounded-xl border border-success/20 bg-success/8 text-body-sm font-semibold text-success"
+      >
+        {number}
+      </span>
+      <div className="grid min-w-0 gap-0.5 pt-0.5">
+        <p className="text-body-sm font-semibold text-foreground">{title}</p>
+        <p className="text-caption text-muted-readable text-pretty">
+          {description}
+        </p>
+      </div>
+    </li>
+  );
+}
+
 function StatusScreen({
   state,
 }: Readonly<{ state: "success" | "invalid-link" }>): React.ReactElement {
@@ -669,42 +696,141 @@ function StatusScreen({
   return (
     <PublicDealershipShell
       mainLabelledBy="dealership-status-title"
-      mainClassName="items-center"
+      mainClassName="items-start sm:items-center"
     >
-      <ContentRoot width="narrow" density="compact" className="max-w-xl py-6">
-        <div className="grid justify-items-center">
-          <PublicFormStatusEmblem status={success ? "success" : "error"} />
-        </div>
+      <ContentRoot
+        width="narrow"
+        density="compact"
+        className="w-full max-w-xl py-2 sm:py-6"
+      >
         <ContentSection
+          padded={false}
           className={cn(
-            "text-center shadow-lg",
+            "overflow-hidden bg-card/95 shadow-xl",
             success
               ? "border-success/20 shadow-success/5"
               : "border-destructive/20 shadow-destructive/5",
           )}
-          title={<span id="dealership-status-title">{copy.title}</span>}
-          description={copy.description}
         >
-          <div className="grid justify-items-center gap-3 text-body-sm text-muted-readable">
+          <div
+            aria-hidden="true"
+            className={cn(
+              "h-1 w-full",
+              success ? "bg-success" : "bg-destructive",
+            )}
+          />
+
+          <div className="grid gap-6 px-5 py-6 sm:px-8 sm:py-8">
+            <div
+              role={success ? "status" : "alert"}
+              aria-live={success ? "polite" : "assertive"}
+              aria-atomic="true"
+              className="grid justify-items-center gap-4 text-center"
+            >
+              <PublicFormStatusEmblem
+                status={success ? "success" : "error"}
+                className="size-20 rounded-[1.75rem] shadow-sm [&_svg]:size-9"
+              />
+
+              <div className="grid max-w-md gap-2">
+                <p
+                  className={cn(
+                    "text-overline",
+                    success ? "text-success" : "text-destructive",
+                  )}
+                >
+                  {success ? "Submission complete" : "Link unavailable"}
+                </p>
+                <h1
+                  id="dealership-status-title"
+                  className="text-page-title text-foreground text-balance"
+                >
+                  {copy.title}
+                </h1>
+                <p className="text-body-sm text-muted-readable text-pretty">
+                  {copy.description}
+                </p>
+              </div>
+            </div>
+
             {success ? (
               <>
-                <CheckCircle2
-                  aria-hidden="true"
-                  className="size-6 text-success"
-                />
-                <p>
-                  Keep your mobile available for the dealership team’s
-                  follow-up.
-                </p>
+                <section
+                  aria-labelledby="dealership-next-steps-title"
+                  className="rounded-2xl border border-border/70 bg-muted/20 p-4 sm:p-5"
+                >
+                  <div className="grid gap-1">
+                    <h2
+                      id="dealership-next-steps-title"
+                      className="text-card-title text-foreground"
+                    >
+                      What happens next
+                    </h2>
+                    <p className="text-caption text-muted-readable">
+                      No further action is required right now.
+                    </p>
+                  </div>
+
+                  <ol className="mt-4 grid gap-4">
+                    <StatusNextStep
+                      number="1"
+                      title="Application review"
+                      description="Our dealership team will review the information you submitted."
+                    />
+                    <StatusNextStep
+                      number="2"
+                      title="Phone follow-up"
+                      description="Keep the submitted mobile number available for a call from our team."
+                    />
+                    <StatusNextStep
+                      number="3"
+                      title="Next-step guidance"
+                      description="We will contact you if additional details or a site discussion are required."
+                    />
+                  </ol>
+                </section>
+
+                <div className="flex items-start gap-2.5 rounded-xl border border-success/20 bg-success/8 px-3.5 py-3 text-caption text-muted-readable">
+                  <CheckCircle2
+                    aria-hidden="true"
+                    className="mt-0.5 size-4 shrink-0 text-success"
+                  />
+                  <p>
+                    <span className="font-medium text-foreground">
+                      Application recorded.
+                    </span>{" "}
+                    You can safely close this page.
+                  </p>
+                </div>
               </>
             ) : (
-              <>
-                <AlertTriangle
-                  aria-hidden="true"
-                  className="size-6 text-destructive"
-                />
-                <p>No application was submitted from this page.</p>
-              </>
+              <section
+                aria-labelledby="dealership-link-help-title"
+                className="grid gap-3 rounded-2xl border border-destructive/15 bg-destructive/5 p-4 sm:p-5"
+              >
+                <div className="flex items-start gap-3">
+                  <span className="flex size-10 shrink-0 items-center justify-center rounded-xl border border-destructive/15 bg-background text-destructive">
+                    <AlertTriangle aria-hidden="true" className="size-5" />
+                  </span>
+                  <div className="grid min-w-0 gap-1">
+                    <h2
+                      id="dealership-link-help-title"
+                      className="text-card-title text-foreground"
+                    >
+                      What to do next
+                    </h2>
+                    <p className="text-body-sm text-muted-readable text-pretty">
+                      Open the original campaign or invitation link again. If it
+                      remains unavailable, request a fresh link from the Ozotec
+                      dealership team.
+                    </p>
+                  </div>
+                </div>
+
+                <p className="rounded-xl border border-border/70 bg-background/70 px-3.5 py-3 text-caption text-muted-readable">
+                  This page did not create a new dealership application.
+                </p>
+              </section>
             )}
           </div>
         </ContentSection>
