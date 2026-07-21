@@ -3,9 +3,11 @@ import Image from "next/image";
 import { LockKeyhole, ShieldCheck } from "lucide-react";
 import type { ReactElement, ReactNode, Ref } from "react";
 
+import {
+  BRAND_ICON_INTRINSIC_HEIGHT,
+  BRAND_ICON_INTRINSIC_WIDTH,
+} from "@/components/common/brand-assets";
 import { cn } from "@/lib/utils";
-
-const BRAND_ICON_SIZE = 36;
 
 export type PublicWarrantyShellProps = Readonly<{
   children: ReactNode;
@@ -35,16 +37,16 @@ function PublicWarrantyBrandMark({
       <Image
         src="/icon-light.svg"
         alt=""
-        width={BRAND_ICON_SIZE}
-        height={BRAND_ICON_SIZE}
+        width={BRAND_ICON_INTRINSIC_WIDTH}
+        height={BRAND_ICON_INTRINSIC_HEIGHT}
         className={cn("block h-7 w-auto dark:hidden", iconClassName)}
         priority
       />
       <Image
         src="/icon-dark.svg"
         alt=""
-        width={BRAND_ICON_SIZE}
-        height={BRAND_ICON_SIZE}
+        width={BRAND_ICON_INTRINSIC_WIDTH}
+        height={BRAND_ICON_INTRINSIC_HEIGHT}
         className={cn("hidden h-7 w-auto dark:block", iconClassName)}
         priority
       />

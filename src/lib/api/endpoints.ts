@@ -19,6 +19,14 @@ export const AUTH_ENDPOINTS = {
   logout: `${ERP_PREFIX}/auth/sessions/current`,
 } as const;
 
+export const INVENTORY_ENDPOINTS = {
+  dealerInventoryBase: `${ERP_PREFIX}/dealer/inventory`,
+  dealerContexts: `${ERP_PREFIX}/dealer/inventory/contexts/dealers`,
+  vehicles: `${ERP_PREFIX}/dealer/inventory/vehicles`,
+  vehicleFacets: `${ERP_PREFIX}/dealer/inventory/vehicles/facets`,
+  vehiclesExportCsv: `${ERP_PREFIX}/dealer/inventory/vehicles/export.csv`,
+} as const;
+
 export const ENGAGEMENT_ENDPOINTS = {
   dealerBase: `${ERP_PREFIX}/engagement/dealer`,
   dealerDashboard: `${ERP_PREFIX}/engagement/dealer/dashboard`,

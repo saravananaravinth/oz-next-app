@@ -91,6 +91,7 @@ export const CT = {
   PROBLEM_JSON: "application/problem+json",
   JWK_SET: "application/jwk-set+json",
   TEXT: "text/plain; charset=utf-8",
+  CSV: "text/csv",
 } as const;
 
 export const CACHE_CONTROL = {
@@ -132,6 +133,8 @@ export const BROWSER_API_ALLOWED_PREFIXES = ["/erp/engagement/public"] as const;
  */
 export const BROWSER_SAME_ORIGIN_ALLOWED_EXACT_PATHS = [
   "/api/auth/refresh",
+  "/api/inventory/dealer-contexts",
+  "/api/inventory/vehicles/export",
 ] as const;
 
 /**
@@ -141,6 +144,7 @@ export const BROWSER_SAME_ORIGIN_ALLOWED_EXACT_PATHS = [
 export const SERVER_API_ALLOWED_PREFIXES = [
   "/erp/auth",
   "/erp/engagement",
+  "/erp/dealer/inventory",
 ] as const;
 
 /**

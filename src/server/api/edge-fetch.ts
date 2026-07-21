@@ -8,11 +8,14 @@ import type { ApiEnvelopeResult } from "@/lib/api/envelope";
 import {
   serverEdgeFetch,
   serverEdgeFetchEnvelope,
+  serverEdgeFetchRaw,
   type ServerApiEnvelopeOptions,
   type ServerApiOptions,
+  type ServerRawApiOptions,
 } from "@/server/api/edge-api-client";
 
 export type ServerFetchOptions<TData> = ServerApiOptions<TData>;
+export type ServerRawFetchOptions = ServerRawApiOptions;
 export type ServerEnvelopeFetchOptions<TData, TMeta> = ServerApiEnvelopeOptions<
   TData,
   TMeta
@@ -41,4 +44,11 @@ export async function serverJson<TData>(
     ...(options ?? {}),
     schema,
   });
+}
+
+export async function serverRawFetch(
+  path: string,
+  options: ServerRawApiOptions,
+): Promise<Response> {
+  return await serverEdgeFetchRaw(path, options);
 }

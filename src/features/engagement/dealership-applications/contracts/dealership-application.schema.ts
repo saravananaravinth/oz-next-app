@@ -6,6 +6,7 @@ const SAFE_IDEMPOTENCY_KEY_PATTERN = /^[A-Za-z0-9._:-]+$/u;
 const INDIA_MOBILE_LOCAL_PATTERN = /^[6-9][0-9]{9}$/u;
 const INDIA_MOBILE_E164_PATTERN = /^\+91[6-9][0-9]{9}$/u;
 const PINCODE_PATTERN = /^[1-9][0-9]{5}$/u;
+const EMAIL_ADDRESS_SCHEMA = z.email("Enter a valid email address.");
 
 export const INVESTMENT_TIMELINE_VALUES = [
   "IMMEDIATE",
@@ -46,6 +47,16 @@ const requiredText = (max: number, label: string) =>
 const optionalText = (max: number, label: string) =>
   z.string().trim().max(max, `${label} is too long.`);
 
+const optionalEmailInputSchema = z
+  .string()
+  .trim()
+  .max(320, "Email address is too long.")
+  .refine(
+    (value) =>
+      value.length === 0 || EMAIL_ADDRESS_SCHEMA.safeParse(value).success,
+    "Enter a valid email address.",
+  );
+
 const optionalPostalCodeSchema = z
   .string()
   .trim()
@@ -54,6 +65,84 @@ const optionalPostalCodeSchema = z
     (value) => value.length === 0 || PINCODE_PATTERN.test(value),
     "Enter a valid 6-digit PIN code.",
   );
+
+const draftInvestmentTimelineSchema = z
+  .union([z.literal(""), investmentTimelineSchema])
+  .refine((value): boolean => value !== "", "Choose when you plan to start.");
+
+const draftInvestmentBudgetSchema = z
+  .union([z.literal(""), investmentBudgetSchema])
+  .refine(
+    (value): boolean => value !== "",
+    "Choose your planned investment range.",
+  );
+
+const draftRunningEvBusinessSchema = z
+  .union([z.literal(""), runningEvBusinessSchema])
+  .refine(
+    (value): boolean => value !== "",
+    "Choose whether you currently run an automobile or EV business.",
+  );
+
+const draftLocationModeSchema = z
+  .union([z.literal(""), dealershipLocationModeSchema])
+  .refine(
+    (value): boolean => value !== "",
+    "Choose how to provide the location.",
+  );
+
+const dealershipContactShape = {
+  applicantName: requiredText(256, "Full name"),
+  businessName: optionalText(256, "Business name"),
+  mobileNumber: z
+    .string()
+    .trim()
+    .regex(INDIA_MOBILE_LOCAL_PATTERN, "Enter a valid 10-digit mobile number."),
+  email: optionalEmailInputSchema,
+} as const;
+
+const dealershipAddressDraftShape = {
+  addressLine1: optionalText(512, "Address"),
+  addressLine2: optionalText(512, "Landmark"),
+  city: optionalText(128, "City"),
+  district: optionalText(128, "District"),
+  state: optionalText(128, "State"),
+  postalCode: optionalPostalCodeSchema,
+} as const;
+
+function addManualAddressIssues(
+  values: Readonly<{
+    locationMode: "" | DealershipLocationMode;
+    addressLine1: string;
+    city: string;
+    district: string;
+    state: string;
+    postalCode: string;
+  }>,
+  context: z.RefinementCtx,
+): void {
+  if (values.locationMode !== "MANUAL") {
+    return;
+  }
+
+  const requiredManualFields = [
+    ["addressLine1", values.addressLine1, "Address"],
+    ["city", values.city, "City"],
+    ["district", values.district, "District"],
+    ["state", values.state, "State"],
+    ["postalCode", values.postalCode, "PIN code"],
+  ] as const;
+
+  for (const [field, value, label] of requiredManualFields) {
+    if (value.trim().length === 0) {
+      context.addIssue({
+        code: "custom",
+        path: [field],
+        message: `${label} is required.`,
+      });
+    }
+  }
+}
 
 export const publicDealershipTokenSchema = z
   .string()
@@ -69,61 +158,49 @@ export const dealershipSubmissionIdempotencyKeySchema = z
   .max(128, "The submission key is invalid.")
   .regex(SAFE_IDEMPOTENCY_KEY_PATTERN, "The submission key is invalid.");
 
+/**
+ * Browser-only draft contract. Empty qualification values are intentional so
+ * the UI never manufactures lead data before the applicant makes a choice.
+ */
+export const dealershipInterestDraftSchema = z
+  .object({
+    investmentTimeline: draftInvestmentTimelineSchema,
+    investmentBudget: draftInvestmentBudgetSchema,
+    alreadyRunningEvBusiness: draftRunningEvBusinessSchema,
+
+    ...dealershipContactShape,
+
+    locationMode: draftLocationModeSchema,
+    ...dealershipAddressDraftShape,
+
+    notes: optionalText(1_200, "Notes"),
+  })
+  .strict()
+  .superRefine(addManualAddressIssues);
+
+export type DealershipInterestDraftValues = z.infer<
+  typeof dealershipInterestDraftSchema
+>;
+
+/**
+ * Fully qualified form contract used immediately before adapting the browser
+ * form to the approved backend request body.
+ */
 export const dealershipInterestFormSchema = z
   .object({
     investmentTimeline: investmentTimelineSchema,
     investmentBudget: investmentBudgetSchema,
     alreadyRunningEvBusiness: runningEvBusinessSchema,
 
-    applicantName: requiredText(256, "Applicant name"),
-    businessName: optionalText(256, "Business name"),
-    mobileNumber: z
-      .string()
-      .trim()
-      .regex(
-        INDIA_MOBILE_LOCAL_PATTERN,
-        "Enter a valid 10-digit mobile number.",
-      ),
-    email: z
-      .string()
-      .trim()
-      .max(320)
-      .pipe(z.email("Enter a valid email address.")),
+    ...dealershipContactShape,
 
     locationMode: dealershipLocationModeSchema,
-    addressLine1: optionalText(512, "Address line 1"),
-    addressLine2: optionalText(512, "Address line 2"),
-    city: optionalText(128, "City"),
-    district: optionalText(128, "District"),
-    state: optionalText(128, "State"),
-    postalCode: optionalPostalCodeSchema,
+    ...dealershipAddressDraftShape,
 
     notes: optionalText(1_200, "Notes"),
   })
   .strict()
-  .superRefine((values, context) => {
-    if (values.locationMode !== "MANUAL") {
-      return;
-    }
-
-    const requiredManualFields = [
-      ["addressLine1", values.addressLine1, "Address line 1"],
-      ["city", values.city, "City"],
-      ["district", values.district, "District"],
-      ["state", values.state, "State"],
-      ["postalCode", values.postalCode, "PIN code"],
-    ] as const;
-
-    for (const [field, value, label] of requiredManualFields) {
-      if (value.trim().length === 0) {
-        context.addIssue({
-          code: "custom",
-          path: [field],
-          message: `${label} is required.`,
-        });
-      }
-    }
-  });
+  .superRefine(addManualAddressIssues);
 
 export type DealershipInterestFormValues = z.infer<
   typeof dealershipInterestFormSchema
@@ -133,7 +210,7 @@ const dealershipApplicationCommonRequestShape = {
   applicantName: z.string().trim().min(1).max(256),
   businessName: z.string().trim().min(1).max(256).optional(),
   mobileNumber: z.string().trim().regex(INDIA_MOBILE_E164_PATTERN),
-  email: z.string().trim().max(320).pipe(z.email()),
+  email: z.string().trim().max(320).pipe(EMAIL_ADDRESS_SCHEMA).optional(),
   notes: z.string().trim().max(2_000).optional(),
 } as const;
 

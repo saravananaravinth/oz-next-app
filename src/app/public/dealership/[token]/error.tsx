@@ -47,11 +47,11 @@ export default function PublicDealershipFormError({
   }, [reset]);
 
   const footerActions = (
-    <ContentFormActions className="mx-auto w-full max-w-xl border-0 bg-transparent p-0 shadow-none supports-[backdrop-filter]:bg-transparent">
+    <ContentFormActions className="mx-auto grid w-full max-w-xl grid-cols-1 border-0 bg-transparent p-0 shadow-none supports-[backdrop-filter]:bg-transparent">
       <Button
         type="button"
         onClick={handleReset}
-        className="min-h-11 w-full touch-manipulation sm:w-auto"
+        className="min-h-11 w-full touch-manipulation"
       >
         <RotateCcw aria-hidden="true" />
         Try again
@@ -65,11 +65,7 @@ export default function PublicDealershipFormError({
       mainLabelledBy="dealership-error-title"
       mainClassName="items-center"
     >
-      <ContentRoot
-        width="narrow"
-        density="compact"
-        className="px-3 py-8 sm:px-0 sm:py-4"
-      >
+      <ContentRoot width="narrow" density="compact" className="max-w-xl py-6">
         <div className="grid justify-items-center">
           <PublicFormStatusEmblem status="error" />
         </div>
@@ -78,10 +74,10 @@ export default function PublicDealershipFormError({
           className="border-destructive/20 shadow-lg shadow-destructive/5"
           title={
             <span id="dealership-error-title">
-              Dealership form could not be opened
+              Application could not be opened
             </span>
           }
-          description="Retry the form using the same secure link. No application details were submitted or changed."
+          description="Retry using the same secure link. No application was submitted."
         >
           <ContentStatus
             variant="destructive"
@@ -89,10 +85,10 @@ export default function PublicDealershipFormError({
             aria-live="assertive"
             aria-atomic="true"
             icon={<AlertTriangle aria-hidden="true" />}
-            title="Form loading failed"
+            title="Page loading failed"
             description={
               <>
-                The public dealership application could not render safely.
+                The dealership application could not be prepared safely.
                 {errorReference === null ? null : (
                   <span className="mt-2 block text-caption">
                     Reference: <code>{errorReference}</code>
@@ -101,10 +97,6 @@ export default function PublicDealershipFormError({
               </>
             }
           />
-
-          <p className="mt-4 text-center text-caption text-muted-readable">
-            Internal ERP diagnostics are never exposed on this public page.
-          </p>
         </ContentSection>
       </ContentRoot>
     </PublicDealershipShell>

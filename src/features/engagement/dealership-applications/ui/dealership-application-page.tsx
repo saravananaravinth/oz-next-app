@@ -11,35 +11,34 @@ import {
   LoaderCircle,
   LocateFixed,
   MapPin,
+  Send,
   ShieldCheck,
-  ClipboardCheck,
-  Clock3,
-  Info,
-  ListChecks,
-  Menu,
+  WifiOff,
 } from "lucide-react";
 import { Controller, useForm, useWatch } from "react-hook-form";
 
 import {
-  ContentDescriptionItem,
-  ContentDescriptionList,
-  ContentForm,
   ContentFormActions,
-  ContentHeader,
   ContentRoot,
   ContentSection,
-  ContentSplit,
   ContentStatus,
 } from "@/components/common/content-shell";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogMedia,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
-
 import {
   Field,
   FieldDescription,
   FieldError,
-  FieldGroup,
   FieldLabel,
   FieldLegend,
   FieldSet,
@@ -47,32 +46,42 @@ import {
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
-} from "@/components/ui/sheet";
-import { Textarea } from "@/components/ui/textarea";
+import { NetworkError } from "@/lib/api/network-error";
 import { isApiHttpError } from "@/lib/api/problem";
-import { cn } from "@/lib/utils";
 import { idempotencyKey as createIdempotencyKey } from "@/lib/security/request-identifiers";
+import { cn } from "@/lib/utils";
 
-import { PublicFormStatusEmblem } from "@/features/engagement/shared/ui/public-form-status-emblem";
 import { submitPublicDealershipApplication } from "@/features/engagement/dealership-applications/api/dealership-application.client";
-import { PublicDealershipShell } from "@/features/engagement/dealership-applications/ui/dealership-application-shell";
 import {
+  dealershipInterestDraftSchema,
   dealershipInterestFormSchema,
   publicDealershipTokenSchema,
   type DealershipApplicationSubmitRequest,
+  type DealershipInterestDraftValues,
   type DealershipInterestFormValues,
-  type DealershipLocationMode,
-  type InvestmentBudget,
-  type InvestmentTimeline,
-  type RunningEvBusiness,
 } from "@/features/engagement/dealership-applications/contracts/dealership-application.schema";
+import {
+  type ChoiceOption,
+  CONTACT_DETAIL_FIELDS,
+  DEFAULT_DEALERSHIP_APPLICATION_VALUES as DEFAULT_VALUES,
+  DEALERSHIP_APPLICATION_FIELD_TO_STEP as FIELD_TO_STEP,
+  DEALERSHIP_APPLICATION_SERVER_FIELD_NAMES as SERVER_FIELD_NAMES,
+  DEALERSHIP_APPLICATION_STEP_META as STEP_META,
+  DEALERSHIP_APPLICATION_STEPS as STEPS,
+  type DealershipApplicationStepId as StepId,
+  type DealershipApplicationStepMeta as StepMeta,
+  type DealershipPlanAutoAdvanceStepId,
+  GPS_LOCATION_FIELDS,
+  INVESTMENT_BUDGET_OPTIONS,
+  INVESTMENT_TIMELINE_OPTIONS,
+  isDealershipApplicationDraftFieldName as isDraftFieldName,
+  labelForDealershipChoice as labelFor,
+  LOCATION_MODE_OPTIONS,
+  MANUAL_LOCATION_FIELDS,
+  RUNNING_EV_BUSINESS_OPTIONS,
+} from "@/features/engagement/dealership-applications/ui/dealership-application-flow";
+import { PublicDealershipShell } from "@/features/engagement/dealership-applications/ui/dealership-application-shell";
+import { PublicFormStatusEmblem } from "@/features/engagement/shared/ui/public-form-status-emblem";
 
 export type PublicDealershipApplicationPageProps = Readonly<{
   token: string;
@@ -103,118 +112,34 @@ type CapturedLocation = Readonly<{
   accuracyMeters?: number;
 }>;
 
-type ChoiceOption<TValue extends string> = Readonly<{
-  value: TValue;
-  label: string;
-  description?: string;
-}>;
-
-type StepMeta = Readonly<{
-  title: string;
-  description: string;
-}>;
-
 type SubmissionIntent = Readonly<{
   idempotencyKey: string;
   serializedApplication: string;
 }>;
 
 const FORM_ID = "public-dealership-application-form";
+const PAGE_TITLE_ID = "dealership-application-title";
 const GEOLOCATION_TIMEOUT_MS = 15_000;
+const PLAN_AUTO_ADVANCE_DELAY_MS = 180;
+const MAX_GEOLOCATION_ACCURACY_METERS = 100_000;
 const GEO_PERMISSION_DENIED = 1;
 const GEO_POSITION_UNAVAILABLE = 2;
 const GEO_TIMEOUT = 3;
 const MAX_NOTES_LENGTH = 2_000;
+const MAX_SERVER_FIELD_MESSAGE_LENGTH = 180;
 const INDIA_DIAL_CODE = "+91";
 const INDIA_MOBILE_MAX_LENGTH = 10;
 const NON_DIGIT_PATTERN = /\D/gu;
 const CONTROL_CHARACTER_MAX_CODE_POINT = 0x1f;
 const DELETE_CHARACTER_CODE_POINT = 0x7f;
-
-const STEP_META = [
-  {
-    title: "Investment timeline",
-    description: "Tell us when you are planning to begin the partnership.",
-  },
-  {
-    title: "Investment readiness",
-    description: "Share your planned investment and current EV experience.",
-  },
-  {
-    title: "Contact details",
-    description: "Provide the primary contact for this dealership request.",
-  },
-  {
-    title: "Location and review",
-    description:
-      "Choose GPS capture or enter the proposed dealership address manually.",
-  },
-] as const satisfies readonly StepMeta[];
-
-const FINAL_STEP_INDEX = STEP_META.length - 1;
-
-const INVESTMENT_TIMELINE_OPTIONS = [
-  {
-    value: "IMMEDIATE",
-    label: "Immediate",
-    description: "Ready to start the dealership discussion now.",
-  },
-  {
-    value: "WITHIN_1_MONTH",
-    label: "Within 1 month",
-    description: "Planning to proceed after a short evaluation.",
-  },
-  {
-    value: "WITHIN_2_MONTHS",
-    label: "Within 2 months",
-    description: "Exploring options for a near-term investment.",
-  },
-] as const satisfies ReadonlyArray<ChoiceOption<InvestmentTimeline>>;
-
-const INVESTMENT_BUDGET_OPTIONS = [
-  {
-    value: "BELOW_10_LAKHS",
-    label: "Below ₹10 lakh",
-    description: "Initial investment below ₹10 lakh.",
-  },
-  {
-    value: "TEN_TO_20_LAKHS",
-    label: "₹10 lakh to ₹20 lakh",
-    description: "Planned investment between ₹10 lakh and ₹20 lakh.",
-  },
-  {
-    value: "ABOVE_20_LAKHS",
-    label: "Above ₹20 lakh",
-    description: "Planned investment above ₹20 lakh.",
-  },
-] as const satisfies ReadonlyArray<ChoiceOption<InvestmentBudget>>;
-
-const RUNNING_EV_BUSINESS_OPTIONS = [
-  {
-    value: "YES",
-    label: "Yes",
-    description: "I currently operate an automobile related business.",
-  },
-  {
-    value: "NO",
-    label: "No",
-    description: "This would be my first EV business.",
-  },
-] as const satisfies ReadonlyArray<ChoiceOption<RunningEvBusiness>>;
-
-const LOCATION_MODE_OPTIONS = [
-  {
-    value: "GPS",
-    label: "Use current GPS location",
-    description: "Fastest option when you are at the proposed dealership site.",
-  },
-  {
-    value: "MANUAL",
-    label: "Enter address manually",
-    description:
-      "Use this when you are elsewhere or location access is unavailable.",
-  },
-] as const satisfies ReadonlyArray<ChoiceOption<DealershipLocationMode>>;
+const MANUAL_ADDRESS_ONLY_FIELDS = [
+  "addressLine1",
+  "addressLine2",
+  "city",
+  "district",
+  "state",
+  "postalCode",
+] as const satisfies ReadonlyArray<keyof DealershipInterestDraftValues>;
 
 const STATE_COPY: Record<
   SubmitState,
@@ -223,86 +148,74 @@ const STATE_COPY: Record<
   idle: {
     title: "Dealership application",
     description:
-      "Apply securely from an Ozotec campaign, QR code, social post, website, or private invitation.",
+      "Answer three quick questions, then provide your contact and location details.",
   },
   locating: {
-    title: "Finding your location",
-    description:
-      "Keep this page open while your device confirms the proposed dealership position.",
+    title: "Confirming your location",
+    description: "Keep this page open while your device confirms the position.",
   },
   submitting: {
-    title: "Submitting securely",
-    description:
-      "Your dealership application is being sent through the secure ERP gateway.",
+    title: "Sending your application",
+    description: "Your request is being sent securely.",
   },
   success: {
     title: "Application received",
     description:
-      "Thank you. Ozotec EV has received your dealership application for evaluation.",
+      "Thank you. The Ozotec EV dealership team will review your request.",
   },
   "invalid-link": {
     title: "Application link unavailable",
     description:
-      "This dealership application link is invalid, inactive, or expired. Open the original Ozotec campaign or invitation again.",
+      "This link is invalid, inactive, expired or already completed. Open the original campaign or invitation again.",
   },
   "unsupported-browser": {
     title: "Location is not supported",
     description:
-      "This browser cannot share a secure location. Open the link in an updated version of Chrome, Safari, Edge, or Firefox.",
+      "Use an updated browser, or choose Enter the address to continue manually.",
   },
   "permission-denied": {
     title: "Location permission is blocked",
     description:
-      "Allow location access for this site in your browser settings, then try capturing the location again.",
+      "Allow location access for this site, or choose Enter the address.",
   },
   "location-unavailable": {
     title: "Location unavailable",
     description:
-      "Your device could not determine its location. Check GPS and network access, move to an open area, and try again.",
+      "Check GPS and network access, try again, or enter the address manually.",
   },
   timeout: {
     title: "Location request timed out",
     description:
-      "Your device took too long to provide a location. Check GPS and network signal, then try again.",
+      "Try again with a stronger GPS signal, or enter the address manually.",
   },
   "api-error": {
-    title: "Application could not be submitted",
+    title: "Application could not be sent",
     description:
-      "We could not submit your dealership application right now. Review the details and try again using the same link.",
+      "Your answers remain on this page. Check them and try again shortly.",
   },
   "unexpected-error": {
     title: "Something went wrong",
-    description:
-      "The dealership application could not be completed. Refresh the page and try again.",
+    description: "Your answers remain on this page. Please try again.",
   },
 };
 
-const DEFAULT_VALUES = {
-  investmentTimeline: "IMMEDIATE",
-  investmentBudget: "BELOW_10_LAKHS",
-  alreadyRunningEvBusiness: "NO",
-  applicantName: "",
-  businessName: "",
-  mobileNumber: "",
-  email: "",
-  locationMode: "GPS",
-  addressLine1: "",
-  addressLine2: "",
-  city: "",
-  district: "",
-  state: "",
-  postalCode: "",
-  notes: "",
-} as const satisfies DealershipInterestFormValues;
+function subscribeOnlineStatus(onStoreChange: () => void): () => void {
+  window.addEventListener("online", onStoreChange);
+  window.addEventListener("offline", onStoreChange);
 
-const STEP_FIELDS = [
-  ["investmentTimeline"],
-  ["investmentBudget", "alreadyRunningEvBusiness"],
-  ["applicantName", "mobileNumber", "email"],
-  ["locationMode", "addressLine1", "city", "district", "state", "postalCode"],
-] as const satisfies ReadonlyArray<
-  ReadonlyArray<keyof DealershipInterestFormValues>
->;
+  return (): void => {
+    window.removeEventListener("online", onStoreChange);
+    window.removeEventListener("offline", onStoreChange);
+  };
+}
+
+function getOnlineSnapshot(): boolean {
+  return navigator.onLine;
+}
+
+function getServerOnlineSnapshot(): boolean {
+  return true;
+}
 
 function safeRequestId(value: string | undefined): string | undefined {
   const normalized = value?.trim();
@@ -319,12 +232,21 @@ function safeRequestId(value: string | undefined): string | undefined {
   return normalized;
 }
 
-function isGeolocationError(error: unknown): error is GeolocationPositionError {
-  if (typeof error !== "object" || error === null || !("code" in error)) {
-    return false;
-  }
+function safeServerFieldMessage(value: string): string {
+  const normalized = value.trim();
 
-  return typeof error.code === "number";
+  return normalized.length === 0
+    ? "Review this answer and try again."
+    : normalized.slice(0, MAX_SERVER_FIELD_MESSAGE_LENGTH);
+}
+
+function isGeolocationError(error: unknown): error is GeolocationPositionError {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    typeof error.code === "number"
+  );
 }
 
 function geolocationErrorState(error: GeolocationPositionError): SubmitState {
@@ -357,127 +279,75 @@ function getCurrentPosition(): Promise<GeolocationPosition> {
 
 function retryAfterDescription(seconds: number | undefined): string {
   if (seconds === undefined || !Number.isFinite(seconds) || seconds <= 0) {
-    return "Please wait briefly before trying to submit this application again.";
+    return "Please wait briefly before trying again.";
   }
 
   const roundedSeconds = Math.max(1, Math.ceil(seconds));
 
   if (roundedSeconds < 60) {
-    return `Please wait approximately ${String(roundedSeconds)} seconds before trying again.`;
+    return `Please wait about ${String(roundedSeconds)} seconds before trying again.`;
   }
 
   const roundedMinutes = Math.ceil(roundedSeconds / 60);
 
-  return `Please wait approximately ${String(roundedMinutes)} minute${roundedMinutes === 1 ? "" : "s"} before trying again.`;
+  return `Please wait about ${String(roundedMinutes)} minute${roundedMinutes === 1 ? "" : "s"} before trying again.`;
 }
 
 function errorFromUnknown(error: unknown): UserFacingError {
+  if (error instanceof NetworkError) {
+    return {
+      title: "Check your internet connection",
+      description:
+        "Your answers remain on this page. Reconnect and try sending the application again.",
+    };
+  }
+
   if (isApiHttpError(error)) {
     const code = error.code.toUpperCase();
     const requestId = safeRequestId(error.requestId);
-
     let baseError: Omit<UserFacingError, "requestId">;
 
     if (
+      error.status === 401 ||
+      error.status === 403 ||
       error.status === 404 ||
       error.status === 410 ||
       code.includes("EXPIRED") ||
       code.includes("USED") ||
       code.includes("NOT_FOUND")
     ) {
-      baseError = {
-        title: "Application link unavailable",
-        description:
-          "This dealership application link is invalid, inactive, expired, or already completed. Open the original Ozotec campaign or invitation again.",
-      };
+      baseError = STATE_COPY["invalid-link"];
     } else if (error.status === 409) {
       baseError = {
         title: "Submission details changed",
         description:
-          "A previous attempt used a different version of these details. Review the application and submit again to start a fresh protected attempt.",
+          "Review the application and send it again to start a new protected attempt.",
       };
     } else if (error.status === 400 || error.status === 422) {
       baseError = {
-        title: "Some details were rejected",
+        title: "Review the highlighted answer",
         description:
-          "Review all application fields and submit again. Your entered details remain on this page.",
+          "Some information was not accepted. Correct the highlighted answer and try again.",
       };
     } else if (error.status === 429) {
       baseError = {
-        title: "Too many submission attempts",
+        title: "Please wait before trying again",
         description: retryAfterDescription(error.retryAfterSeconds),
       };
     } else if (error.status >= 500) {
       baseError = {
         title: "Service temporarily unavailable",
         description:
-          "The application service is temporarily unavailable. Your entered details remain on this page; retry with the same details shortly.",
+          "Your answers remain on this page. Try sending the same application again shortly.",
       };
     } else {
-      baseError = {
-        title: STATE_COPY["api-error"].title,
-        description: STATE_COPY["api-error"].description,
-      };
+      baseError = STATE_COPY["api-error"];
     }
 
     return requestId === undefined ? baseError : { ...baseError, requestId };
   }
 
-  return {
-    title: STATE_COPY["unexpected-error"].title,
-    description: STATE_COPY["unexpected-error"].description,
-  };
-}
-
-function firstErrorStep(
-  errors: Readonly<
-    Partial<Record<keyof DealershipInterestFormValues, unknown>>
-  >,
-): number {
-  for (let index = 0; index < STEP_FIELDS.length; index += 1) {
-    const fields = STEP_FIELDS[index] ?? [];
-
-    if (fields.some((field) => errors[field] !== undefined)) {
-      return index;
-    }
-  }
-
-  return 0;
-}
-
-function labelFor<TValue extends string>(
-  options: ReadonlyArray<ChoiceOption<TValue>>,
-  value: TValue,
-): string {
-  return options.find((option) => option.value === value)?.label ?? value;
-}
-
-function choiceOptionId(name: string, value: string): string {
-  return `${name}-${value.toLocaleLowerCase("en-US").replaceAll("_", "-")}`;
-}
-
-function focusTargetIdForStep(
-  step: number,
-  values: DealershipInterestFormValues,
-): string | null {
-  switch (step) {
-    case 0:
-      return choiceOptionId("investment-timeline", values.investmentTimeline);
-    case 1:
-      return choiceOptionId("investment-budget", values.investmentBudget);
-    case 2:
-      return "applicant-name";
-    case 3:
-      return choiceOptionId("location-mode", values.locationMode);
-    default:
-      return null;
-  }
-}
-
-function preferredScrollBehavior(): ScrollBehavior {
-  return window.matchMedia("(prefers-reduced-motion: reduce)").matches
-    ? "auto"
-    : "smooth";
+  return STATE_COPY["unexpected-error"];
 }
 
 function optionalNonEmpty(value: string): string | undefined {
@@ -521,17 +391,15 @@ function truncateText(value: string, maxLength: number): string {
 }
 
 function buildNotes(values: DealershipInterestFormValues): string {
-  const parts = [
-    "Dealership qualification details",
-    `Investment timeline: ${labelFor(INVESTMENT_TIMELINE_OPTIONS, values.investmentTimeline)}`,
-    `Prepared investment: ${labelFor(INVESTMENT_BUDGET_OPTIONS, values.investmentBudget)}`,
-    `Existing automobile or EV business: ${labelFor(RUNNING_EV_BUSINESS_OPTIONS, values.alreadyRunningEvBusiness)}`,
-    optionalNonEmpty(values.notes) === undefined
-      ? null
-      : `Additional notes: ${truncateText(values.notes, 1_200)}`,
-  ].filter((value): value is string => value !== null);
-
-  return truncateText(parts.join("\n"), MAX_NOTES_LENGTH);
+  return truncateText(
+    [
+      "Dealership qualification details",
+      `Investment timeline: ${labelFor(INVESTMENT_TIMELINE_OPTIONS, values.investmentTimeline)}`,
+      `Prepared investment: ${labelFor(INVESTMENT_BUDGET_OPTIONS, values.investmentBudget)}`,
+      `Existing automobile or EV business: ${labelFor(RUNNING_EV_BUSINESS_OPTIONS, values.alreadyRunningEvBusiness)}`,
+    ].join("\n"),
+    MAX_NOTES_LENGTH,
+  );
 }
 
 function toSubmitRequest(
@@ -539,11 +407,12 @@ function toSubmitRequest(
   location: CapturedLocation | null,
 ): DealershipApplicationSubmitRequest {
   const businessName = optionalNonEmpty(values.businessName);
+  const email = optionalNonEmpty(values.email);
   const common = {
     applicantName: values.applicantName.trim(),
     ...(businessName === undefined ? {} : { businessName }),
     mobileNumber: `${INDIA_DIAL_CODE}${values.mobileNumber.trim()}`,
-    email: values.email.trim(),
+    ...(email === undefined ? {} : { email }),
     notes: buildNotes(values),
   } as const;
 
@@ -577,80 +446,159 @@ function toSubmitRequest(
   };
 }
 
+function resolveServerFieldName(
+  path: string,
+): keyof DealershipInterestDraftValues | null {
+  const segments = path
+    .split(/[.[\]]/u)
+    .map((segment) => segment.trim())
+    .filter((segment) => segment.length > 0);
+  const candidate = segments.at(-1);
+
+  if (candidate === undefined) {
+    return null;
+  }
+
+  return SERVER_FIELD_NAMES.find((field) => field === candidate) ?? null;
+}
+
+function isChoiceValue<TValue extends string>(
+  options: ReadonlyArray<ChoiceOption<TValue>>,
+  value: string,
+): value is TValue {
+  return options.some((option) => option.value === value);
+}
+
+function choiceOptionId(name: string, value: string): string {
+  return `${name}-${value.toLocaleLowerCase("en-US").replaceAll("_", "-")}`;
+}
+
+function focusIdForStep(stepId: StepId): string {
+  switch (stepId) {
+    case "investmentTimeline":
+      return choiceOptionId("investment-timeline", "IMMEDIATE");
+    case "investmentBudget":
+      return choiceOptionId("investment-budget", "BELOW_10_LAKHS");
+    case "alreadyRunningEvBusiness":
+      return choiceOptionId("running-business", "YES");
+    case "contactDetails":
+      return "applicant-name";
+    case "dealershipLocation":
+      return choiceOptionId("location-mode", "GPS");
+  }
+}
+
+function focusIdForField(
+  field: keyof DealershipInterestDraftValues,
+): string | null {
+  switch (field) {
+    case "investmentTimeline":
+      return choiceOptionId("investment-timeline", "IMMEDIATE");
+    case "investmentBudget":
+      return choiceOptionId("investment-budget", "BELOW_10_LAKHS");
+    case "alreadyRunningEvBusiness":
+      return choiceOptionId("running-business", "YES");
+    case "applicantName":
+      return "applicant-name";
+    case "businessName":
+      return "business-name";
+    case "mobileNumber":
+      return "mobile-number";
+    case "email":
+      return "email";
+    case "locationMode":
+    case "notes":
+      return choiceOptionId("location-mode", "GPS");
+    case "addressLine1":
+      return "address-line-1";
+    case "addressLine2":
+      return "address-line-2";
+    case "city":
+      return "city";
+    case "district":
+      return "district";
+    case "state":
+      return "state";
+    case "postalCode":
+      return "postal-code";
+  }
+}
+
+function preferredScrollBehavior(): ScrollBehavior {
+  return window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    ? "auto"
+    : "smooth";
+}
+
 function ChoiceCards<TValue extends string>({
   name,
   value,
   options,
   disabled,
-  onChange,
-  columns = 1,
+  onValueChange,
+  columns = "one",
 }: Readonly<{
   name: string;
-  value: TValue;
+  value: TValue | "";
   options: ReadonlyArray<ChoiceOption<TValue>>;
   disabled: boolean;
-  onChange: (value: TValue) => void;
-  columns?: 1 | 2;
+  onValueChange: (value: TValue) => void;
+  columns?: "one" | "two";
 }>): React.ReactElement {
   return (
     <RadioGroup
       value={value}
       onValueChange={(nextValue) => {
-        const selected = options.find((option) => option.value === nextValue);
-
-        if (selected !== undefined) {
-          onChange(selected.value);
+        if (isChoiceValue(options, nextValue)) {
+          onValueChange(nextValue);
         }
       }}
       disabled={disabled}
-      className={cn(
-        "grid gap-3",
-        columns === 2 ? "sm:grid-cols-2" : "grid-cols-1",
-      )}
+      required
+      className={cn("grid gap-2.5", columns === "two" && "sm:grid-cols-2")}
     >
       {options.map((option) => {
         const id = choiceOptionId(name, option.value);
-        const checked = value === option.value;
+        const selected = value === option.value;
 
         return (
           <label
             key={option.value}
             htmlFor={id}
+            onClick={() => {
+              if (!disabled && selected) {
+                onValueChange(option.value);
+              }
+            }}
+            onKeyDown={(event) => {
+              if (!disabled && selected && event.key === "Enter") {
+                event.preventDefault();
+                onValueChange(option.value);
+              }
+            }}
             className={cn(
-              "group flex min-h-20 touch-manipulation cursor-pointer items-start gap-3 rounded-2xl border bg-card px-3.5 py-3.5 text-left shadow-xs transition-[border-color,background-color,box-shadow] duration-150 ease-out sm:px-4",
-              "hover:border-primary/35 hover:bg-primary/4 hover:shadow-md focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/20 motion-reduce:transition-none",
-              checked
-                ? "border-primary/55 bg-primary/8 shadow-primary/10"
-                : "border-border/80",
-              disabled && "pointer-events-none opacity-60",
+              [
+                "group flex min-h-14 cursor-pointer touch-manipulation items-center",
+                "gap-3 rounded-2xl border px-4 py-3 outline-none",
+                "transition-colors motion-reduce:transition-none",
+              ].join(" "),
+              selected
+                ? "border-primary bg-primary/8 shadow-sm ring-1 ring-primary/20"
+                : "border-border/80 bg-card hover:border-primary/40 hover:bg-muted/30",
+              disabled && "cursor-not-allowed opacity-60",
             )}
           >
-            <RadioGroupItem
-              id={id}
-              value={option.value}
-              aria-label={option.label}
-              className="mt-0.5 size-5"
-            />
-
-            <span className="grid min-w-0 flex-1 gap-1">
-              <span className="text-body text-foreground [font-weight:var(--typography-emphasis-weight)]">
+            <RadioGroupItem id={id} value={option.value} className="shrink-0" />
+            <span className="min-w-0 flex-1">
+              <span className="block text-body-sm font-semibold text-foreground">
                 {option.label}
               </span>
-
               {option.description === undefined ? null : (
-                <span className="text-body-sm leading-relaxed text-muted-readable">
+                <span className="mt-0.5 block text-caption text-muted-readable">
                   {option.description}
                 </span>
               )}
             </span>
-
-            <ChevronRight
-              aria-hidden="true"
-              className={cn(
-                "mt-0.5 size-4 shrink-0 text-muted-readable transition-transform duration-150 motion-reduce:transition-none",
-                checked && "translate-x-0.5 text-primary",
-              )}
-            />
           </label>
         );
       })}
@@ -658,71 +606,32 @@ function ChoiceCards<TValue extends string>({
   );
 }
 
-function ApplicationReview({
-  values,
-}: Readonly<{ values: DealershipInterestFormValues }>): React.ReactElement {
-  const businessName = optionalNonEmpty(values.businessName) ?? "Not provided";
-  const mobileNumber =
-    values.mobileNumber.trim().length === INDIA_MOBILE_MAX_LENGTH
-      ? `${INDIA_DIAL_CODE} ${values.mobileNumber.trim()}`
-      : "Not provided";
-  const proposedLocation =
-    values.locationMode === "GPS"
-      ? "Current GPS location will be captured before submission"
-      : [
-          values.addressLine1,
-          values.addressLine2,
-          values.city,
-          values.district,
-          values.state,
-          values.postalCode,
-        ]
-          .map((value) => value.trim())
-          .filter((value) => value.length > 0)
-          .join(", ") || "Manual address not completed";
+function StepProgress({
+  current,
+  total,
+  stage,
+}: Readonly<{
+  current: number;
+  total: number;
+  stage: StepMeta["stage"];
+}>): React.ReactElement {
+  const progress = Math.min(100, Math.max(0, (current / total) * 100));
 
   return (
-    <ContentSection
-      size="sm"
-      title="Review your application"
-      description="Confirm the information already provided. Use Back to make corrections before submission."
-      className="bg-muted/20"
+    <div
+      className="grid gap-2.5"
+      role="status"
+      aria-live="polite"
+      aria-label={`Step ${String(current)} of ${String(total)}`}
     >
-      <ContentDescriptionList columns="two">
-        <ContentDescriptionItem term="Applicant">
-          {values.applicantName.trim() || "Not provided"}
-        </ContentDescriptionItem>
-        <ContentDescriptionItem term="Business">
-          {businessName}
-        </ContentDescriptionItem>
-        <ContentDescriptionItem term="Mobile">
-          {mobileNumber}
-        </ContentDescriptionItem>
-        <ContentDescriptionItem term="Email">
-          <span className="break-all">
-            {values.email.trim() || "Not provided"}
-          </span>
-        </ContentDescriptionItem>
-        <ContentDescriptionItem term="Investment timeline">
-          {labelFor(INVESTMENT_TIMELINE_OPTIONS, values.investmentTimeline)}
-        </ContentDescriptionItem>
-        <ContentDescriptionItem term="Prepared investment">
-          {labelFor(INVESTMENT_BUDGET_OPTIONS, values.investmentBudget)}
-        </ContentDescriptionItem>
-        <ContentDescriptionItem term="Existing automobile or EV business">
-          {labelFor(
-            RUNNING_EV_BUSINESS_OPTIONS,
-            values.alreadyRunningEvBusiness,
-          )}
-        </ContentDescriptionItem>
-        <ContentDescriptionItem term="Location method">
-          {labelFor(LOCATION_MODE_OPTIONS, values.locationMode)}
-        </ContentDescriptionItem>
-        <ContentDescriptionItem term="Proposed location">
-          <span className="break-words">{proposedLocation}</span>
-        </ContentDescriptionItem>
-      </ContentDescriptionList>
-    </ContentSection>
+      <div className="flex items-center justify-between gap-3 text-caption">
+        <span className="text-muted-readable">
+          Step {current} of {total}
+        </span>
+        <span className="font-medium text-foreground">{stage}</span>
+      </div>
+      <Progress value={progress} className="h-1.5" />
+    </div>
   );
 }
 
@@ -751,153 +660,24 @@ function FormErrorAlert({
   );
 }
 
-function StepProgress({
-  step,
-}: Readonly<{ step: number }>): React.ReactElement {
-  const percentage = ((step + 1) / STEP_META.length) * 100;
-
-  return (
-    <div className="grid min-w-0 gap-3">
-      <div className="flex min-w-0 items-center justify-between gap-3 text-caption text-muted-readable">
-        <span>
-          Step {String(step + 1)} of {String(STEP_META.length)}
-        </span>
-        <span className="text-tabular">
-          {String(Math.round(percentage))}% complete
-        </span>
-      </div>
-
-      <Progress
-        value={percentage}
-        aria-label="Dealership application progress"
-        aria-valuetext={`Step ${String(step + 1)} of ${String(STEP_META.length)}`}
-      />
-
-      <ol
-        className="hidden grid-cols-4 gap-2 sm:grid"
-        aria-label="Application steps"
-      >
-        {STEP_META.map((item, index) => {
-          const complete = index < step;
-          const current = index === step;
-
-          return (
-            <li
-              key={item.title}
-              aria-current={current ? "step" : undefined}
-              className={cn(
-                "flex min-w-0 items-center gap-2 rounded-xl border px-2.5 py-2",
-                current
-                  ? "border-primary/30 bg-primary/6"
-                  : "border-border/60 bg-background/55",
-              )}
-            >
-              <span
-                className={cn(
-                  "flex size-6 shrink-0 items-center justify-center rounded-full text-caption font-semibold",
-                  complete
-                    ? "bg-success text-success-foreground"
-                    : current
-                      ? "bg-primary text-primary-foreground"
-                      : "bg-muted text-muted-readable",
-                )}
-              >
-                {complete ? (
-                  <CheckCircle2 aria-hidden="true" className="size-3.5" />
-                ) : (
-                  index + 1
-                )}
-              </span>
-              <span className="min-w-0 truncate text-caption font-medium">
-                {item.title}
-              </span>
-            </li>
-          );
-        })}
-      </ol>
-    </div>
-  );
-}
-
-function ApplicationGuideContent(): React.ReactElement {
-  return (
-    <div className="grid min-w-0 gap-4">
-      <ContentDescriptionList columns="one">
-        <ContentDescriptionItem term="Estimated time">
-          About 3 minutes
-        </ContentDescriptionItem>
-        <ContentDescriptionItem term="Keep ready">
-          Your investment plan, primary contact details, and proposed dealership
-          location.
-        </ContentDescriptionItem>
-        <ContentDescriptionItem term="What happens next">
-          The Ozotec dealership team reviews the application and contacts the
-          applicant using the submitted mobile number or email address.
-        </ContentDescriptionItem>
-      </ContentDescriptionList>
-
-      <ContentStatus
-        variant="info"
-        role="note"
-        icon={<ShieldCheck aria-hidden="true" />}
-        title="Protect sensitive information"
-        description="Do not enter Aadhaar, PAN, bank, UPI, card, OTP, password, or identity-document details."
-      />
-    </div>
-  );
-}
-
-function MobileApplicationGuideSheet(): React.ReactElement {
-  return (
-    <Sheet>
-      <SheetTrigger asChild>
-        <Button type="button" variant="outline" size="sm" className="lg:hidden">
-          <Menu aria-hidden="true" />
-          Application guide
-        </Button>
-      </SheetTrigger>
-      <SheetContent side="bottom" className="max-h-[min(88dvh,42rem)]">
-        <SheetHeader>
-          <SheetTitle>Before you apply</SheetTitle>
-          <SheetDescription>
-            Information needed to complete the dealership application safely.
-          </SheetDescription>
-        </SheetHeader>
-        <div className="px-4 pb-6 sm:px-5">
-          <ApplicationGuideContent />
-        </div>
-      </SheetContent>
-    </Sheet>
-  );
-}
-
 function StatusScreen({
   state,
-  error,
-}: Readonly<{
-  state: "success" | "invalid-link";
-  error?: UserFacingError;
-}>): React.ReactElement {
-  const copy = STATE_COPY[state];
+}: Readonly<{ state: "success" | "invalid-link" }>): React.ReactElement {
   const success = state === "success";
+  const copy = STATE_COPY[state];
 
   return (
     <PublicDealershipShell
       mainLabelledBy="dealership-status-title"
       mainClassName="items-center"
     >
-      <ContentRoot
-        width="narrow"
-        density="compact"
-        className="px-3 py-8 sm:px-0 sm:py-4"
-      >
+      <ContentRoot width="narrow" density="compact" className="max-w-xl py-6">
         <div className="grid justify-items-center">
           <PublicFormStatusEmblem status={success ? "success" : "error"} />
         </div>
-
         <ContentSection
           className={cn(
-            "shadow-lg",
+            "text-center shadow-lg",
             success
               ? "border-success/20 shadow-success/5"
               : "border-destructive/20 shadow-destructive/5",
@@ -905,41 +685,38 @@ function StatusScreen({
           title={<span id="dealership-status-title">{copy.title}</span>}
           description={copy.description}
         >
-          <ContentStatus
-            variant={success ? "success" : "destructive"}
-            role="status"
-            icon={
-              success ? (
-                <CheckCircle2 aria-hidden="true" />
-              ) : (
-                <AlertTriangle aria-hidden="true" />
-              )
-            }
-            title={
-              success
-                ? "The application is safely recorded"
-                : "No application can be submitted from this link"
-            }
-            description={
-              success
-                ? "The dealership team can now evaluate the submitted information and contact the applicant."
-                : "Open the original Ozotec campaign, QR code, social post, or invitation again."
-            }
-          />
-
-          {error === undefined ? null : (
-            <div className="mt-4">
-              <FormErrorAlert error={error} />
-            </div>
-          )}
-
-          <p className="mt-4 text-center text-caption text-muted-readable">
-            This public page never exposes internal ERP records or diagnostics.
-          </p>
+          <div className="grid justify-items-center gap-3 text-body-sm text-muted-readable">
+            {success ? (
+              <>
+                <CheckCircle2
+                  aria-hidden="true"
+                  className="size-6 text-success"
+                />
+                <p>
+                  Keep your mobile available for the dealership team’s
+                  follow-up.
+                </p>
+              </>
+            ) : (
+              <>
+                <AlertTriangle
+                  aria-hidden="true"
+                  className="size-6 text-destructive"
+                />
+                <p>No application was submitted from this page.</p>
+              </>
+            )}
+          </div>
         </ContentSection>
       </ContentRoot>
     </PublicDealershipShell>
   );
+}
+
+function FieldMessage({
+  message,
+}: Readonly<{ message: string | undefined }>): React.ReactElement | null {
+  return message === undefined ? null : <FieldError>{message}</FieldError>;
 }
 
 export function PublicDealershipApplicationPage({
@@ -949,190 +726,216 @@ export function PublicDealershipApplicationPage({
     () => publicDealershipTokenSchema.safeParse(token),
     [token],
   );
-
-  const [step, setStep] = React.useState(0);
-  const [submitState, setSubmitState] = React.useState<SubmitState>("idle");
+  const parsedToken = tokenResult.success ? tokenResult.data : null;
+  const isOnline = React.useSyncExternalStore(
+    subscribeOnlineStatus,
+    getOnlineSnapshot,
+    getServerOnlineSnapshot,
+  );
+  const form = useForm<DealershipInterestDraftValues>({
+    resolver: zodResolver(dealershipInterestDraftSchema),
+    defaultValues: DEFAULT_VALUES,
+    mode: "onTouched",
+    reValidateMode: "onChange",
+    shouldUnregister: false,
+  });
+  const [alreadyRunningEvBusiness, locationMode] = useWatch({
+    control: form.control,
+    name: ["alreadyRunningEvBusiness", "locationMode"],
+  });
+  const [stepId, setStepId] = React.useState<StepId>("investmentTimeline");
+  const [submitState, setSubmitState] = React.useState<SubmitState>(
+    tokenResult.success ? "idle" : "invalid-link",
+  );
   const [formError, setFormError] = React.useState<UserFacingError | null>(
     null,
   );
-  const [location, setLocation] = React.useState<CapturedLocation | null>(null);
   const [actionPending, setActionPending] = React.useState(false);
-
-  const stepHeadingRef = React.useRef<HTMLSpanElement | null>(null);
-  const focusStepControlRef = React.useRef<number | null>(null);
-  const mountedRef = React.useRef(false);
-  const submissionLockRef = React.useRef(false);
-  const locationLockRef = React.useRef(false);
-  const submissionIntentRef = React.useRef<SubmissionIntent | null>(null);
+  const [locationConfirmationOpen, setLocationConfirmationOpen] =
+    React.useState(false);
+  const [capturedLocation, setCapturedLocation] =
+    React.useState<CapturedLocation | null>(null);
+  const lifecycleControllerRef = React.useRef<AbortController | null>(null);
   const abortControllerRef = React.useRef<AbortController | null>(null);
-
-  const form = useForm<DealershipInterestFormValues>({
-    resolver: zodResolver(dealershipInterestFormSchema),
-    defaultValues: DEFAULT_VALUES,
-    mode: "onBlur",
-    reValidateMode: "onChange",
-    shouldFocusError: true,
-  });
-  const locationMode = useWatch({
-    control: form.control,
-    name: "locationMode",
-  });
+  const locationLockRef = React.useRef(false);
+  const submissionLockRef = React.useRef(false);
+  const submissionIntentRef = React.useRef<SubmissionIntent | null>(null);
+  const planAutoAdvanceTimerRef = React.useRef<number | null>(null);
+  const currentStepRef = React.useRef<StepId>(stepId);
+  const planAutoAdvanceLockRef = React.useRef(false);
 
   React.useEffect(() => {
+    const lifecycleController = new AbortController();
+    lifecycleControllerRef.current = lifecycleController;
+
     return () => {
+      lifecycleController.abort();
+      lifecycleControllerRef.current = null;
       abortControllerRef.current?.abort();
+
+      if (planAutoAdvanceTimerRef.current !== null) {
+        window.clearTimeout(planAutoAdvanceTimerRef.current);
+        planAutoAdvanceTimerRef.current = null;
+      }
     };
   }, []);
 
-  React.useEffect(() => {
-    if (!mountedRef.current) {
-      mountedRef.current = true;
-      return;
-    }
+  function isComponentActive(): boolean {
+    const lifecycleController = lifecycleControllerRef.current;
 
-    const frameId = window.requestAnimationFrame(() => {
-      const shouldFocusStepControl = focusStepControlRef.current === step;
-      const targetId = shouldFocusStepControl
-        ? focusTargetIdForStep(step, form.getValues())
-        : null;
-      const target =
-        targetId === null ? null : document.getElementById(targetId);
-      const scrollTarget = target ?? stepHeadingRef.current;
+    return lifecycleController !== null && !lifecycleController.signal.aborted;
+  }
 
-      scrollTarget?.scrollIntoView({
-        behavior: preferredScrollBehavior(),
-        block: target === null ? "start" : "center",
-      });
+  if (!tokenResult.success || submitState === "invalid-link") {
+    return <StatusScreen state="invalid-link" />;
+  }
 
-      if (target !== null) {
-        target.focus({ preventScroll: true });
-        focusStepControlRef.current = null;
-        return;
-      }
+  if (submitState === "success") {
+    return <StatusScreen state="success" />;
+  }
 
-      focusStepControlRef.current = null;
-      stepHeadingRef.current?.focus({ preventScroll: true });
-    });
-
-    return () => {
-      window.cancelAnimationFrame(frameId);
-    };
-  }, [form, step]);
-
-  const parsedToken = tokenResult.success ? tokenResult.data : null;
+  const stepIndex = Math.max(0, STEPS.indexOf(stepId));
+  const currentStep = STEPS[stepIndex] ?? "investmentTimeline";
+  const meta: StepMeta = STEP_META[currentStep];
   const networkBusy =
     submitState === "locating" || submitState === "submitting";
   const busy = actionPending || networkBusy;
-  const success = submitState === "success";
-  const disabled = busy || success || parsedToken === null;
+  const disabled = busy || parsedToken === null;
+  const isFirstStep = stepIndex === 0;
+  const isLocationStep = currentStep === "dealershipLocation";
 
-  async function captureLocation(): Promise<CapturedLocation | null> {
-    if (locationLockRef.current) {
-      return null;
-    }
-
-    locationLockRef.current = true;
-    setFormError(null);
-    setSubmitState("locating");
-
-    try {
-      const position = await getCurrentPosition();
-      const latitude = position.coords.latitude;
-      const longitude = position.coords.longitude;
-
-      if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
-        throw new Error("invalid_geolocation_coordinates");
-      }
-
-      const accuracy =
-        Number.isFinite(position.coords.accuracy) &&
-        position.coords.accuracy >= 0
-          ? position.coords.accuracy
-          : undefined;
-
-      const nextLocation: CapturedLocation = {
-        latitude,
-        longitude,
-        ...(accuracy === undefined ? {} : { accuracyMeters: accuracy }),
-      };
-
-      setLocation(nextLocation);
-      setSubmitState("idle");
-
-      return nextLocation;
-    } catch (caught) {
-      if (isGeolocationError(caught)) {
-        const nextState = geolocationErrorState(caught);
-        setSubmitState(nextState);
-        setFormError({
-          title: STATE_COPY[nextState].title,
-          description: STATE_COPY[nextState].description,
-        });
-        return null;
-      }
-
-      if (
-        caught instanceof Error &&
-        caught.message === "geolocation_unsupported"
-      ) {
-        setSubmitState("unsupported-browser");
-        setFormError({
-          title: STATE_COPY["unsupported-browser"].title,
-          description: STATE_COPY["unsupported-browser"].description,
-        });
-        return null;
-      }
-
-      setSubmitState("unexpected-error");
-      setFormError(errorFromUnknown(caught));
-      return null;
-    } finally {
-      locationLockRef.current = false;
-    }
-  }
-
-  async function handleNext(): Promise<void> {
-    if (disabled) {
+  function clearPlanAutoAdvanceTimer(): void {
+    if (planAutoAdvanceTimerRef.current === null) {
       return;
     }
 
+    window.clearTimeout(planAutoAdvanceTimerRef.current);
+    planAutoAdvanceTimerRef.current = null;
+  }
+
+  async function advanceAfterPlanChoice(
+    sourceStep: DealershipPlanAutoAdvanceStepId,
+  ): Promise<void> {
+    if (
+      !isComponentActive() ||
+      planAutoAdvanceLockRef.current ||
+      currentStepRef.current !== sourceStep
+    ) {
+      return;
+    }
+
+    planAutoAdvanceLockRef.current = true;
     setActionPending(true);
     setFormError(null);
 
     try {
-      const fields = STEP_FIELDS[step] ?? [];
-      const valid = await form.trigger([...fields], { shouldFocus: true });
+      const valid = await form.trigger(sourceStep, { shouldFocus: false });
 
-      if (valid) {
-        const nextStep = Math.min(step + 1, FINAL_STEP_INDEX);
+      if (
+        !isComponentActive() ||
+        !valid ||
+        currentStepRef.current !== sourceStep
+      ) {
+        return;
+      }
 
-        if (nextStep !== step) {
-          focusStepControlRef.current = nextStep;
-          setStep(nextStep);
-        }
+      const sourceIndex = STEPS.indexOf(sourceStep);
+      const nextStep = STEPS[sourceIndex + 1];
+
+      if (nextStep !== undefined) {
+        moveToStep(nextStep);
       }
     } finally {
-      setActionPending(false);
+      planAutoAdvanceLockRef.current = false;
+
+      if (isComponentActive()) {
+        setActionPending(false);
+      }
     }
   }
 
-  function handleBack(): void {
-    if (busy) {
+  function schedulePlanAutoAdvance(
+    sourceStep: DealershipPlanAutoAdvanceStepId,
+  ): void {
+    clearPlanAutoAdvanceTimer();
+
+    planAutoAdvanceTimerRef.current = window.setTimeout(() => {
+      planAutoAdvanceTimerRef.current = null;
+      void advanceAfterPlanChoice(sourceStep);
+    }, PLAN_AUTO_ADVANCE_DELAY_MS);
+  }
+
+  function focusElement(id: string): void {
+    window.requestAnimationFrame(() => {
+      document.getElementById(id)?.focus({ preventScroll: true });
+      document.getElementById(PAGE_TITLE_ID)?.scrollIntoView({
+        block: "start",
+        behavior: preferredScrollBehavior(),
+      });
+    });
+  }
+
+  function moveToStep(nextStep: StepId, focusId?: string): void {
+    clearPlanAutoAdvanceTimer();
+    setFormError(null);
+    currentStepRef.current = nextStep;
+    setStepId(nextStep);
+    focusElement(focusId ?? focusIdForStep(nextStep));
+  }
+
+  function moveToField(field: keyof DealershipInterestDraftValues): void {
+    const targetStep = FIELD_TO_STEP[field];
+    const targetFocus = focusIdForField(field) ?? focusIdForStep(targetStep);
+    moveToStep(targetStep, targetFocus);
+  }
+
+  function applyServerFieldErrors(error: unknown): StepId | null {
+    if (!isApiHttpError(error)) {
+      return null;
+    }
+
+    const invalidParameters = error.problem?.invalid_params;
+
+    if (invalidParameters === undefined || invalidParameters.length === 0) {
+      return null;
+    }
+
+    let firstStep: StepId | null = null;
+
+    for (const invalidParameter of invalidParameters) {
+      const field = resolveServerFieldName(invalidParameter.path);
+
+      if (field === null) {
+        continue;
+      }
+
+      form.setError(field, {
+        type: "server",
+        message: safeServerFieldMessage(invalidParameter.message),
+      });
+      firstStep ??= FIELD_TO_STEP[field];
+    }
+
+    return firstStep;
+  }
+
+  async function submitApplication(
+    location: CapturedLocation | null,
+  ): Promise<void> {
+    if (
+      parsedToken === null ||
+      submissionLockRef.current ||
+      submitState === "submitting"
+    ) {
       return;
     }
 
-    setFormError(null);
-    setStep((current) => Math.max(current - 1, 0));
-  }
-
-  async function handleSubmit(): Promise<void> {
-    if (
-      step !== FINAL_STEP_INDEX ||
-      parsedToken === null ||
-      busy ||
-      success ||
-      submissionLockRef.current
-    ) {
+    if (!isOnline) {
+      setFormError({
+        title: "You are offline",
+        description:
+          "Reconnect to the internet, then send the application. Your answers remain on this page.",
+      });
       return;
     }
 
@@ -1142,25 +945,38 @@ export function PublicDealershipApplicationPage({
     let completed = false;
 
     try {
-      const valid = await form.trigger(undefined, { shouldFocus: true });
+      const valid = await form.trigger(undefined, { shouldFocus: false });
+      const parsedValues = dealershipInterestFormSchema.safeParse(
+        form.getValues(),
+      );
 
-      if (!valid) {
-        setStep(firstErrorStep(form.formState.errors));
+      if (!isComponentActive()) {
         return;
       }
 
-      const values = dealershipInterestFormSchema.parse(form.getValues());
-      const resolvedLocation =
-        values.locationMode === "GPS"
-          ? (location ?? (await captureLocation()))
-          : null;
+      if (!valid || !parsedValues.success) {
+        const firstIssue = parsedValues.success
+          ? undefined
+          : parsedValues.error.issues.find(
+              (issue) => typeof issue.path[0] === "string",
+            );
+        const issueField = firstIssue?.path[0];
 
-      if (values.locationMode === "GPS" && resolvedLocation === null) {
-        setStep(FINAL_STEP_INDEX);
+        if (typeof issueField === "string" && isDraftFieldName(issueField)) {
+          moveToField(issueField);
+        } else {
+          const firstErrorField = SERVER_FIELD_NAMES.find(
+            (field) => form.formState.errors[field] !== undefined,
+          );
+
+          if (firstErrorField !== undefined) {
+            moveToField(firstErrorField);
+          }
+        }
         return;
       }
 
-      const application = toSubmitRequest(values, resolvedLocation);
+      const application = toSubmitRequest(parsedValues.data, location);
       const serializedApplication = JSON.stringify(application);
       const existingIntent = submissionIntentRef.current;
       const submissionIntent =
@@ -1184,835 +1000,921 @@ export function PublicDealershipApplicationPage({
         signal: controller.signal,
       });
 
-      if (controller.signal.aborted) {
+      completed = true;
+
+      if (isComponentActive()) {
+        setSubmitState("success");
+      }
+    } catch (caught) {
+      if (!isComponentActive()) {
         return;
       }
 
-      completed = true;
-      setSubmitState("success");
-    } catch (caught) {
       if (caught instanceof DOMException && caught.name === "AbortError") {
         return;
       }
 
-      if (isApiHttpError(caught) && caught.status === 409) {
-        submissionIntentRef.current = null;
+      const serverStep = applyServerFieldErrors(caught);
+      const nextError = errorFromUnknown(caught);
+      setSubmitState(
+        nextError.title === STATE_COPY["invalid-link"].title
+          ? "invalid-link"
+          : "api-error",
+      );
+
+      if (serverStep !== null) {
+        moveToStep(serverStep);
       }
 
-      setSubmitState("api-error");
-      setFormError(errorFromUnknown(caught));
+      setFormError(nextError);
     } finally {
-      setActionPending(false);
+      submissionLockRef.current = false;
 
-      if (!completed) {
-        submissionLockRef.current = false;
+      if (isComponentActive() && !completed) {
+        setActionPending(false);
+        setSubmitState((current) =>
+          current === "submitting" ? "idle" : current,
+        );
       }
     }
   }
 
-  if (!tokenResult.success) {
-    return <StatusScreen state="invalid-link" />;
+  async function captureCurrentLocationAndSubmit(): Promise<void> {
+    if (locationLockRef.current || disabled) {
+      return;
+    }
+
+    locationLockRef.current = true;
+    setFormError(null);
+
+    try {
+      let location = capturedLocation;
+
+      if (location === null) {
+        setSubmitState("locating");
+        const position = await getCurrentPosition();
+        const latitude = position.coords.latitude;
+        const longitude = position.coords.longitude;
+
+        if (
+          !Number.isFinite(latitude) ||
+          latitude < -90 ||
+          latitude > 90 ||
+          !Number.isFinite(longitude) ||
+          longitude < -180 ||
+          longitude > 180
+        ) {
+          throw new Error("invalid_geolocation_coordinates");
+        }
+
+        const accuracy =
+          Number.isFinite(position.coords.accuracy) &&
+          position.coords.accuracy >= 0 &&
+          position.coords.accuracy <= MAX_GEOLOCATION_ACCURACY_METERS
+            ? position.coords.accuracy
+            : undefined;
+
+        location = {
+          latitude,
+          longitude,
+          ...(accuracy === undefined ? {} : { accuracyMeters: accuracy }),
+        };
+
+        if (!isComponentActive()) {
+          return;
+        }
+
+        setCapturedLocation(location);
+        setSubmitState("idle");
+      }
+
+      await submitApplication(location);
+    } catch (caught) {
+      if (!isComponentActive()) {
+        return;
+      }
+
+      if (isGeolocationError(caught)) {
+        const nextState = geolocationErrorState(caught);
+        setSubmitState(nextState);
+        setFormError(STATE_COPY[nextState]);
+        return;
+      }
+
+      if (
+        caught instanceof Error &&
+        caught.message === "geolocation_unsupported"
+      ) {
+        setSubmitState("unsupported-browser");
+        setFormError(STATE_COPY["unsupported-browser"]);
+        return;
+      }
+
+      setSubmitState("unexpected-error");
+      setFormError(errorFromUnknown(caught));
+    } finally {
+      locationLockRef.current = false;
+    }
   }
 
-  if (success) {
-    return <StatusScreen state="success" />;
+  async function validateCurrentStep(): Promise<boolean> {
+    switch (currentStep) {
+      case "investmentTimeline":
+        return await form.trigger("investmentTimeline", {
+          shouldFocus: true,
+        });
+      case "investmentBudget":
+        return await form.trigger("investmentBudget", { shouldFocus: true });
+      case "alreadyRunningEvBusiness":
+        return await form.trigger("alreadyRunningEvBusiness", {
+          shouldFocus: true,
+        });
+      case "contactDetails":
+        return await form.trigger([...CONTACT_DETAIL_FIELDS], {
+          shouldFocus: true,
+        });
+      case "dealershipLocation":
+        return await form.trigger(
+          locationMode === "MANUAL"
+            ? [...MANUAL_LOCATION_FIELDS]
+            : [...GPS_LOCATION_FIELDS],
+          { shouldFocus: true },
+        );
+    }
   }
 
-  const currentStep = STEP_META[step] ?? STEP_META[0];
-  const reviewValues = step === FINAL_STEP_INDEX ? form.getValues() : null;
-  const footerActions = (
-    <ContentFormActions className="mx-auto w-full max-w-7xl border-0 bg-transparent p-0 shadow-none supports-[backdrop-filter]:bg-transparent sm:justify-between">
-      <div className="hidden min-w-0 flex-1 sm:block">
-        <p className="truncate text-caption text-muted-readable">
-          Step {String(step + 1)} of {String(STEP_META.length)}
-        </p>
-        <p className="truncate text-body-sm font-medium text-foreground">
-          {currentStep.title}
-        </p>
-      </div>
+  async function handlePrimaryAction(): Promise<void> {
+    clearPlanAutoAdvanceTimer();
 
-      <div className="grid w-full grid-cols-2 gap-2 sm:w-auto sm:min-w-72">
-        <Button
-          type="button"
-          variant="outline"
-          disabled={busy || step === 0}
-          onClick={handleBack}
-          className="min-h-11 w-full touch-manipulation"
-        >
-          <ArrowLeft aria-hidden="true" />
-          Back
-        </Button>
+    if (disabled) {
+      return;
+    }
 
-        {step < FINAL_STEP_INDEX ? (
-          <Button
-            key="continue-action"
-            type="button"
-            disabled={disabled}
-            onClick={(event) => {
-              event.preventDefault();
-              event.stopPropagation();
-              void handleNext();
-            }}
-            className="min-h-11 w-full touch-manipulation"
-            aria-busy={actionPending}
-          >
-            {actionPending ? (
-              <LoaderCircle
-                aria-hidden="true"
-                className="animate-spin motion-reduce:animate-none"
+    setActionPending(true);
+    setFormError(null);
+
+    try {
+      const valid = await validateCurrentStep();
+
+      if (!isComponentActive() || !valid) {
+        return;
+      }
+
+      if (isLocationStep) {
+        if (locationMode === "GPS") {
+          setLocationConfirmationOpen(true);
+          return;
+        }
+
+        await submitApplication(null);
+        return;
+      }
+
+      const nextStep = STEPS[stepIndex + 1];
+
+      if (nextStep !== undefined) {
+        moveToStep(nextStep);
+      }
+    } finally {
+      if (isComponentActive()) {
+        setActionPending(false);
+      }
+    }
+  }
+
+  function handleBack(): void {
+    clearPlanAutoAdvanceTimer();
+
+    if (busy || isFirstStep) {
+      return;
+    }
+
+    const previousStep = STEPS[stepIndex - 1];
+
+    if (previousStep !== undefined) {
+      moveToStep(previousStep);
+    }
+  }
+
+  function switchToManualAddress(): void {
+    form.setValue("locationMode", "MANUAL", {
+      shouldDirty: true,
+      shouldTouch: true,
+      shouldValidate: true,
+    });
+    setCapturedLocation(null);
+    setLocationConfirmationOpen(false);
+    moveToStep("dealershipLocation", "address-line-1");
+  }
+
+  function renderPlanQuestion(): React.ReactNode {
+    switch (currentStep) {
+      case "investmentTimeline":
+        return (
+          <Controller
+            control={form.control}
+            name="investmentTimeline"
+            render={({ field }) => (
+              <ChoiceCards
+                name="investment-timeline"
+                value={field.value}
+                options={INVESTMENT_TIMELINE_OPTIONS}
+                disabled={disabled}
+                onValueChange={(value) => {
+                  form.setValue("investmentTimeline", value, {
+                    shouldDirty: true,
+                    shouldTouch: true,
+                    shouldValidate: true,
+                  });
+                  form.clearErrors("investmentTimeline");
+                  schedulePlanAutoAdvance("investmentTimeline");
+                }}
               />
-            ) : null}
-            Continue
-            <ChevronRight aria-hidden="true" />
-          </Button>
-        ) : (
-          <Button
-            key="submit-action"
-            type="submit"
-            form={FORM_ID}
-            disabled={disabled}
-            className="min-h-11 w-full touch-manipulation"
-            aria-busy={busy}
-          >
-            {busy ? (
-              <LoaderCircle
-                aria-hidden="true"
-                className="animate-spin motion-reduce:animate-none"
-              />
-            ) : (
-              <ClipboardCheck aria-hidden="true" />
             )}
-            {submitState === "locating"
-              ? "Capturing…"
-              : submitState === "submitting"
-                ? "Submitting…"
-                : "Submit application"}
-          </Button>
-        )}
-      </div>
-    </ContentFormActions>
-  );
+          />
+        );
+      case "investmentBudget":
+        return (
+          <Controller
+            control={form.control}
+            name="investmentBudget"
+            render={({ field }) => (
+              <ChoiceCards
+                name="investment-budget"
+                value={field.value}
+                options={INVESTMENT_BUDGET_OPTIONS}
+                disabled={disabled}
+                onValueChange={(value) => {
+                  form.setValue("investmentBudget", value, {
+                    shouldDirty: true,
+                    shouldTouch: true,
+                    shouldValidate: true,
+                  });
+                  form.clearErrors("investmentBudget");
+                  schedulePlanAutoAdvance("investmentBudget");
+                }}
+              />
+            )}
+          />
+        );
+      case "alreadyRunningEvBusiness":
+        return (
+          <Controller
+            control={form.control}
+            name="alreadyRunningEvBusiness"
+            render={({ field }) => (
+              <ChoiceCards
+                name="running-business"
+                value={field.value}
+                options={RUNNING_EV_BUSINESS_OPTIONS}
+                disabled={disabled}
+                columns="two"
+                onValueChange={(value) => {
+                  form.setValue("alreadyRunningEvBusiness", value, {
+                    shouldDirty: true,
+                    shouldTouch: true,
+                    shouldValidate: true,
+                  });
 
-  return (
-    <PublicDealershipShell
-      footerActions={footerActions}
-      mainLabelledBy="dealership-form-title"
-    >
-      <ContentRoot
-        width="wide"
-        density="compact"
-        className="px-3 py-3 sm:px-0 sm:py-0"
-      >
-        <ContentHeader
-          variant="compact"
-          eyebrow={
-            <div className="flex flex-wrap items-center gap-2">
-              <Badge variant="outline">Dealership partnership</Badge>
-              <Badge variant="secondary">4 guided steps</Badge>
-            </div>
-          }
-          title={
-            <span
-              ref={stepHeadingRef}
-              id="dealership-form-title"
-              tabIndex={-1}
-              className="scroll-mt-24 outline-none"
-            >
-              {currentStep.title}
+                  if (value === "NO") {
+                    form.setValue("businessName", "", {
+                      shouldDirty: true,
+                      shouldValidate: false,
+                    });
+                    form.clearErrors("businessName");
+                  }
+
+                  form.clearErrors("alreadyRunningEvBusiness");
+                  schedulePlanAutoAdvance("alreadyRunningEvBusiness");
+                }}
+              />
+            )}
+          />
+        );
+      case "contactDetails":
+      case "dealershipLocation":
+        return null;
+    }
+  }
+
+  function renderContactDetails(): React.ReactElement {
+    const errors = form.formState.errors;
+
+    return (
+      <div className="grid gap-5">
+        <Field
+          {...(errors.applicantName === undefined
+            ? {}
+            : { "data-invalid": true })}
+        >
+          <FieldLabel htmlFor="applicant-name">Full name</FieldLabel>
+          <Input
+            id="applicant-name"
+            type="text"
+            autoComplete="name"
+            enterKeyHint="next"
+            maxLength={256}
+            required
+            autoFocus
+            aria-invalid={errors.applicantName === undefined ? undefined : true}
+            disabled={disabled}
+            placeholder="Your full name"
+            className="min-h-12 text-base"
+            {...form.register("applicantName")}
+          />
+          <FieldMessage message={errors.applicantName?.message} />
+        </Field>
+
+        {alreadyRunningEvBusiness === "YES" ? (
+          <Field
+            {...(errors.businessName === undefined
+              ? {}
+              : { "data-invalid": true })}
+          >
+            <FieldLabel htmlFor="business-name">
+              Business name
+              <span className="ml-1 font-normal text-muted-readable">
+                (optional)
+              </span>
+            </FieldLabel>
+            <Input
+              id="business-name"
+              type="text"
+              autoComplete="organization"
+              enterKeyHint="next"
+              maxLength={256}
+              aria-invalid={
+                errors.businessName === undefined ? undefined : true
+              }
+              disabled={disabled}
+              placeholder="Business or company name"
+              className="min-h-12 text-base"
+              {...form.register("businessName")}
+            />
+            <FieldMessage message={errors.businessName?.message} />
+          </Field>
+        ) : null}
+
+        <Field
+          {...(errors.mobileNumber === undefined
+            ? {}
+            : { "data-invalid": true })}
+        >
+          <FieldLabel htmlFor="mobile-number">Mobile number</FieldLabel>
+          <div
+            className={cn(
+              "flex min-h-12 overflow-hidden rounded-xl border",
+              "border-input bg-background focus-within:border-ring",
+              "focus-within:ring-3 focus-within:ring-ring/50",
+            )}
+          >
+            <span className="flex shrink-0 items-center border-r border-border/70 px-3 text-body-sm text-muted-readable">
+              {INDIA_DIAL_CODE}
             </span>
-          }
-          description={currentStep.description}
-          actions={<MobileApplicationGuideSheet />}
-          meta={
-            <div className="grid w-full min-w-0 gap-2 sm:grid-cols-3">
-              <div className="flex min-w-0 items-center gap-2 rounded-xl border border-primary/20 bg-primary/5 px-3 py-2.5">
-                <Clock3
-                  aria-hidden="true"
-                  className="size-4 shrink-0 text-primary"
+            <Controller
+              control={form.control}
+              name="mobileNumber"
+              render={({ field }) => (
+                <Input
+                  id="mobile-number"
+                  type="tel"
+                  inputMode="numeric"
+                  autoComplete="tel-national"
+                  enterKeyHint="next"
+                  maxLength={INDIA_MOBILE_MAX_LENGTH}
+                  required
+                  aria-invalid={
+                    errors.mobileNumber === undefined ? undefined : true
+                  }
+                  disabled={disabled}
+                  placeholder="9876543210"
+                  className="min-h-12 rounded-none border-0 text-base shadow-none focus-visible:ring-0"
+                  value={field.value}
+                  onBlur={field.onBlur}
+                  name={field.name}
+                  ref={field.ref}
+                  onChange={(event) => {
+                    field.onChange(
+                      normalizeIndianMobileInput(event.target.value),
+                    );
+                  }}
                 />
-                <span className="text-caption text-foreground">
-                  About 3 minutes
-                </span>
-              </div>
-              <div className="flex min-w-0 items-center gap-2 rounded-xl border border-border/70 bg-muted/30 px-3 py-2.5">
-                <ListChecks
-                  aria-hidden="true"
-                  className="size-4 shrink-0 text-muted-readable"
-                />
-                <span className="text-caption text-foreground">
-                  One section at a time
-                </span>
-              </div>
-              <div className="hidden min-w-0 items-center gap-2 rounded-xl border border-border/70 bg-muted/30 px-3 py-2.5 sm:flex">
-                <ShieldCheck
-                  aria-hidden="true"
-                  className="size-4 shrink-0 text-success"
-                />
-                <span className="text-caption text-foreground">
-                  Secure ERP submission
-                </span>
-              </div>
-            </div>
-          }
-          cardClassName="border-primary/20 bg-card/92 shadow-lg shadow-primary/5"
-        >
-          <div className="mt-4 border-t border-border/70 pt-4">
-            <StepProgress step={step} />
+              )}
+            />
           </div>
-        </ContentHeader>
+          <FieldDescription>
+            We will use this number for dealership follow-up.
+          </FieldDescription>
+          <FieldMessage message={errors.mobileNumber?.message} />
+        </Field>
 
-        <ContentSplit
-          variant="main-context"
-          className="gap-4 lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start lg:gap-6 2xl:grid-cols-[minmax(0,1fr)_20rem]"
+        <Field
+          {...(errors.email === undefined ? {} : { "data-invalid": true })}
         >
-          <div className="grid min-w-0 gap-4">
-            {formError === null ? null : <FormErrorAlert error={formError} />}
+          <FieldLabel htmlFor="email">
+            Email address
+            <span className="ml-1 font-normal text-muted-readable">
+              (optional)
+            </span>
+          </FieldLabel>
+          <Input
+            id="email"
+            type="email"
+            inputMode="email"
+            autoComplete="email"
+            enterKeyHint="done"
+            maxLength={320}
+            aria-invalid={errors.email === undefined ? undefined : true}
+            disabled={disabled}
+            placeholder="you@example.com"
+            className="min-h-12 text-base"
+            {...form.register("email")}
+          />
+          <FieldMessage message={errors.email?.message} />
+        </Field>
+      </div>
+    );
+  }
 
-            <ContentSection
-              aria-busy={busy}
-              className="border-primary/15 bg-card/94 shadow-md"
-              contentClassName="min-w-0"
-            >
-              <ContentForm
-                id={FORM_ID}
-                noValidate
-                className="[&_input]:text-base [&_textarea]:text-base sm:[&_input]:text-body-sm sm:[&_textarea]:text-body-sm"
-                onSubmit={(event) => {
-                  event.preventDefault();
+  function renderManualAddress(): React.ReactElement {
+    const errors = form.formState.errors;
 
-                  if (step !== FINAL_STEP_INDEX) {
+    return (
+      <div className="grid gap-5 rounded-2xl border border-border/80 bg-muted/15 p-4 sm:p-5">
+        <div className="grid gap-1">
+          <p className="text-body-sm font-semibold text-foreground">
+            Proposed dealership address
+          </p>
+          <p className="text-caption text-muted-readable">
+            Enter the complete address used for initial dealership evaluation.
+          </p>
+        </div>
+
+        <Field
+          {...(errors.addressLine1 === undefined
+            ? {}
+            : { "data-invalid": true })}
+        >
+          <FieldLabel htmlFor="address-line-1">Address</FieldLabel>
+          <Input
+            id="address-line-1"
+            type="text"
+            autoComplete="address-line1"
+            enterKeyHint="next"
+            maxLength={512}
+            required
+            aria-invalid={errors.addressLine1 === undefined ? undefined : true}
+            disabled={disabled}
+            placeholder="Door number, street and area"
+            className="min-h-12 text-base"
+            {...form.register("addressLine1")}
+          />
+          <FieldMessage message={errors.addressLine1?.message} />
+        </Field>
+
+        <Field
+          {...(errors.addressLine2 === undefined
+            ? {}
+            : { "data-invalid": true })}
+        >
+          <FieldLabel htmlFor="address-line-2">
+            Landmark
+            <span className="ml-1 font-normal text-muted-readable">
+              (optional)
+            </span>
+          </FieldLabel>
+          <Input
+            id="address-line-2"
+            type="text"
+            autoComplete="address-line2"
+            enterKeyHint="next"
+            maxLength={512}
+            aria-invalid={errors.addressLine2 === undefined ? undefined : true}
+            disabled={disabled}
+            placeholder="Nearby landmark"
+            className="min-h-12 text-base"
+            {...form.register("addressLine2")}
+          />
+          <FieldMessage message={errors.addressLine2?.message} />
+        </Field>
+
+        <div className="grid gap-5 sm:grid-cols-2">
+          <Field
+            {...(errors.city === undefined ? {} : { "data-invalid": true })}
+          >
+            <FieldLabel htmlFor="city">City</FieldLabel>
+            <Input
+              id="city"
+              type="text"
+              autoComplete="address-level2"
+              enterKeyHint="next"
+              maxLength={128}
+              required
+              aria-invalid={errors.city === undefined ? undefined : true}
+              disabled={disabled}
+              placeholder="City"
+              className="min-h-12 text-base"
+              {...form.register("city")}
+            />
+            <FieldMessage message={errors.city?.message} />
+          </Field>
+
+          <Field
+            {...(errors.district === undefined ? {} : { "data-invalid": true })}
+          >
+            <FieldLabel htmlFor="district">District</FieldLabel>
+            <Input
+              id="district"
+              type="text"
+              enterKeyHint="next"
+              maxLength={128}
+              required
+              aria-invalid={errors.district === undefined ? undefined : true}
+              disabled={disabled}
+              placeholder="District"
+              className="min-h-12 text-base"
+              {...form.register("district")}
+            />
+            <FieldMessage message={errors.district?.message} />
+          </Field>
+        </div>
+
+        <div className="grid gap-5 sm:grid-cols-[minmax(0,1fr)_10rem]">
+          <Field
+            {...(errors.state === undefined ? {} : { "data-invalid": true })}
+          >
+            <FieldLabel htmlFor="state">State</FieldLabel>
+            <Input
+              id="state"
+              type="text"
+              autoComplete="address-level1"
+              enterKeyHint="next"
+              maxLength={128}
+              required
+              aria-invalid={errors.state === undefined ? undefined : true}
+              disabled={disabled}
+              placeholder="State"
+              className="min-h-12 text-base"
+              {...form.register("state")}
+            />
+            <FieldMessage message={errors.state?.message} />
+          </Field>
+
+          <Field
+            {...(errors.postalCode === undefined
+              ? {}
+              : { "data-invalid": true })}
+          >
+            <FieldLabel htmlFor="postal-code">PIN code</FieldLabel>
+            <Controller
+              control={form.control}
+              name="postalCode"
+              render={({ field }) => (
+                <Input
+                  id="postal-code"
+                  type="text"
+                  inputMode="numeric"
+                  autoComplete="postal-code"
+                  enterKeyHint="done"
+                  maxLength={6}
+                  required
+                  aria-invalid={
+                    errors.postalCode === undefined ? undefined : true
+                  }
+                  disabled={disabled}
+                  placeholder="641659"
+                  className="min-h-12 text-base"
+                  value={field.value}
+                  onBlur={field.onBlur}
+                  name={field.name}
+                  ref={field.ref}
+                  onChange={(event) => {
+                    field.onChange(
+                      normalizePostalCodeInput(event.target.value),
+                    );
+                  }}
+                />
+              )}
+            />
+            <FieldMessage message={errors.postalCode?.message} />
+          </Field>
+        </div>
+      </div>
+    );
+  }
+
+  function renderLocationDetails(): React.ReactElement {
+    const errors = form.formState.errors;
+
+    return (
+      <div className="grid gap-5">
+        <Field
+          {...(errors.locationMode === undefined
+            ? {}
+            : { "data-invalid": true })}
+          className="gap-3"
+        >
+          <FieldLabel>Location method</FieldLabel>
+          <Controller
+            control={form.control}
+            name="locationMode"
+            render={({ field }) => (
+              <ChoiceCards
+                name="location-mode"
+                value={field.value}
+                options={LOCATION_MODE_OPTIONS}
+                disabled={disabled}
+                columns="two"
+                onValueChange={(value) => {
+                  field.onChange(value);
+                  setFormError(null);
+
+                  if (value === "MANUAL") {
+                    setCapturedLocation(null);
+                    focusElement("address-line-1");
                     return;
                   }
 
-                  void handleSubmit();
+                  form.clearErrors([...MANUAL_ADDRESS_ONLY_FIELDS]);
                 }}
-              >
-                <FieldGroup className="gap-5">
-                  {step === 0 ? (
-                    <FieldSet disabled={disabled}>
-                      <FieldLegend>
-                        When are you planning to invest?
-                      </FieldLegend>
-                      <FieldDescription>
-                        Select the option that best reflects your current plan.
-                      </FieldDescription>
+              />
+            )}
+          />
+          <FieldMessage message={errors.locationMode?.message} />
+        </Field>
 
-                      <Controller
-                        control={form.control}
-                        name="investmentTimeline"
-                        render={({ field }) => (
-                          <ChoiceCards
-                            name="investment-timeline"
-                            value={field.value}
-                            options={INVESTMENT_TIMELINE_OPTIONS}
-                            disabled={disabled}
-                            onChange={field.onChange}
-                          />
-                        )}
-                      />
-
-                      {form.formState.errors.investmentTimeline?.message ===
-                      undefined ? null : (
-                        <FieldError>
-                          {form.formState.errors.investmentTimeline.message}
-                        </FieldError>
-                      )}
-                    </FieldSet>
-                  ) : null}
-
-                  {step === 1 ? (
-                    <>
-                      <FieldSet disabled={disabled}>
-                        <FieldLegend>
-                          How much are you prepared to invest?
-                        </FieldLegend>
-                        <FieldDescription>
-                          Choose the closest planned investment range.
-                        </FieldDescription>
-
-                        <Controller
-                          control={form.control}
-                          name="investmentBudget"
-                          render={({ field }) => (
-                            <ChoiceCards
-                              name="investment-budget"
-                              value={field.value}
-                              options={INVESTMENT_BUDGET_OPTIONS}
-                              disabled={disabled}
-                              onChange={field.onChange}
-                            />
-                          )}
-                        />
-
-                        {form.formState.errors.investmentBudget?.message ===
-                        undefined ? null : (
-                          <FieldError>
-                            {form.formState.errors.investmentBudget.message}
-                          </FieldError>
-                        )}
-                      </FieldSet>
-
-                      <FieldSet disabled={disabled}>
-                        <FieldLegend>
-                          Do you already operate an EV business?
-                        </FieldLegend>
-
-                        <Controller
-                          control={form.control}
-                          name="alreadyRunningEvBusiness"
-                          render={({ field }) => (
-                            <ChoiceCards
-                              name="running-ev-business"
-                              value={field.value}
-                              options={RUNNING_EV_BUSINESS_OPTIONS}
-                              disabled={disabled}
-                              onChange={field.onChange}
-                              columns={2}
-                            />
-                          )}
-                        />
-
-                        {form.formState.errors.alreadyRunningEvBusiness
-                          ?.message === undefined ? null : (
-                          <FieldError>
-                            {
-                              form.formState.errors.alreadyRunningEvBusiness
-                                .message
-                            }
-                          </FieldError>
-                        )}
-                      </FieldSet>
-                    </>
-                  ) : null}
-
-                  {step === 2 ? (
-                    <div className="grid gap-5 sm:grid-cols-2">
-                      <Field
-                        data-invalid={
-                          form.formState.errors.applicantName === undefined
-                            ? undefined
-                            : true
-                        }
-                      >
-                        <FieldLabel htmlFor="applicant-name">
-                          Applicant name
-                        </FieldLabel>
-                        <Input
-                          id="applicant-name"
-                          type="text"
-                          autoComplete="name"
-                          enterKeyHint="next"
-                          placeholder="Your full name"
-                          aria-invalid={
-                            form.formState.errors.applicantName === undefined
-                              ? undefined
-                              : true
-                          }
-                          disabled={disabled}
-                          {...form.register("applicantName")}
-                        />
-                        {form.formState.errors.applicantName?.message ===
-                        undefined ? null : (
-                          <FieldError>
-                            {form.formState.errors.applicantName.message}
-                          </FieldError>
-                        )}
-                      </Field>
-
-                      <Field>
-                        <FieldLabel htmlFor="business-name">
-                          Business name{" "}
-                          <span className="text-muted-readable">
-                            (optional)
-                          </span>
-                        </FieldLabel>
-                        <Input
-                          id="business-name"
-                          type="text"
-                          autoComplete="organization"
-                          enterKeyHint="next"
-                          placeholder="Existing business or company"
-                          disabled={disabled}
-                          {...form.register("businessName")}
-                        />
-                        <FieldDescription>
-                          Leave blank when applying as an individual.
-                        </FieldDescription>
-                      </Field>
-
-                      <Field
-                        data-invalid={
-                          form.formState.errors.mobileNumber === undefined
-                            ? undefined
-                            : true
-                        }
-                      >
-                        <FieldLabel htmlFor="mobile-number">
-                          Mobile number
-                        </FieldLabel>
-                        <Controller
-                          control={form.control}
-                          name="mobileNumber"
-                          render={({ field }) => (
-                            <div className="relative">
-                              <span
-                                aria-hidden="true"
-                                className="pointer-events-none absolute inset-y-0 left-4 flex items-center text-body-sm text-muted-readable"
-                              >
-                                {INDIA_DIAL_CODE}
-                              </span>
-
-                              <Input
-                                id="mobile-number"
-                                type="tel"
-                                autoComplete="tel-national"
-                                inputMode="numeric"
-                                enterKeyHint="next"
-                                placeholder="9876543210"
-                                maxLength={INDIA_MOBILE_MAX_LENGTH}
-                                aria-invalid={
-                                  form.formState.errors.mobileNumber ===
-                                  undefined
-                                    ? undefined
-                                    : true
-                                }
-                                disabled={disabled}
-                                value={field.value}
-                                onBlur={field.onBlur}
-                                name={field.name}
-                                ref={field.ref}
-                                onChange={(event) => {
-                                  field.onChange(
-                                    normalizeIndianMobileInput(
-                                      event.target.value,
-                                    ),
-                                  );
-                                }}
-                                className="pl-16"
-                              />
-                            </div>
-                          )}
-                        />
-                        {form.formState.errors.mobileNumber?.message ===
-                        undefined ? null : (
-                          <FieldError>
-                            {form.formState.errors.mobileNumber.message}
-                          </FieldError>
-                        )}
-                      </Field>
-
-                      <Field
-                        data-invalid={
-                          form.formState.errors.email === undefined
-                            ? undefined
-                            : true
-                        }
-                      >
-                        <FieldLabel htmlFor="email">Email</FieldLabel>
-                        <Input
-                          id="email"
-                          type="email"
-                          autoComplete="email"
-                          inputMode="email"
-                          autoCapitalize="none"
-                          autoCorrect="off"
-                          enterKeyHint="done"
-                          placeholder="you@example.com"
-                          aria-invalid={
-                            form.formState.errors.email === undefined
-                              ? undefined
-                              : true
-                          }
-                          disabled={disabled}
-                          {...form.register("email")}
-                        />
-                        {form.formState.errors.email?.message ===
-                        undefined ? null : (
-                          <FieldError>
-                            {form.formState.errors.email.message}
-                          </FieldError>
-                        )}
-                      </Field>
-                    </div>
-                  ) : null}
-
-                  {step === 3 ? (
-                    <>
-                      {reviewValues === null ? null : (
-                        <ApplicationReview values={reviewValues} />
-                      )}
-
-                      <FieldSet disabled={disabled}>
-                        <FieldLegend>
-                          How would you like to provide the location?
-                        </FieldLegend>
-                        <FieldDescription>
-                          Choose one method. You do not need to provide both GPS
-                          and a manual address.
-                        </FieldDescription>
-
-                        <Controller
-                          control={form.control}
-                          name="locationMode"
-                          render={({ field }) => (
-                            <ChoiceCards
-                              name="location-mode"
-                              value={field.value}
-                              options={LOCATION_MODE_OPTIONS}
-                              disabled={disabled}
-                              onChange={(nextMode) => {
-                                field.onChange(nextMode);
-                                setFormError(null);
-                                setSubmitState("idle");
-                              }}
-                              columns={2}
-                            />
-                          )}
-                        />
-                      </FieldSet>
-
-                      {locationMode === "GPS" ? (
-                        <div className="grid gap-4 rounded-2xl border border-border/70 bg-muted/30 p-4 sm:p-5">
-                          <div className="flex items-start gap-3">
-                            <span className="flex size-10 shrink-0 items-center justify-center rounded-2xl border border-primary/15 bg-primary/10 text-primary">
-                              <LocateFixed
-                                aria-hidden="true"
-                                className="size-5"
-                              />
-                            </span>
-
-                            <div className="grid min-w-0 gap-1">
-                              <p className="text-card-title">
-                                Capture the proposed site
-                              </p>
-                              <p className="text-body-sm leading-relaxed text-muted-readable">
-                                Use this while physically present at the
-                                proposed dealership location for the most
-                                accurate result.
-                              </p>
-                            </div>
-                          </div>
-
-                          <Button
-                            type="button"
-                            variant={location === null ? "default" : "outline"}
-                            disabled={disabled}
-                            onClick={() => {
-                              void captureLocation();
-                            }}
-                            className="h-12 rounded-2xl"
-                          >
-                            {submitState === "locating" ? (
-                              <LoaderCircle
-                                aria-hidden="true"
-                                className="size-4 animate-spin motion-reduce:animate-none"
-                              />
-                            ) : (
-                              <LocateFixed
-                                aria-hidden="true"
-                                className="size-4"
-                              />
-                            )}
-                            {location === null
-                              ? "Capture current GPS location"
-                              : "Refresh GPS location"}
-                          </Button>
-
-                          {location === null ? (
-                            <p className="text-caption text-muted-readable">
-                              Your browser will request permission. Coordinates
-                              are submitted only with this application.
-                            </p>
-                          ) : (
-                            <Alert
-                              variant="success"
-                              role="status"
-                              aria-live="polite"
-                            >
-                              <CheckCircle2 aria-hidden="true" />
-                              <AlertTitle>GPS location captured</AlertTitle>
-                              <AlertDescription>
-                                The position is ready for secure submission
-                                {location.accuracyMeters === undefined
-                                  ? "."
-                                  : ` with approximately ${String(
-                                      Math.round(location.accuracyMeters),
-                                    )} metres accuracy.`}
-                              </AlertDescription>
-                            </Alert>
-                          )}
-                        </div>
-                      ) : (
-                        <div className="grid gap-5">
-                          <div className="flex items-start gap-3 rounded-2xl border border-info/20 bg-info/5 p-4 text-info dark:border-info/30 dark:bg-info/10">
-                            <MapPin
-                              aria-hidden="true"
-                              className="mt-0.5 size-5 shrink-0"
-                            />
-                            <p className="text-body-sm leading-relaxed">
-                              Manual address entry avoids location permission.
-                              PIN code data may be used for approximate
-                              territory evaluation and can be verified during
-                              follow-up.
-                            </p>
-                          </div>
-
-                          <div className="grid gap-5 sm:grid-cols-2">
-                            <Field
-                              className="sm:col-span-2"
-                              data-invalid={
-                                form.formState.errors.addressLine1 === undefined
-                                  ? undefined
-                                  : true
-                              }
-                            >
-                              <FieldLabel htmlFor="address-line-1">
-                                Address line 1
-                              </FieldLabel>
-                              <Input
-                                id="address-line-1"
-                                type="text"
-                                autoComplete="address-line1"
-                                enterKeyHint="next"
-                                placeholder="Door number, street, area"
-                                aria-invalid={
-                                  form.formState.errors.addressLine1 ===
-                                  undefined
-                                    ? undefined
-                                    : true
-                                }
-                                disabled={disabled}
-                                {...form.register("addressLine1")}
-                              />
-                              {form.formState.errors.addressLine1?.message ===
-                              undefined ? null : (
-                                <FieldError>
-                                  {form.formState.errors.addressLine1.message}
-                                </FieldError>
-                              )}
-                            </Field>
-
-                            <Field className="sm:col-span-2">
-                              <FieldLabel htmlFor="address-line-2">
-                                Address line 2{" "}
-                                <span className="text-muted-readable">
-                                  (optional)
-                                </span>
-                              </FieldLabel>
-                              <Input
-                                id="address-line-2"
-                                type="text"
-                                autoComplete="address-line2"
-                                enterKeyHint="next"
-                                placeholder="Landmark or nearby location"
-                                disabled={disabled}
-                                {...form.register("addressLine2")}
-                              />
-                            </Field>
-
-                            <Field
-                              data-invalid={
-                                form.formState.errors.city === undefined
-                                  ? undefined
-                                  : true
-                              }
-                            >
-                              <FieldLabel htmlFor="city">City</FieldLabel>
-                              <Input
-                                id="city"
-                                type="text"
-                                autoComplete="address-level2"
-                                enterKeyHint="next"
-                                aria-invalid={
-                                  form.formState.errors.city === undefined
-                                    ? undefined
-                                    : true
-                                }
-                                disabled={disabled}
-                                {...form.register("city")}
-                              />
-                              {form.formState.errors.city?.message ===
-                              undefined ? null : (
-                                <FieldError>
-                                  {form.formState.errors.city.message}
-                                </FieldError>
-                              )}
-                            </Field>
-
-                            <Field
-                              data-invalid={
-                                form.formState.errors.district === undefined
-                                  ? undefined
-                                  : true
-                              }
-                            >
-                              <FieldLabel htmlFor="district">
-                                District
-                              </FieldLabel>
-                              <Input
-                                id="district"
-                                type="text"
-                                enterKeyHint="next"
-                                aria-invalid={
-                                  form.formState.errors.district === undefined
-                                    ? undefined
-                                    : true
-                                }
-                                disabled={disabled}
-                                {...form.register("district")}
-                              />
-                              {form.formState.errors.district?.message ===
-                              undefined ? null : (
-                                <FieldError>
-                                  {form.formState.errors.district.message}
-                                </FieldError>
-                              )}
-                            </Field>
-
-                            <Field
-                              data-invalid={
-                                form.formState.errors.state === undefined
-                                  ? undefined
-                                  : true
-                              }
-                            >
-                              <FieldLabel htmlFor="state">State</FieldLabel>
-                              <Input
-                                id="state"
-                                type="text"
-                                autoComplete="address-level1"
-                                enterKeyHint="next"
-                                aria-invalid={
-                                  form.formState.errors.state === undefined
-                                    ? undefined
-                                    : true
-                                }
-                                disabled={disabled}
-                                {...form.register("state")}
-                              />
-                              {form.formState.errors.state?.message ===
-                              undefined ? null : (
-                                <FieldError>
-                                  {form.formState.errors.state.message}
-                                </FieldError>
-                              )}
-                            </Field>
-
-                            <Field
-                              data-invalid={
-                                form.formState.errors.postalCode === undefined
-                                  ? undefined
-                                  : true
-                              }
-                            >
-                              <FieldLabel htmlFor="postal-code">
-                                PIN code
-                              </FieldLabel>
-                              <Controller
-                                control={form.control}
-                                name="postalCode"
-                                render={({ field }) => (
-                                  <Input
-                                    id="postal-code"
-                                    type="text"
-                                    inputMode="numeric"
-                                    autoComplete="postal-code"
-                                    enterKeyHint="done"
-                                    maxLength={6}
-                                    aria-invalid={
-                                      form.formState.errors.postalCode ===
-                                      undefined
-                                        ? undefined
-                                        : true
-                                    }
-                                    disabled={disabled}
-                                    value={field.value}
-                                    onBlur={field.onBlur}
-                                    name={field.name}
-                                    ref={field.ref}
-                                    onChange={(event) => {
-                                      field.onChange(
-                                        normalizePostalCodeInput(
-                                          event.target.value,
-                                        ),
-                                      );
-                                    }}
-                                  />
-                                )}
-                              />
-                              {form.formState.errors.postalCode?.message ===
-                              undefined ? null : (
-                                <FieldError>
-                                  {form.formState.errors.postalCode.message}
-                                </FieldError>
-                              )}
-                            </Field>
-                          </div>
-                        </div>
-                      )}
-
-                      <Field>
-                        <FieldLabel htmlFor="notes">
-                          Additional notes{" "}
-                          <span className="text-muted-readable">
-                            (optional)
-                          </span>
-                        </FieldLabel>
-                        <Textarea
-                          id="notes"
-                          rows={4}
-                          maxLength={1_200}
-                          placeholder="Preferred area, showroom plan, relevant experience, or other context"
-                          disabled={disabled}
-                          {...form.register("notes")}
-                        />
-                        <FieldDescription>
-                          Do not enter identity documents, bank information, or
-                          other sensitive personal data.
-                        </FieldDescription>
-                      </Field>
-
-                      <div className="flex items-start gap-3 rounded-2xl border border-info/20 bg-info/5 p-4 text-info dark:border-info/30 dark:bg-info/10">
-                        <ShieldCheck
-                          aria-hidden="true"
-                          className="mt-0.5 size-5 shrink-0"
-                        />
-                        <p className="text-body-sm leading-relaxed">
-                          Your details are sent only through the Ozotec ERP
-                          gateway and are used for dealership evaluation and
-                          follow-up.
-                        </p>
-                      </div>
-                    </>
-                  ) : null}
-                </FieldGroup>
-              </ContentForm>
-            </ContentSection>
-
-            <ContentStatus
-              variant="info"
-              role="note"
-              icon={<Info aria-hidden="true" />}
-              title="Your progress stays on this device"
-              description="Entered details remain available while this page stays open. Safe retry protection prevents duplicate applications when the same submission is retried."
-              className="lg:hidden"
-            />
+        {locationMode === "MANUAL" ? (
+          renderManualAddress()
+        ) : (
+          <div className="grid gap-3 rounded-2xl border border-primary/20 bg-primary/8 p-4 sm:p-5">
+            <div className="flex items-start gap-3">
+              <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary/12 text-primary">
+                <LocateFixed aria-hidden="true" className="size-5" />
+              </span>
+              <div className="grid min-w-0 gap-1">
+                <p className="text-body-sm font-semibold text-foreground">
+                  Share the proposed site location
+                </p>
+                <p className="text-caption text-muted-readable">
+                  We will ask for confirmation before your browser requests GPS
+                  permission. The application is submitted automatically after a
+                  successful capture.
+                </p>
+              </div>
+            </div>
           </div>
+        )}
 
-          <aside
-            className="hidden min-w-0 lg:sticky lg:top-20 lg:block"
-            aria-label="Application guidance"
+        <div className="flex items-start gap-2.5 text-caption text-muted-readable">
+          <ShieldCheck
+            aria-hidden="true"
+            className="mt-0.5 size-4 shrink-0 text-primary"
+          />
+          <p>
+            Your contact and location details are sent only through the Ozotec
+            ERP gateway for dealership evaluation and follow-up.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  const planField =
+    currentStep === "investmentTimeline" ||
+    currentStep === "investmentBudget" ||
+    currentStep === "alreadyRunningEvBusiness"
+      ? currentStep
+      : null;
+  const planError =
+    planField === null ? undefined : form.formState.errors[planField]?.message;
+  const primaryLabel = isLocationStep
+    ? locationMode === "GPS"
+      ? "Share current location"
+      : "Send application"
+    : "Continue";
+  const primaryIcon =
+    submitState === "locating" || submitState === "submitting" ? (
+      <LoaderCircle
+        aria-hidden="true"
+        className="animate-spin motion-reduce:animate-none"
+      />
+    ) : isLocationStep && locationMode === "GPS" ? (
+      <LocateFixed aria-hidden="true" />
+    ) : isLocationStep ? (
+      <Send aria-hidden="true" />
+    ) : (
+      <ChevronRight aria-hidden="true" />
+    );
+  const footerActions =
+    planField !== null ? (
+      isFirstStep ? undefined : (
+        <ContentFormActions className="mx-auto grid w-full max-w-xl grid-cols-1 border-0 bg-transparent p-0 shadow-none supports-[backdrop-filter]:bg-transparent">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={handleBack}
+            disabled={busy}
+            className="min-h-12 w-full touch-manipulation sm:w-auto sm:justify-self-start"
           >
-            <ContentSection
-              title="Before you apply"
-              description="Prepare these details for a faster application."
-              className="bg-card/90 shadow-md"
+            <ArrowLeft aria-hidden="true" />
+            Back
+          </Button>
+        </ContentFormActions>
+      )
+    ) : (
+      <ContentFormActions
+        className={cn(
+          [
+            "mx-auto grid w-full max-w-xl border-0 bg-transparent p-0",
+            "shadow-none supports-[backdrop-filter]:bg-transparent",
+          ].join(" "),
+          isFirstStep ? "grid-cols-1" : "grid-cols-[auto_minmax(0,1fr)]",
+        )}
+      >
+        {isFirstStep ? null : (
+          <Button
+            type="button"
+            variant="outline"
+            onClick={handleBack}
+            disabled={busy}
+            className="min-h-12 min-w-24 touch-manipulation"
+          >
+            <ArrowLeft aria-hidden="true" />
+            Back
+          </Button>
+        )}
+        <Button
+          type="button"
+          form={FORM_ID}
+          onClick={() => {
+            void handlePrimaryAction();
+          }}
+          disabled={disabled}
+          className="min-h-12 w-full touch-manipulation"
+        >
+          {primaryIcon}
+          {submitState === "locating"
+            ? "Confirming location"
+            : submitState === "submitting"
+              ? "Sending application"
+              : primaryLabel}
+        </Button>
+      </ContentFormActions>
+    );
+
+  return (
+    <>
+      <PublicDealershipShell
+        footerActions={footerActions}
+        mainLabelledBy={PAGE_TITLE_ID}
+      >
+        <ContentRoot width="narrow" density="compact" className="max-w-xl">
+          <header className="grid gap-3 px-1">
+            <div className="grid gap-1">
+              <h1
+                id={PAGE_TITLE_ID}
+                className="text-section-title text-foreground"
+              >
+                Apply for an Ozotec EV dealership
+              </h1>
+              <p className="text-body-sm text-muted-readable">
+                Three quick questions, followed by contact and location details.
+              </p>
+            </div>
+            <StepProgress
+              current={stepIndex + 1}
+              total={STEPS.length}
+              stage={meta.stage}
+            />
+          </header>
+
+          {!isOnline ? (
+            <ContentStatus
+              variant="warning"
+              role="status"
+              aria-live="polite"
+              icon={<WifiOff aria-hidden="true" />}
+              title="You are offline"
+              description="Your answers remain on this page until you reconnect and submit."
+            />
+          ) : null}
+
+          {formError === null ? null : <FormErrorAlert error={formError} />}
+
+          <ContentSection
+            className="border-primary/15 bg-card/95 shadow-lg shadow-primary/5"
+            contentClassName="grid gap-5"
+          >
+            <form
+              id={FORM_ID}
+              noValidate
+              onSubmit={(event) => {
+                event.preventDefault();
+                void handlePrimaryAction();
+              }}
             >
-              <ApplicationGuideContent />
-            </ContentSection>
-          </aside>
-        </ContentSplit>
-      </ContentRoot>
-    </PublicDealershipShell>
+              <FieldSet className="grid gap-5" disabled={disabled}>
+                <div className="grid gap-1.5">
+                  <FieldLegend className="text-section-title">
+                    {meta.title}
+                  </FieldLegend>
+                  {meta.description === undefined ? null : (
+                    <FieldDescription className="text-body-sm">
+                      {meta.description}
+                    </FieldDescription>
+                  )}
+                </div>
+
+                {planField === null ? null : (
+                  <Field
+                    {...(planError === undefined
+                      ? {}
+                      : { "data-invalid": true })}
+                    className="gap-3"
+                  >
+                    {renderPlanQuestion()}
+                    <p
+                      className="text-caption text-muted-readable"
+                      role="status"
+                      aria-live="polite"
+                    >
+                      Select an option to continue automatically.
+                    </p>
+                    <FieldMessage message={planError} />
+                  </Field>
+                )}
+
+                {currentStep === "contactDetails"
+                  ? renderContactDetails()
+                  : null}
+
+                {currentStep === "dealershipLocation"
+                  ? renderLocationDetails()
+                  : null}
+
+                {currentStep === "dealershipLocation" ? (
+                  <div className="flex items-start gap-2.5 text-caption text-muted-readable">
+                    <MapPin
+                      aria-hidden="true"
+                      className="mt-0.5 size-4 shrink-0 text-primary"
+                    />
+                    <p>
+                      GPS coordinates are submitted only after your explicit
+                      confirmation.
+                    </p>
+                  </div>
+                ) : null}
+              </FieldSet>
+            </form>
+          </ContentSection>
+        </ContentRoot>
+      </PublicDealershipShell>
+
+      <AlertDialog
+        open={locationConfirmationOpen}
+        onOpenChange={(open) => {
+          if (!busy) {
+            setLocationConfirmationOpen(open);
+          }
+        }}
+      >
+        <AlertDialogContent size="sm">
+          <AlertDialogHeader>
+            <AlertDialogMedia className="bg-primary/10 text-primary">
+              <LocateFixed aria-hidden="true" />
+            </AlertDialogMedia>
+            <AlertDialogTitle>
+              Are you currently at the proposed dealership site?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Select Yes only when you are physically at the location where you
+              plan to open the dealership. We will capture this device’s current
+              location and submit your application automatically.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel
+              type="button"
+              onClick={switchToManualAddress}
+              disabled={busy}
+              className="min-h-11"
+            >
+              No, enter address
+            </AlertDialogCancel>
+            <AlertDialogAction
+              type="button"
+              onClick={() => {
+                setLocationConfirmationOpen(false);
+                void captureCurrentLocationAndSubmit();
+              }}
+              disabled={busy}
+              className="min-h-11"
+            >
+              Yes, use this location
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   );
 }

@@ -4,6 +4,7 @@ import "server-only";
 import type { Route } from "next";
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
+import { cache } from "react";
 
 import { AUTH_ENDPOINTS } from "@/lib/api/endpoints";
 import { isApiHttpError } from "@/lib/api/problem";
@@ -261,7 +262,7 @@ export async function getAuthenticatedMe(): Promise<MeResponse | null> {
   }
 }
 
-export async function requireAuthenticatedMe(): Promise<MeResponse> {
+async function requireAuthenticatedMeUncached(): Promise<MeResponse> {
   const context = await authGateContext();
   const tokenState = await resolveTokenState();
   const refreshRequired =
@@ -357,3 +358,5 @@ export async function requireAuthenticatedMe(): Promise<MeResponse> {
 
   return me;
 }
+
+export const requireAuthenticatedMe = cache(requireAuthenticatedMeUncached);

@@ -1,0 +1,50 @@
+// oz-next-app/src/features/inventory/vehicles/index.ts
+export {
+  parseVehicleInventorySearchParams,
+  vehicleInventoryFacetsResultSchema,
+  vehicleInventoryDealerContextOptionSchema,
+  vehicleInventoryDealerContextQuerySchema,
+  vehicleInventoryDealerContextResultSchema,
+  vehicleInventoryItemSchema,
+  vehicleInventoryListResultSchema,
+  vehicleInventorySearchParamsSchema,
+  VEHICLE_INVENTORY_AGE_BUCKETS,
+  VEHICLE_INVENTORY_DATA_QUALITY_FLAGS,
+  VEHICLE_INVENTORY_ENTRY_TYPES,
+  VEHICLE_INVENTORY_KPI_FILTERS,
+  VEHICLE_INVENTORY_SORT_DIRECTIONS,
+  VEHICLE_INVENTORY_SORT_FIELDS,
+  type VehicleInventoryAgeBucket,
+  type VehicleInventoryDataQualityFlag,
+  type VehicleInventoryEntryType,
+  type VehicleInventoryFacetOption,
+  type VehicleInventoryDealerContextOption,
+  type VehicleInventoryDealerContextQuery,
+  type VehicleInventoryDealerContextResult,
+  type VehicleInventoryFacetsResult,
+  type VehicleInventoryItem,
+  type VehicleInventoryKpiFilter,
+  type VehicleInventoryRawSearchParams,
+  type VehicleInventorySearchParams,
+  type VehicleInventorySortDirection,
+  type VehicleInventorySortField,
+  type VehicleInventoryWorkspaceData,
+} from "@/features/inventory/vehicles/contracts/vehicle-inventory.schema";
+export {
+  resolveVehicleInventoryAccess,
+  type ResolvedVehicleInventoryAccess,
+  type VehicleInventoryAccess,
+  type VehicleInventoryCapabilities,
+  type VehicleInventoryContext,
+} from "@/features/inventory/vehicles/policies/vehicle-inventory.policy";
+export {
+  readVehicleInventoryDealerContexts,
+  readVehicleInventoryExportResponse,
+  readVehicleInventoryWorkspace,
+} from "@/features/inventory/vehicles/server/vehicle-inventory.server";
+export {
+  VehicleInventoryAccessState,
+  VehicleInventoryInvalidQueryState,
+  VehicleInventoryPage,
+  VehicleInventoryRequestFailureState,
+} from "@/features/inventory/vehicles/ui/vehicle-inventory-page";

@@ -18,6 +18,10 @@ import {
   formatUniqueRoleLabels,
 } from "@/components/common/display-label";
 import {
+  BRAND_ICON_INTRINSIC_HEIGHT,
+  BRAND_ICON_INTRINSIC_WIDTH,
+} from "@/components/common/brand-assets";
+import {
   Sidebar,
   SidebarContent,
   SidebarFooter,
@@ -324,8 +328,8 @@ function BrandLogo({
         <Image
           src={brand.logoLight}
           alt=""
-          width={32}
-          height={32}
+          width={BRAND_ICON_INTRINSIC_WIDTH}
+          height={BRAND_ICON_INTRINSIC_HEIGHT}
           className="block h-8 w-auto dark:hidden"
           onError={() => {
             setLightFailed(true);
@@ -340,8 +344,8 @@ function BrandLogo({
         <Image
           src={brand.logoDark}
           alt=""
-          width={32}
-          height={32}
+          width={BRAND_ICON_INTRINSIC_WIDTH}
+          height={BRAND_ICON_INTRINSIC_HEIGHT}
           className="hidden h-8 w-auto dark:block"
           onError={() => {
             setDarkFailed(true);

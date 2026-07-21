@@ -1,66 +1,49 @@
 // oz-next-app/src/app/public/dealership/[token]/loading.tsx
 import type { ReactElement } from "react";
 
-import {
-  ContentFormActions,
-  ContentRoot,
-  ContentSection,
-  ContentSkeleton,
-} from "@/components/common/content-shell";
+import { ContentRoot, ContentSection } from "@/components/common/content-shell";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PublicDealershipShell } from "@/features/engagement/dealership-applications/ui/dealership-application-shell";
 
 export default function PublicDealershipFormLoading(): ReactElement {
-  const footerActions = (
-    <ContentFormActions className="mx-auto grid w-full max-w-4xl grid-cols-2 border-0 bg-transparent p-0 shadow-none supports-[backdrop-filter]:bg-transparent">
-      <Skeleton className="h-11 w-full rounded-2xl" />
-      <Skeleton className="h-11 w-full rounded-2xl" />
-    </ContentFormActions>
-  );
-
   return (
-    <PublicDealershipShell
-      footerActions={footerActions}
-      mainLabelledBy="dealership-loading-title"
-    >
+    <PublicDealershipShell mainLabelledBy="dealership-loading-title">
       <ContentRoot
-        width="wide"
+        width="narrow"
         density="compact"
-        className="px-3 py-3 sm:px-0 sm:py-0"
+        className="max-w-xl"
         aria-busy="true"
       >
-        <div className="sr-only" role="status" aria-live="polite">
-          <h1 id="dealership-loading-title">
-            Preparing dealership application form
-          </h1>
+        <div className="grid gap-3 px-1">
+          <div className="sr-only" role="status" aria-live="polite">
+            <h1 id="dealership-loading-title">
+              Preparing dealership application
+            </h1>
+          </div>
+          <Skeleton className="h-7 w-80 max-w-full rounded-lg" />
+          <Skeleton className="h-4 w-64 max-w-full rounded-full" />
+          <div className="grid gap-2.5 pt-1">
+            <div className="flex items-center justify-between gap-3">
+              <Skeleton className="h-3.5 w-24 rounded-full" />
+              <Skeleton className="h-3.5 w-28 rounded-full" />
+            </div>
+            <Skeleton className="h-1.5 w-full rounded-full" />
+          </div>
         </div>
 
-        <ContentSection className="border-primary/15 bg-card/90 shadow-md">
-          <div className="grid gap-4">
-            <Skeleton className="h-5 w-44 rounded-full" />
-            <Skeleton className="h-10 w-80 max-w-full rounded-2xl" />
-            <Skeleton className="h-5 w-full max-w-2xl rounded-full" />
-            <Skeleton className="h-2 w-full rounded-full" />
+        <ContentSection className="border-primary/15 bg-card/95 shadow-lg shadow-primary/5">
+          <div className="grid gap-5">
+            <div className="grid gap-2">
+              <Skeleton className="h-6 w-72 max-w-full rounded-lg" />
+              <Skeleton className="h-4 w-52 max-w-full rounded-full" />
+            </div>
+            <div className="grid gap-2.5">
+              {Array.from({ length: 3 }, (_, index) => (
+                <Skeleton key={index} className="h-14 w-full rounded-2xl" />
+              ))}
+            </div>
           </div>
         </ContentSection>
-
-        <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start">
-          <ContentSection>
-            <ContentSkeleton
-              variant="form"
-              rows={4}
-              label="Loading dealership form fields"
-            />
-          </ContentSection>
-
-          <ContentSection className="hidden lg:block">
-            <ContentSkeleton
-              variant="section"
-              rows={3}
-              label="Loading application guidance"
-            />
-          </ContentSection>
-        </div>
       </ContentRoot>
     </PublicDealershipShell>
   );

@@ -1,5 +1,5 @@
 // oz-next-app/src/app/public/dealership/[token]/page.tsx
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import type { ReactElement } from "react";
 
 import { PublicDealershipApplicationPage } from "@/features/engagement/dealership-applications";
@@ -19,6 +19,16 @@ type PublicDealershipFormRouteProps = Readonly<{
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 export const fetchCache = "force-no-store";
+
+export const viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#ffffff" },
+    { media: "(prefers-color-scheme: dark)", color: "#09090b" },
+  ],
+} satisfies Viewport;
 
 export const metadata = {
   title: PAGE_TITLE,
@@ -41,6 +51,11 @@ export const metadata = {
     card: "summary",
     title: PAGE_TITLE,
     description: PAGE_DESCRIPTION,
+  },
+  formatDetection: {
+    telephone: false,
+    email: false,
+    address: false,
   },
 } satisfies Metadata;
 

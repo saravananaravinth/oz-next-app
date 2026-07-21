@@ -23,6 +23,7 @@ import {
   API_CONFIG,
   BLOCKED_PUBLIC_BACKEND_PATHS,
   CACHE_CONTROL,
+  CT,
   HDR,
   HTTP_METHODS,
   HTTP_STATUS,
@@ -95,6 +96,13 @@ export type ServerApiOptions<TData> = Readonly<{
   correlationId?: string | undefined;
   actorContext?: ServerActorContextHeaders | undefined;
 }>;
+
+type ServerRequestOptions = Omit<ServerApiOptions<unknown>, "schema">;
+
+export type ServerRawApiOptions = ServerRequestOptions &
+  Readonly<{
+    accept?: typeof CT.CSV | undefined;
+  }>;
 
 export type ServerApiEnvelopeOptions<TData, TMeta> = ServerApiOptions<TData> &
   Readonly<{
@@ -518,8 +526,8 @@ function normalizeRequestIdempotencyKey(
   return idempotencyKeySchema.parse(value ?? crypto.randomUUID());
 }
 
-function normalizeOptions<TData>(
-  options: ServerApiOptions<TData>,
+function normalizeOptions(
+  options: ServerRequestOptions,
 ): NormalizedRequestOptions {
   const method = parseMethod(options.method);
   const next = normalizeNextFetchConfig(options.next);
@@ -856,6 +864,154 @@ async function fetchOnceEnvelope<TData, TMeta = undefined>(
   }
 }
 
+function managedRawResponse(response: Response, cleanup: () => void): Response {
+  const headers = new Headers(response.headers);
+  const source = response.body;
+  let cleaned = false;
+
+  const release = (): void => {
+    if (cleaned) {
+      return;
+    }
+
+    cleaned = true;
+    cleanup();
+  };
+
+  if (source === null) {
+    release();
+    return new Response(null, {
+      status: response.status,
+      statusText: response.statusText,
+      headers,
+    });
+  }
+
+  const reader = source.getReader();
+  const stream = new ReadableStream<Uint8Array>({
+    async pull(controller): Promise<void> {
+      try {
+        const result = await reader.read();
+
+        if (result.done) {
+          release();
+          controller.close();
+          return;
+        }
+
+        controller.enqueue(result.value);
+      } catch (error: unknown) {
+        release();
+        controller.error(error);
+      }
+    },
+    async cancel(reason: unknown): Promise<void> {
+      release();
+      await reader.cancel(reason);
+    },
+  });
+
+  return new Response(stream, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
+
+async function fetchOnceRaw(
+  path: string,
+  options: ServerRawApiOptions,
+  normalized: NormalizedRequestOptions,
+): Promise<Response> {
+  const body = serializeBody(normalized.method, options.body);
+  const outboundHeaders = await serverRequestContextHeaders({
+    includeJsonContentType: body !== undefined,
+    requestId: options.requestId,
+    correlationId: options.correlationId,
+    actorContext: options.actorContext,
+  });
+
+  outboundHeaders.set(HDR.ACCEPT, options.accept ?? CT.CSV);
+
+  if (normalized.idempotencyKey !== undefined) {
+    outboundHeaders.set(HDR.IDEMPOTENCY_KEY, normalized.idempotencyKey);
+  }
+
+  const refreshedBeforeRequest = await attachAuthHeader(outboundHeaders, {
+    auth: normalized.auth,
+    accessToken: options.accessToken,
+    refreshOnUnauthorized: options.refreshOnUnauthorized,
+  });
+  const timeout = withTimeoutSignal(options.signal, normalized.timeoutMs);
+  const requestInit: ServerRequestInit = {
+    method: normalized.method,
+    headers: outboundHeaders,
+    ...(body !== undefined ? { body } : {}),
+    cache: normalized.cache,
+    redirect: EDGE_REDIRECT_MODE,
+    signal: timeout.signal,
+    ...(normalized.next !== undefined ? { next: normalized.next } : {}),
+  };
+
+  try {
+    const response = await dispatchEdgeRequest(
+      buildServerEdgeUrl(path),
+      requestInit,
+    );
+
+    if (!response.ok) {
+      const payload = await readJsonPayload(response);
+
+      if (
+        response.status === HTTP_STATUS.UNAUTHORIZED &&
+        normalized.auth &&
+        options.refreshOnUnauthorized === true &&
+        options.accessToken === undefined &&
+        !refreshedBeforeRequest
+      ) {
+        const refreshed = await refreshServerAuthTokens();
+
+        if (refreshed !== null) {
+          timeout.cleanup();
+          return await fetchOnceRaw(
+            path,
+            {
+              ...options,
+              accessToken: refreshed.access_token,
+              refreshOnUnauthorized: false,
+            },
+            normalized,
+          );
+        }
+
+        await clearServerAuthCookies();
+      }
+
+      if (
+        response.status === HTTP_STATUS.UNAUTHORIZED &&
+        normalized.auth &&
+        refreshedBeforeRequest
+      ) {
+        await clearServerAuthCookies();
+      }
+
+      throwForHttpError(response, payload);
+    }
+
+    return managedRawResponse(response, timeout.cleanup);
+  } catch (error: unknown) {
+    timeout.cleanup();
+    throw error;
+  }
+}
+
+export async function serverEdgeFetchRaw(
+  path: string,
+  options: ServerRawApiOptions,
+): Promise<Response> {
+  return await fetchOnceRaw(path, options, normalizeOptions(options));
+}
+
 export async function serverEdgeFetchEnvelope<TData, TMeta>(
   path: string,
   options: ServerApiEnvelopeOptions<TData, TMeta>,
@@ -878,6 +1034,7 @@ export async function serverEdgeFetch<TData>(
 
 export const serverApiClient = {
   request: serverEdgeFetch,
+  raw: serverEdgeFetchRaw,
 
   get: <TData>(
     path: string,
