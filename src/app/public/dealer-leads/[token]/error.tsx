@@ -12,6 +12,7 @@ import {
 } from "@/components/common/content-shell";
 import { Button } from "@/components/ui/button";
 import { PublicDealerLeadShell } from "@/features/engagement/dealer-lead-updates/ui/dealer-lead-shell";
+import { PublicFormStatusEmblem } from "@/features/engagement/shared/ui/public-form-status-emblem";
 
 export type PublicDealerLeadErrorProps = Readonly<{
   error: Error & {
@@ -20,7 +21,7 @@ export type PublicDealerLeadErrorProps = Readonly<{
   reset: () => void;
 }>;
 
-const SAFE_DIGEST_PATTERN = /^[A-Za-z0-9._:-]{1,128}$/u;
+const SAFE_DIGEST_PATTERN = /^[A-Za-z0-9._:/@-]{1,128}$/u;
 
 function safeDigest(value: string | undefined): string | null {
   const normalized = value?.trim();
@@ -40,16 +41,17 @@ export default function PublicDealerLeadError({
     () => safeDigest(error.digest),
     [error.digest],
   );
+
   const handleReset = useCallback((): void => {
     reset();
   }, [reset]);
 
   const footerActions = (
-    <ContentFormActions className="mx-auto w-full max-w-xl border-0 bg-transparent p-0 shadow-none supports-[backdrop-filter]:bg-transparent">
+    <ContentFormActions className="mx-auto w-full max-w-4xl border-0 bg-transparent p-0 shadow-none supports-[backdrop-filter]:bg-transparent">
       <Button
         type="button"
         onClick={handleReset}
-        className="min-h-11 w-full touch-manipulation sm:w-auto"
+        className="min-h-12 w-full touch-manipulation sm:ml-auto sm:w-auto sm:min-w-64"
       >
         <RotateCcw aria-hidden="true" />
         Try again
@@ -66,47 +68,48 @@ export default function PublicDealerLeadError({
       <ContentRoot
         width="narrow"
         density="compact"
-        className="px-3 py-8 sm:px-0 sm:py-6"
+        className="max-w-2xl px-3 py-8 sm:px-0 sm:py-6"
       >
-        <ContentSection
-          className="border-destructive/20 bg-card/95 shadow-lg shadow-destructive/5"
-          title={
-            <h1 id="dealer-lead-error-title" className="text-section-title">
-              Enquiry page could not be opened
-            </h1>
-          }
-          description="Retry the secure page. No customer follow-up action was submitted."
-        >
-          <div className="grid gap-5">
-            <div className="flex justify-center">
-              <span className="flex size-14 items-center justify-center rounded-2xl border border-destructive/20 bg-destructive/8 text-destructive shadow-xs">
-                <AlertTriangle aria-hidden="true" className="size-7" />
-              </span>
-            </div>
+        <div className="grid justify-items-center">
+          <PublicFormStatusEmblem status="error" />
+        </div>
 
-            <ContentStatus
-              variant="destructive"
-              role="alert"
-              icon={<AlertTriangle aria-hidden="true" />}
-              title="Page failed safely"
-              description={
-                <>
-                  <p>
-                    The vehicle enquiry page could not render safely. Try again
-                    using the same link.
-                  </p>
-                  {errorReference === null ? null : (
-                    <p className="mt-2 text-caption">
-                      Reference:{" "}
-                      <code className="break-all text-tabular">
-                        {errorReference}
-                      </code>
-                    </p>
-                  )}
-                </>
-              }
-            />
-          </div>
+        <ContentSection
+          className="border-destructive/20 bg-card/96 text-center shadow-xl shadow-destructive/5"
+          title={
+            <span id="dealer-lead-error-title">
+              Enquiry page could not be opened
+            </span>
+          }
+          description="Retry the secure page. This failure did not submit or change any customer follow-up action."
+        >
+          <ContentStatus
+            variant="destructive"
+            role="alert"
+            aria-live="assertive"
+            aria-atomic="true"
+            icon={<AlertTriangle aria-hidden="true" />}
+            title="The page failed safely"
+            description={
+              <>
+                The assigned enquiry workspace could not render safely. Try
+                again using the same secure link.
+                {errorReference === null ? null : (
+                  <span className="mt-2 block text-caption">
+                    Reference:{" "}
+                    <code className="break-all text-tabular">
+                      {errorReference}
+                    </code>
+                  </span>
+                )}
+              </>
+            }
+          />
+
+          <p className="mt-4 text-center text-caption leading-relaxed text-muted-readable">
+            No internal ERP records, unmasked customer data, or sensitive
+            diagnostics are exposed on this public page.
+          </p>
         </ContentSection>
       </ContentRoot>
     </PublicDealerLeadShell>

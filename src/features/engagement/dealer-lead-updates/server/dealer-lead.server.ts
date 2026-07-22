@@ -73,7 +73,10 @@ export async function getPublicDealerLeadByToken(
       return {
         ok: false,
         reason:
-          error.status === 404 || error.status === 410
+          error.status === 401 ||
+          error.status === 403 ||
+          error.status === 404 ||
+          error.status === 410
             ? "not-found"
             : "unavailable",
         ...(requestId === undefined ? {} : { requestId }),

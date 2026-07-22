@@ -17,7 +17,6 @@ import {
   History,
   Info,
   ListFilter,
-  Menu,
   LoaderCircle,
   MapPin,
   MessageCircle,
@@ -31,6 +30,7 @@ import {
   ShieldAlert,
   Sparkles,
   UserRound,
+  WifiOff,
   type LucideIcon,
 } from "lucide-react";
 import { Controller, useForm, useWatch } from "react-hook-form";
@@ -45,7 +45,6 @@ import {
   ContentMetricCard,
   ContentRoot,
   ContentSection,
-  ContentSplit,
   ContentStatus,
   ContentToolbar,
 } from "@/components/common/content-shell";
@@ -85,14 +84,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
-} from "@/components/ui/sheet";
 import { Textarea } from "@/components/ui/textarea";
 import { isApiHttpError } from "@/lib/api/problem";
 import { idempotencyKey as createIdempotencyKey } from "@/lib/security/request-identifiers";
@@ -167,6 +158,7 @@ type WorkspacePanelMeta = Readonly<{
 const EMPTY_VALUE = "";
 const SAFE_REQUEST_ID_PATTERN = /^[A-Za-z0-9_.:/@-]{1,128}$/u;
 const MAX_FOLLOW_UP_DAYS = 30;
+const MAX_RETRY_AFTER_SECONDS = 86_400;
 
 const FORM_IDS = {
   FOLLOW_UP_DETAILS: "dealer-lead-follow-up-details-form",
@@ -305,6 +297,77 @@ const HISTORY_KIND_LABELS = {
   ASSIGNMENT: "Assignment",
   SYSTEM: "Activity",
 } as const satisfies Record<DealerLeadHistoryKind, string>;
+
+function subscribeToOnlineStatus(onStoreChange: () => void): () => void {
+  window.addEventListener("online", onStoreChange);
+  window.addEventListener("offline", onStoreChange);
+
+  return () => {
+    window.removeEventListener("online", onStoreChange);
+    window.removeEventListener("offline", onStoreChange);
+  };
+}
+
+function getOnlineStatus(): boolean {
+  return navigator.onLine;
+}
+
+function getServerOnlineStatus(): boolean {
+  return true;
+}
+
+function normalizeRetryAfterSeconds(value: number | undefined): number | null {
+  if (
+    value === undefined ||
+    !Number.isInteger(value) ||
+    value < 0 ||
+    value > MAX_RETRY_AFTER_SECONDS
+  ) {
+    return null;
+  }
+
+  return value;
+}
+
+function retryAfterDescription(seconds: number | null): string {
+  if (seconds === null || seconds === 0) {
+    return "Please wait briefly before trying again.";
+  }
+
+  if (seconds < 60) {
+    return `Please wait about ${String(seconds)} seconds before trying again.`;
+  }
+
+  const minutes = Math.max(1, Math.ceil(seconds / 60));
+
+  return `Please wait about ${String(minutes)} minute${
+    minutes === 1 ? "" : "s"
+  } before trying again.`;
+}
+
+function isAbortError(error: unknown): boolean {
+  return error instanceof DOMException && error.name === "AbortError";
+}
+
+function isTerminalLinkError(error: unknown): boolean {
+  if (!isApiHttpError(error)) {
+    return false;
+  }
+
+  const code = error.code.toUpperCase();
+
+  return (
+    error.status === 401 ||
+    error.status === 403 ||
+    error.status === 404 ||
+    error.status === 410 ||
+    code.includes("EXPIRED") ||
+    code.includes("USED") ||
+    code.includes("CONSUMED") ||
+    code.includes("NOT_FOUND") ||
+    code.includes("INVALID_TOKEN")
+  );
+}
 
 function toLocalDateTimeValue(value: string | null): string {
   if (value === null) {
@@ -470,7 +533,9 @@ function toUserFacingError(error: unknown): UserFacingError {
           : error.status === 429
             ? {
                 title: "Too many attempts",
-                description: "Please wait a moment before trying again.",
+                description: retryAfterDescription(
+                  normalizeRetryAfterSeconds(error.retryAfterSeconds),
+                ),
               }
             : error.status === 404 || error.status === 410
               ? {
@@ -1284,7 +1349,7 @@ function LeadSummaryContent({
   );
 }
 
-function MobileLeadSummarySheet({
+function LeadSummaryDialog({
   lead,
   locationText,
   readOnly,
@@ -1294,29 +1359,29 @@ function MobileLeadSummarySheet({
   readOnly: boolean;
 }>): React.ReactElement {
   return (
-    <Sheet>
-      <SheetTrigger asChild>
-        <Button type="button" variant="outline" size="sm" className="lg:hidden">
-          <Menu aria-hidden="true" />
+    <Dialog>
+      <DialogTrigger asChild>
+        <Button type="button" variant="outline" size="sm">
+          <Info aria-hidden="true" />
           Lead details
         </Button>
-      </SheetTrigger>
-      <SheetContent side="bottom" className="max-h-[min(90dvh,48rem)]">
-        <SheetHeader>
-          <SheetTitle>Lead details</SheetTitle>
-          <SheetDescription>
+      </DialogTrigger>
+
+      <DialogContent className="max-h-[min(90dvh,48rem)] overflow-y-auto sm:max-w-xl">
+        <DialogHeader>
+          <DialogTitle>Lead details</DialogTitle>
+          <DialogDescription>
             Customer, assignment, follow-up, and secure-link information.
-          </SheetDescription>
-        </SheetHeader>
-        <div className="px-4 pb-6 sm:px-5">
-          <LeadSummaryContent
-            lead={lead}
-            locationText={locationText}
-            readOnly={readOnly}
-          />
-        </div>
-      </SheetContent>
-    </Sheet>
+          </DialogDescription>
+        </DialogHeader>
+
+        <LeadSummaryContent
+          lead={lead}
+          locationText={locationText}
+          readOnly={readOnly}
+        />
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -1382,6 +1447,11 @@ export function PublicDealerLeadUpdatePage({
   initialLead,
   loadError,
 }: PublicDealerLeadUpdatePageProps): React.ReactElement {
+  const online = React.useSyncExternalStore(
+    subscribeToOnlineStatus,
+    getOnlineStatus,
+    getServerOnlineStatus,
+  );
   const initialAction =
     initialLead === null ? null : resolveDefaultAction(initialLead);
   const [lead, setLead] = React.useState(initialLead);
@@ -1394,12 +1464,14 @@ export function PublicDealerLeadUpdatePage({
   const [pending, setPending] = React.useState<PendingMutation>(null);
   const [error, setError] = React.useState<UserFacingError | null>(null);
   const [success, setSuccess] = React.useState<SuccessNotice | null>(null);
+  const [terminalLink, setTerminalLink] = React.useState(false);
   const [historyFilter, setHistoryFilter] =
     React.useState<HistoryFilter>("ALL");
   const [forwardConfirmation, setForwardConfirmation] =
     React.useState<DealerLeadForwardFormValues | null>(null);
   const mainRef = React.useRef<HTMLElement>(null);
   const workspaceRef = React.useRef<HTMLDivElement>(null);
+  const abortControllerRef = React.useRef<AbortController | null>(null);
   const [updateIntent, setUpdateIntent] = React.useState<MutationIntent | null>(
     null,
   );
@@ -1459,6 +1531,12 @@ export function PublicDealerLeadUpdatePage({
     control: updateForm.control,
     name: "note",
   });
+
+  React.useEffect(() => {
+    return () => {
+      abortControllerRef.current?.abort();
+    };
+  }, []);
 
   React.useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
@@ -1526,10 +1604,21 @@ export function PublicDealerLeadUpdatePage({
       return;
     }
 
+    if (!online) {
+      setError({
+        title: "Connect to the internet",
+        description:
+          "Your entered follow-up details remain on this page. Reconnect before saving.",
+      });
+      return;
+    }
+
     setPending(step);
     setError(null);
     setSuccess(null);
     const controller = new AbortController();
+    abortControllerRef.current?.abort();
+    abortControllerRef.current = controller;
 
     try {
       const update = dealerLeadUpdateRequestSchema.parse(candidate);
@@ -1550,6 +1639,10 @@ export function PublicDealerLeadUpdatePage({
         try {
           await refreshLead(controller.signal);
         } catch (refreshError: unknown) {
+          if (isAbortError(refreshError)) {
+            return;
+          }
+
           const refreshRequestId = isApiHttpError(refreshError)
             ? safeRequestId(refreshError.requestId)
             : undefined;
@@ -1562,10 +1655,36 @@ export function PublicDealerLeadUpdatePage({
               : { requestId: refreshRequestId }),
           });
         }
+      } else {
+        setLead((current) =>
+          current === null
+            ? null
+            : {
+                ...current,
+                dealerUpdate: {
+                  ...current.dealerUpdate,
+                  canUpdate: false,
+                  canForward: false,
+                  remainingUses: 0,
+                },
+              },
+        );
       }
     } catch (caught: unknown) {
+      if (isAbortError(caught)) {
+        return;
+      }
+
+      if (isTerminalLinkError(caught)) {
+        setTerminalLink(true);
+        return;
+      }
+
       setError(toUserFacingError(caught));
     } finally {
+      if (abortControllerRef.current === controller) {
+        abortControllerRef.current = null;
+      }
       setPending(null);
     }
   }
@@ -1660,10 +1779,21 @@ export function PublicDealerLeadUpdatePage({
         return;
       }
 
+      if (!online) {
+        setError({
+          title: "Connect to the internet",
+          description:
+            "Your routing selection remains on this page. Reconnect before saving.",
+        });
+        return;
+      }
+
       setPending("FORWARD");
       setError(null);
       setSuccess(null);
       const controller = new AbortController();
+      abortControllerRef.current?.abort();
+      abortControllerRef.current = controller;
 
       try {
         const targetDealerOrgUnitId =
@@ -1711,6 +1841,10 @@ export function PublicDealerLeadUpdatePage({
           try {
             await refreshLead(controller.signal);
           } catch (refreshError: unknown) {
+            if (isAbortError(refreshError)) {
+              return;
+            }
+
             const refreshRequestId = isApiHttpError(refreshError)
               ? safeRequestId(refreshError.requestId)
               : undefined;
@@ -1739,26 +1873,44 @@ export function PublicDealerLeadUpdatePage({
           );
         }
       } catch (caught: unknown) {
+        if (isAbortError(caught)) {
+          return;
+        }
+
+        if (isTerminalLinkError(caught)) {
+          setTerminalLink(true);
+          return;
+        }
+
         setError(toUserFacingError(caught));
       } finally {
+        if (abortControllerRef.current === controller) {
+          abortControllerRef.current = null;
+        }
         setPending(null);
       }
     },
-    [forwardIntent, lead, pending, refreshLead, token],
+    [forwardIntent, lead, online, pending, refreshLead, token],
   );
 
-  const submitForward = forwardForm.handleSubmit((values): void => {
-    const isDealerTransfer =
-      values.targetIvrFlowCode === "VEHICLE_ENQUIRIES" &&
-      values.targetDealerOrgUnitId.length > 0;
+  function submitForward(event: React.SyntheticEvent<HTMLFormElement>): void {
+    void forwardForm.handleSubmit((values): void => {
+      const isDealerTransfer =
+        values.targetIvrFlowCode === "VEHICLE_ENQUIRIES" &&
+        values.targetDealerOrgUnitId.length > 0;
 
-    if (isDealerTransfer) {
-      setForwardConfirmation(values);
-      return;
-    }
+      if (isDealerTransfer) {
+        setForwardConfirmation(values);
+        return;
+      }
 
-    void executeForward(values);
-  });
+      void executeForward(values);
+    })(event);
+  }
+
+  if (terminalLink) {
+    return <LoadFailure loadError={{ reason: "not-found" }} />;
+  }
 
   if (lead === null) {
     return <LoadFailure {...(loadError === undefined ? {} : { loadError })} />;
@@ -1804,7 +1956,7 @@ export function PublicDealerLeadUpdatePage({
 
   const footerActions =
     readOnly || !hasFooterAction ? undefined : (
-      <ContentFormActions className="mx-auto w-full max-w-7xl border-0 bg-transparent p-0 shadow-none supports-[backdrop-filter]:bg-transparent">
+      <ContentFormActions className="mx-auto w-full max-w-4xl border-0 bg-transparent p-0 shadow-none supports-[backdrop-filter]:bg-transparent">
         <div className="hidden min-w-0 flex-1 sm:block">
           <p className="truncate text-caption text-muted-readable">
             {panelMeta.eyebrow}
@@ -1818,7 +1970,7 @@ export function PublicDealerLeadUpdatePage({
           <Button
             type="submit"
             form={FORM_IDS.FOLLOW_UP_DETAILS}
-            disabled={updateDisabled}
+            disabled={updateDisabled || !online}
             aria-busy={pending === "FOLLOW_UP_DETAILS"}
             className="min-h-11 w-full touch-manipulation sm:w-auto"
           >
@@ -1834,7 +1986,7 @@ export function PublicDealerLeadUpdatePage({
           <Button
             type="submit"
             form={FORM_IDS.NEXT_FOLLOW_UP}
-            disabled={updateDisabled}
+            disabled={updateDisabled || !online}
             aria-busy={pending === "NEXT_FOLLOW_UP"}
             className="min-h-11 w-full touch-manipulation sm:w-auto"
           >
@@ -1850,7 +2002,7 @@ export function PublicDealerLeadUpdatePage({
           <Button
             type="submit"
             form={FORM_IDS.CALL_NOTE}
-            disabled={updateDisabled}
+            disabled={updateDisabled || !online}
             aria-busy={pending === "CALL_NOTE"}
             className="min-h-11 w-full touch-manipulation sm:w-auto"
           >
@@ -1866,7 +2018,7 @@ export function PublicDealerLeadUpdatePage({
           <Button
             type="submit"
             form={FORM_IDS.FORWARD}
-            disabled={forwardDisabled}
+            disabled={forwardDisabled || !online}
             aria-busy={pending === "FORWARD"}
             className="min-h-11 w-full touch-manipulation sm:w-auto"
           >
@@ -1900,9 +2052,9 @@ export function PublicDealerLeadUpdatePage({
       footerActions={footerActions}
     >
       <ContentRoot
-        width="wide"
+        width="narrow"
         density="compact"
-        className="px-3 py-3 sm:px-0 sm:py-0"
+        className="max-w-4xl px-3 py-4 sm:px-0 sm:py-2"
       >
         <ContentHeader
           variant="compact"
@@ -1916,10 +2068,10 @@ export function PublicDealerLeadUpdatePage({
               </Badge>
             </div>
           }
-          title={<span id="dealer-lead-title">Customer follow-up</span>}
-          description="Complete one clear task at a time. Each successful save moves the lead to its next required priority."
+          title={<span id="dealer-lead-title">Customer enquiry follow-up</span>}
+          description="Complete the current priority, save it securely, and move to the next required action."
           actions={
-            <MobileLeadSummarySheet
+            <LeadSummaryDialog
               lead={lead}
               locationText={locationText}
               readOnly={readOnly}
@@ -1981,12 +2133,19 @@ export function PublicDealerLeadUpdatePage({
           </div>
         </ContentHeader>
 
-        <ContentSplit
-          variant="main-context"
-          className="gap-4 lg:grid-cols-[minmax(0,1fr)_21rem] lg:items-start lg:gap-6 2xl:grid-cols-[minmax(0,1fr)_21rem]"
-        >
+        <div className="grid min-w-0 gap-4">
           <div className="grid min-w-0 gap-5">
             <div aria-live="polite" aria-atomic="true" className="grid gap-3">
+              {!online ? (
+                <ContentStatus
+                  variant="warning"
+                  role="status"
+                  icon={<WifiOff aria-hidden="true" />}
+                  title="You are offline"
+                  description="Review the lead and continue entering details. Reconnect before saving an update or routing choice."
+                />
+              ) : null}
+
               {error === null ? null : (
                 <ContentStatus
                   variant="destructive"
@@ -2792,20 +2951,7 @@ export function PublicDealerLeadUpdatePage({
               />
             ) : null}
           </div>
-
-          <aside
-            className="hidden min-w-0 lg:sticky lg:top-20 lg:block"
-            aria-label="Lead summary"
-          >
-            <ContentSection className="bg-card/90 shadow-md">
-              <LeadSummaryContent
-                lead={lead}
-                locationText={locationText}
-                readOnly={readOnly}
-              />
-            </ContentSection>
-          </aside>
-        </ContentSplit>
+        </div>
       </ContentRoot>
 
       <AlertDialog

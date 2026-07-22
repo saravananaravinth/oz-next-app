@@ -9,7 +9,7 @@ import {
 
 const PAGE_TITLE = "Customer enquiry follow-up";
 const PAGE_DESCRIPTION =
-  "Update, schedule, or route an Ozotec EV customer enquiry securely.";
+  "Securely update, schedule, review, or route an assigned Ozotec EV customer enquiry.";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -19,6 +19,7 @@ export const viewport = {
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
+  colorScheme: "light dark",
   themeColor: [
     { media: "(prefers-color-scheme: light)", color: "#ffffff" },
     { media: "(prefers-color-scheme: dark)", color: "#09090b" },
@@ -28,10 +29,16 @@ export const viewport = {
 export const metadata = {
   title: PAGE_TITLE,
   description: PAGE_DESCRIPTION,
+  applicationName: "Ozotec EV",
+  category: "business",
+  referrer: "no-referrer",
   robots: {
     index: false,
     follow: false,
     nocache: true,
+    noarchive: true,
+    nosnippet: true,
+    noimageindex: true,
   },
   openGraph: {
     title: PAGE_TITLE,
@@ -51,9 +58,7 @@ export const metadata = {
 } satisfies Metadata;
 
 type PublicDealerLeadRouteProps = Readonly<{
-  params: Promise<{
-    token: string;
-  }>;
+  params: Promise<Readonly<{ token: string }>>;
 }>;
 
 export default async function PublicDealerLeadRoute({

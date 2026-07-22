@@ -6,21 +6,16 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import {
   AlertTriangle,
   ArrowLeft,
-  Check,
   CheckCircle2,
   ChevronRight,
   ClipboardCheck,
   Clock3,
-  Headphones,
-  Info,
-  ListChecks,
   LoaderCircle,
   LocateFixed,
   MapPin,
-  Menu,
   MessageSquareText,
   ShieldCheck,
-  Wrench,
+  WifiOff,
 } from "lucide-react";
 import { Controller, useForm, useWatch, type FieldPath } from "react-hook-form";
 
@@ -29,23 +24,12 @@ import {
   ContentDescriptionList,
   ContentForm,
   ContentFormActions,
-  ContentHeader,
   ContentRoot,
   ContentSection,
-  ContentSplit,
   ContentStatus,
 } from "@/components/common/content-shell";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
 import {
   Field,
   FieldDescription,
@@ -58,15 +42,13 @@ import {
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
-} from "@/components/ui/sheet";
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { isApiHttpError } from "@/lib/api/problem";
 import { idempotencyKey as createIdempotencyKey } from "@/lib/security/request-identifiers";
@@ -88,18 +70,21 @@ export type PublicServiceFeedbackPageProps = Readonly<{
   token: string;
 }>;
 
+type GeolocationFailureState =
+  | "unsupported-browser"
+  | "permission-denied"
+  | "location-unavailable"
+  | "timeout"
+  | "unexpected-error";
+
 type SubmitState =
   | "idle"
   | "locating"
   | "submitting"
   | "success"
   | "invalid-link"
-  | "unsupported-browser"
-  | "permission-denied"
-  | "location-unavailable"
-  | "timeout"
-  | "api-error"
-  | "unexpected-error";
+  | GeolocationFailureState
+  | "api-error";
 
 type UserFacingError = Readonly<{
   title: string;
@@ -116,15 +101,16 @@ type CapturedLocation = Readonly<{
 type ChoiceOption<TValue extends string> = Readonly<{
   value: TValue;
   label: string;
-  description?: string;
+  description: string;
 }>;
 
 type StepMeta = Readonly<{
   title: string;
   description: string;
+  shortLabel: string;
 }>;
 
-type StepIndex = 0 | 1 | 2;
+type StepIndex = 0 | 1 | 2 | 3;
 type FeedbackFieldPath = FieldPath<ServiceFeedbackFormValues>;
 
 type SubmissionIntent = Readonly<{
@@ -133,30 +119,42 @@ type SubmissionIntent = Readonly<{
 }>;
 
 const FORM_ID = "public-service-feedback-form";
-const FINAL_STEP: StepIndex = 2;
+const FINAL_STEP: StepIndex = 3;
 const GEOLOCATION_TIMEOUT_MS = 15_000;
 const GEO_PERMISSION_DENIED = 1;
 const GEO_POSITION_UNAVAILABLE = 2;
 const GEO_TIMEOUT = 3;
 const MAX_ACCURACY_METERS = 100_000;
+const MAX_REQUEST_ID_LENGTH = 128;
+const MAX_RETRY_AFTER_SECONDS = 86_400;
 const INDIA_DIAL_CODE = "+91";
 const INDIA_MOBILE_MAX_LENGTH = 10;
 const NON_DIGIT_PATTERN = /\D/gu;
 const SAFE_REQUEST_ID_PATTERN = /^[A-Za-z0-9_.:/@-]+$/u;
-const MAX_REQUEST_ID_LENGTH = 128;
 
 const STEPS = [
   {
-    title: "Contact details",
-    description: "Provide the best contact for follow-up on this request.",
+    title: "How can we contact you?",
+    description:
+      "Provide the contact details Ozotec EV should use for this request.",
+    shortLabel: "Contact",
   },
   {
-    title: "Feedback details",
-    description: "Tell us what happened and select the closest category.",
+    title: "What needs attention?",
+    description: "Choose the category that most closely matches the concern.",
+    shortLabel: "Category",
   },
   {
-    title: "Location and review",
-    description: "Choose GPS capture or enter the follow-up address manually.",
+    title: "Tell us what happened",
+    description:
+      "Share the important facts so the support team can route the request correctly.",
+    shortLabel: "Details",
+  },
+  {
+    title: "Where should we follow up?",
+    description:
+      "Choose a current GPS position or enter the relevant address manually.",
+    shortLabel: "Location",
   },
 ] as const satisfies readonly StepMeta[];
 
@@ -164,93 +162,64 @@ const ISSUE_CATEGORY_OPTIONS = [
   {
     value: "GENERAL_SERVICE",
     label: "General support",
-    description: "Workshop appointment, delay, or support concern.",
-    icon: Headphones,
+    description: "Workshop appointment, delay, or general service concern.",
   },
   {
     value: "BATTERY",
     label: "Battery",
-    description: "Battery backup, charging, health, or range concern.",
-    icon: Wrench,
+    description: "Battery backup, health, charging, or range concern.",
   },
   {
     value: "MOTOR_CONTROLLER",
     label: "Motor / controller",
     description: "Motor performance, controller, wiring, or ride issue.",
-    icon: Wrench,
   },
   {
     value: "CHARGER",
     label: "Charger",
-    description: "Home charger, charging failure, or adapter issue.",
-    icon: Wrench,
+    description: "Home charger, charging failure, or adapter concern.",
   },
   {
     value: "BRAKE_TYRE",
     label: "Brake / tyre",
-    description: "Brake, tyre, wheel, suspension, or road-safety issue.",
-    icon: Wrench,
+    description: "Brake, tyre, wheel, suspension, or safety concern.",
   },
   {
     value: "SPARE_PARTS",
     label: "Spare parts",
-    description: "Parts availability, replacement, or fitment support.",
-    icon: Wrench,
+    description: "Part availability, replacement, or fitment support.",
   },
   {
     value: "DEALER_EXPERIENCE",
     label: "Dealer experience",
-    description: "Dealer response, support quality, or escalation.",
-    icon: Headphones,
+    description: "Dealer response, service quality, or escalation concern.",
   },
   {
     value: "WARRANTY",
     label: "Warranty",
     description: "Warranty support or claim-related concern.",
-    icon: ShieldCheck,
   },
   {
     value: "OTHER",
     label: "Other",
-    description: "Anything not listed above.",
-    icon: MessageSquareText,
+    description: "A concern that does not match the available categories.",
   },
-] as const satisfies ReadonlyArray<
-  ChoiceOption<ServiceFeedbackIssueCategory> &
-    Readonly<{ icon: typeof MessageSquareText }>
->;
+] as const satisfies ReadonlyArray<ChoiceOption<ServiceFeedbackIssueCategory>>;
 
 const LOCATION_MODE_OPTIONS = [
   {
     value: "GPS",
-    label: "Use current GPS location",
+    label: "Use current location",
     description: "Fastest when you are at the relevant service location.",
   },
   {
     value: "MANUAL",
-    label: "Enter address manually",
+    label: "Enter address",
     description: "Use this when location permission is unavailable.",
   },
 ] as const satisfies ReadonlyArray<ChoiceOption<ServiceFeedbackLocationMode>>;
 
-const STATE_COPY: Record<
-  SubmitState,
-  Readonly<{ title: string; description: string }>
-> = {
-  idle: {
-    title: "Feedback / complaints",
-    description:
-      "Share your concern securely so Ozotec EV can review and follow up.",
-  },
-  locating: {
-    title: "Finding your location",
-    description:
-      "Keep this page open while your device confirms the follow-up location.",
-  },
-  submitting: {
-    title: "Submitting securely",
-    description: "Your feedback is being sent through the secure ERP gateway.",
-  },
+const STATE_COPY = {
   success: {
     title: "Feedback received",
     description:
@@ -259,39 +228,48 @@ const STATE_COPY: Record<
   "invalid-link": {
     title: "Feedback link unavailable",
     description:
-      "This feedback link is invalid, inactive, expired, or already completed. Use the latest link from Ozotec EV.",
+      "This secure link is invalid, inactive, expired, or already completed. Use the latest link from Ozotec EV.",
   },
   "unsupported-browser": {
     title: "Location is not supported",
     description:
-      "This browser cannot share a secure location. Use manual address entry or open the link in an updated browser.",
+      "This browser cannot request a secure location. Enter the address manually or open the link in an updated browser.",
   },
   "permission-denied": {
     title: "Location permission is blocked",
     description:
-      "Allow location access for this site or choose manual address entry.",
+      "Allow location access for this site or continue with manual address entry.",
   },
   "location-unavailable": {
     title: "Location unavailable",
     description:
-      "Your device could not determine its location. Check GPS and network access or enter the address manually.",
+      "Check GPS and network signal, move to an open area, or enter the address manually.",
   },
   timeout: {
     title: "Location request timed out",
     description:
-      "Your device took too long to provide a location. Try again or enter the address manually.",
+      "The device took too long to confirm its position. Try again or enter the address manually.",
   },
   "api-error": {
     title: "Feedback could not be submitted",
     description:
-      "We could not submit your feedback right now. Review the details and try again using the same link.",
+      "Your entered details remain on this page. Review them and try again using the same secure link.",
   },
   "unexpected-error": {
     title: "Something went wrong",
     description:
-      "The feedback request could not be completed. Refresh the page and try again.",
+      "The request could not be completed safely. Refresh the page and try again.",
   },
-};
+} as const satisfies Record<
+  Exclude<SubmitState, "idle" | "locating" | "submitting">,
+  Readonly<{ title: string; description: string }>
+>;
+
+const OFFLINE_ERROR = {
+  title: "Connect to the internet",
+  description:
+    "Your details remain on this page. Reconnect before submitting the feedback.",
+} as const satisfies UserFacingError;
 
 const DEFAULT_VALUES = {
   name: "",
@@ -310,7 +288,8 @@ const DEFAULT_VALUES = {
 
 const STEP_FIELDS = [
   ["name", "mobileNumber", "email"],
-  ["issueCategory", "feedback"],
+  ["issueCategory"],
+  ["feedback"],
   [
     "locationMode",
     "addressLine1",
@@ -321,6 +300,24 @@ const STEP_FIELDS = [
     "postalCode",
   ],
 ] as const satisfies ReadonlyArray<readonly FeedbackFieldPath[]>;
+
+function subscribeToOnlineStatus(onStoreChange: () => void): () => void {
+  window.addEventListener("online", onStoreChange);
+  window.addEventListener("offline", onStoreChange);
+
+  return () => {
+    window.removeEventListener("online", onStoreChange);
+    window.removeEventListener("offline", onStoreChange);
+  };
+}
+
+function getOnlineStatus(): boolean {
+  return navigator.onLine;
+}
+
+function getServerOnlineStatus(): boolean {
+  return true;
+}
 
 function safeRequestId(value: string | undefined): string | undefined {
   const normalized = value?.trim();
@@ -335,6 +332,35 @@ function safeRequestId(value: string | undefined): string | undefined {
   }
 
   return normalized;
+}
+
+function normalizeRetryAfterSeconds(value: number | undefined): number | null {
+  if (
+    value === undefined ||
+    !Number.isInteger(value) ||
+    value < 0 ||
+    value > MAX_RETRY_AFTER_SECONDS
+  ) {
+    return null;
+  }
+
+  return value;
+}
+
+function retryAfterDescription(seconds: number | null): string {
+  if (seconds === null || seconds === 0) {
+    return "Please wait briefly before trying to submit this feedback again.";
+  }
+
+  if (seconds < 60) {
+    return `Please wait about ${String(seconds)} seconds before trying again.`;
+  }
+
+  const minutes = Math.max(1, Math.ceil(seconds / 60));
+
+  return `Please wait about ${String(minutes)} minute${
+    minutes === 1 ? "" : "s"
+  } before trying again.`;
 }
 
 function isGeolocationError(error: unknown): error is GeolocationPositionError {
@@ -352,7 +378,9 @@ function isGeolocationError(error: unknown): error is GeolocationPositionError {
   );
 }
 
-function geolocationErrorState(error: GeolocationPositionError): SubmitState {
+function geolocationErrorState(
+  error: GeolocationPositionError,
+): Exclude<GeolocationFailureState, "unsupported-browser"> {
   switch (error.code) {
     case GEO_PERMISSION_DENIED:
       return "permission-denied";
@@ -367,7 +395,7 @@ function geolocationErrorState(error: GeolocationPositionError): SubmitState {
 
 function getCurrentPosition(): Promise<GeolocationPosition> {
   return new Promise<GeolocationPosition>((resolve, reject) => {
-    if (!("geolocation" in navigator)) {
+    if (!window.isSecureContext || !("geolocation" in navigator)) {
       reject(new Error("geolocation_unsupported"));
       return;
     }
@@ -412,69 +440,69 @@ function locationFromPosition(
   };
 }
 
-function retryAfterDescription(seconds: number | undefined): string {
-  if (seconds === undefined || !Number.isFinite(seconds) || seconds <= 0) {
-    return "Please wait briefly before trying to submit this feedback again.";
+function isTerminalLinkError(error: unknown): boolean {
+  if (!isApiHttpError(error)) {
+    return false;
   }
 
-  const roundedSeconds = Math.max(1, Math.ceil(seconds));
+  const code = error.code.toUpperCase();
 
-  if (roundedSeconds < 60) {
-    return `Please wait approximately ${String(roundedSeconds)} seconds before trying again.`;
-  }
-
-  const roundedMinutes = Math.ceil(roundedSeconds / 60);
-
-  return `Please wait approximately ${String(roundedMinutes)} minute${roundedMinutes === 1 ? "" : "s"} before trying again.`;
+  return (
+    error.status === 401 ||
+    error.status === 403 ||
+    error.status === 404 ||
+    error.status === 410 ||
+    code.includes("EXPIRED") ||
+    code.includes("USED") ||
+    code.includes("CONSUMED") ||
+    code.includes("NOT_FOUND") ||
+    code.includes("INVALID_TOKEN")
+  );
 }
 
 function errorFromUnknown(error: unknown): UserFacingError {
   if (isApiHttpError(error)) {
-    const code = error.code.toUpperCase();
     const requestId = safeRequestId(error.requestId);
     let baseError: Omit<UserFacingError, "requestId">;
 
-    if (
-      error.status === 404 ||
-      error.status === 410 ||
-      code.includes("EXPIRED") ||
-      code.includes("USED") ||
-      code.includes("CONSUMED") ||
-      code.includes("NOT_FOUND")
-    ) {
-      baseError = {
-        title: "Feedback link unavailable",
-        description:
-          "This feedback link is no longer active. Use the latest link from Ozotec EV.",
-      };
-    } else if (error.status === 409) {
+    if (error.status === 409) {
       baseError = {
         title: "Submission details changed",
         description:
-          "A previous attempt used different feedback details. Review the form and submit again to start a fresh protected attempt.",
+          "A previous protected attempt used different details. Review the form and submit again to create a fresh attempt.",
       };
     } else if (error.status === 400 || error.status === 422) {
       baseError = {
-        title: "Some details were rejected",
+        title: "Some details were not accepted",
         description:
-          "Review all feedback fields and submit again. Your entered details remain on this page.",
+          "Review every required field and submit again. Your entered information remains on this page.",
       };
     } else if (error.status === 429) {
       baseError = {
         title: "Too many submission attempts",
-        description: retryAfterDescription(error.retryAfterSeconds),
+        description: retryAfterDescription(
+          normalizeRetryAfterSeconds(error.retryAfterSeconds),
+        ),
       };
     } else if (error.status >= 500) {
       baseError = {
         title: "Service temporarily unavailable",
         description:
-          "The feedback service is temporarily unavailable. Your entered details remain on this page; try again shortly.",
+          "Your entered details remain on this page. Keep the page open and try again shortly.",
       };
     } else {
       baseError = STATE_COPY["api-error"];
     }
 
     return requestId === undefined ? baseError : { ...baseError, requestId };
+  }
+
+  if (error instanceof Error && error.name === "NetworkError") {
+    return {
+      title: "Network request failed",
+      description:
+        "Check the internet connection and try again. Your entered details remain on this page.",
+    };
   }
 
   return STATE_COPY["unexpected-error"];
@@ -498,20 +526,16 @@ function choiceOptionId(name: string, value: string): string {
   return `${name}-${value.toLocaleLowerCase("en-US").replaceAll("_", "-")}`;
 }
 
-function focusTargetIdForStep(
-  step: StepIndex,
-  values: ServiceFeedbackFormValues,
-): string {
+function focusTargetIdForStep(step: StepIndex): string {
   switch (step) {
     case 0:
       return "service-feedback-name";
     case 1:
       return "service-feedback-category";
     case 2:
-      return choiceOptionId(
-        "service-feedback-location-mode",
-        values.locationMode,
-      );
+      return "service-feedback-message";
+    case 3:
+      return "service-feedback-location-mode-gps";
   }
 }
 
@@ -548,11 +572,18 @@ function labelFor<TValue extends string>(
   return options.find((option) => option.value === value)?.label ?? value;
 }
 
+function descriptionFor<TValue extends string>(
+  options: ReadonlyArray<ChoiceOption<TValue>>,
+  value: TValue,
+): string {
+  return options.find((option) => option.value === value)?.description ?? "";
+}
+
 function toSubmitRequest(
   values: ServiceFeedbackFormValues,
   location: CapturedLocation | null,
 ): ServiceFeedbackSubmitRequest {
-  const email = optionalNonEmpty(values.email);
+  const email = optionalNonEmpty(values.email)?.toLocaleLowerCase("en-US");
   const common = {
     name: values.name.trim(),
     mobileNumber: `${INDIA_DIAL_CODE}${values.mobileNumber.trim()}`,
@@ -642,11 +673,10 @@ function ChoiceCards<TValue extends string>({
               <span className="text-body text-foreground [font-weight:var(--typography-emphasis-weight)]">
                 {option.label}
               </span>
-              {option.description === undefined ? null : (
-                <span className="text-body-sm leading-relaxed text-muted-readable">
-                  {option.description}
-                </span>
-              )}
+
+              <span className="text-body-sm leading-relaxed text-muted-readable">
+                {option.description}
+              </span>
             </span>
 
             <ChevronRight
@@ -663,101 +693,6 @@ function ChoiceCards<TValue extends string>({
   );
 }
 
-type IssueCategoryDialogProps = Readonly<{
-  value: ServiceFeedbackIssueCategory;
-  disabled: boolean;
-  onValueChange: (value: ServiceFeedbackIssueCategory) => void;
-}>;
-
-function IssueCategoryDialog({
-  value,
-  disabled,
-  onValueChange,
-}: IssueCategoryDialogProps): React.ReactElement {
-  const [open, setOpen] = React.useState(false);
-  const selected =
-    ISSUE_CATEGORY_OPTIONS.find((option) => option.value === value) ??
-    ISSUE_CATEGORY_OPTIONS[0];
-
-  function chooseCategory(nextValue: ServiceFeedbackIssueCategory): void {
-    onValueChange(nextValue);
-    setOpen(false);
-  }
-
-  return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button
-          id="service-feedback-category"
-          type="button"
-          variant="outline"
-          disabled={disabled}
-          className="h-auto min-h-12 w-full justify-between gap-3 whitespace-normal px-4 py-3 text-left text-base sm:text-body-sm"
-        >
-          <span className="min-w-0 flex-1">
-            <span className="block truncate font-medium">{selected.label}</span>
-            <span className="mt-0.5 block truncate text-caption text-muted-readable">
-              {selected.description}
-            </span>
-          </span>
-          <ChevronRight
-            aria-hidden="true"
-            className="size-4 shrink-0 text-muted-readable"
-          />
-        </Button>
-      </DialogTrigger>
-
-      <DialogContent className="max-h-[calc(100dvh-1rem)] overflow-hidden sm:max-w-xl">
-        <DialogHeader className="pr-8">
-          <DialogTitle>Choose issue category</DialogTitle>
-          <DialogDescription>
-            Select the category that most closely matches the feedback or
-            complaint.
-          </DialogDescription>
-        </DialogHeader>
-
-        <ScrollArea className="max-h-[min(68dvh,34rem)] pr-3">
-          <div className="grid gap-2 pb-1">
-            {ISSUE_CATEGORY_OPTIONS.map((option) => {
-              const CategoryIcon = option.icon;
-              const isSelected = option.value === value;
-
-              return (
-                <Button
-                  key={option.value}
-                  type="button"
-                  variant={isSelected ? "secondary" : "ghost"}
-                  className="h-auto min-h-16 w-full justify-start gap-3 whitespace-normal px-3 py-3 text-left"
-                  onClick={() => {
-                    chooseCategory(option.value);
-                  }}
-                >
-                  <span className="flex size-9 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-primary">
-                    {isSelected ? (
-                      <Check aria-hidden="true" className="size-4" />
-                    ) : (
-                      <CategoryIcon aria-hidden="true" className="size-4" />
-                    )}
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block break-words font-medium">
-                      {option.label}
-                    </span>
-                    <span className="mt-1 block break-words text-caption text-muted-readable">
-                      {option.description}
-                    </span>
-                  </span>
-                </Button>
-              );
-            })}
-          </div>
-          <ScrollBar orientation="vertical" />
-        </ScrollArea>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
 function feedbackPreview(value: string): string {
   const normalized = value.trim();
 
@@ -770,7 +705,7 @@ function feedbackPreview(value: string): string {
     : `${normalized.slice(0, 179).trimEnd()}…`;
 }
 
-function ApplicationReview({
+function SubmissionReview({
   values,
   locationCaptured,
 }: Readonly<{
@@ -781,11 +716,12 @@ function ApplicationReview({
     values.mobileNumber.trim().length === INDIA_MOBILE_MAX_LENGTH
       ? `${INDIA_DIAL_CODE} ${values.mobileNumber.trim()}`
       : "Not provided";
+
   const proposedLocation =
     values.locationMode === "GPS"
       ? locationCaptured
         ? "Current GPS location captured"
-        : "GPS location will be requested before submission"
+        : "GPS permission will be requested before submission"
       : [
           values.addressLine1,
           values.addressLine2,
@@ -801,31 +737,33 @@ function ApplicationReview({
   return (
     <ContentSection
       size="sm"
-      title="Review your feedback"
-      description="Confirm the information already provided. Use Back to make corrections before submission."
-      className="bg-muted/20"
+      title="Review before submitting"
+      description="Use Back to correct any information."
+      className="bg-muted/25"
     >
       <ContentDescriptionList columns="two">
-        <ContentDescriptionItem term="Name">
-          {values.name.trim() || "Not provided"}
+        <ContentDescriptionItem term="Contact">
+          <span className="break-words">
+            {values.name.trim() || "Not provided"} · {mobile}
+          </span>
         </ContentDescriptionItem>
-        <ContentDescriptionItem term="Mobile">{mobile}</ContentDescriptionItem>
+
         <ContentDescriptionItem term="Email">
           <span className="break-all">
             {values.email.trim() || "Not provided"}
           </span>
         </ContentDescriptionItem>
-        <ContentDescriptionItem term="Issue category">
+
+        <ContentDescriptionItem term="Category">
           {labelFor(ISSUE_CATEGORY_OPTIONS, values.issueCategory)}
         </ContentDescriptionItem>
+
         <ContentDescriptionItem term="Feedback">
           <span className="break-words">
             {feedbackPreview(values.feedback)}
           </span>
         </ContentDescriptionItem>
-        <ContentDescriptionItem term="Location method">
-          {labelFor(LOCATION_MODE_OPTIONS, values.locationMode)}
-        </ContentDescriptionItem>
+
         <ContentDescriptionItem term="Follow-up location">
           <span className="break-words">{proposedLocation}</span>
         </ContentDescriptionItem>
@@ -834,7 +772,7 @@ function ApplicationReview({
   );
 }
 
-function FormErrorAlert({
+function FormErrorStatus({
   error,
 }: Readonly<{ error: UserFacingError }>): React.ReactElement {
   return (
@@ -848,9 +786,11 @@ function FormErrorAlert({
       description={
         <>
           {error.description}
+
           {error.requestId === undefined ? null : (
             <span className="mt-2 block text-caption">
-              Reference: <code>{error.requestId}</code>
+              Reference:{" "}
+              <code className="break-all text-tabular">{error.requestId}</code>
             </span>
           )}
         </>
@@ -870,6 +810,7 @@ function StepProgress({
         <span>
           Step {String(step + 1)} of {String(STEPS.length)}
         </span>
+
         <span className="text-tabular">
           {String(Math.round(percentage))}% complete
         </span>
@@ -882,7 +823,7 @@ function StepProgress({
       />
 
       <ol
-        className="hidden grid-cols-3 gap-2 sm:grid"
+        className="hidden grid-cols-4 gap-2 sm:grid"
         aria-label="Feedback form steps"
       >
         {STEPS.map((item, index) => {
@@ -891,7 +832,7 @@ function StepProgress({
 
           return (
             <li
-              key={item.title}
+              key={item.shortLabel}
               aria-current={current ? "step" : undefined}
               className={cn(
                 "flex min-w-0 items-center gap-2 rounded-xl border px-2.5 py-2",
@@ -902,7 +843,7 @@ function StepProgress({
             >
               <span
                 className={cn(
-                  "flex size-6 shrink-0 items-center justify-center rounded-full text-caption font-semibold",
+                  "flex size-6 shrink-0 items-center justify-center rounded-full text-caption [font-weight:var(--typography-emphasis-weight)]",
                   complete
                     ? "bg-success text-success-foreground"
                     : current
@@ -916,8 +857,9 @@ function StepProgress({
                   index + 1
                 )}
               </span>
-              <span className="min-w-0 truncate text-caption font-medium">
-                {item.title}
+
+              <span className="min-w-0 truncate text-caption [font-weight:var(--typography-emphasis-weight)]">
+                {item.shortLabel}
               </span>
             </li>
           );
@@ -927,62 +869,11 @@ function StepProgress({
   );
 }
 
-function FeedbackGuideContent(): React.ReactElement {
-  return (
-    <div className="grid min-w-0 gap-4">
-      <ContentDescriptionList columns="one">
-        <ContentDescriptionItem term="Estimated time">
-          About 3 minutes
-        </ContentDescriptionItem>
-        <ContentDescriptionItem term="Helpful details">
-          Include the problem, when it happened, vehicle symptoms, previous
-          service visits, and the support needed.
-        </ContentDescriptionItem>
-        <ContentDescriptionItem term="What happens next">
-          The Ozotec support team reviews the submission and contacts you using
-          the mobile number or email provided.
-        </ContentDescriptionItem>
-      </ContentDescriptionList>
-
-      <ContentStatus
-        variant="info"
-        role="note"
-        icon={<ShieldCheck aria-hidden="true" />}
-        title="Protect sensitive information"
-        description="Do not enter Aadhaar, PAN, bank, UPI, card, OTP, password, or unrelated identity-document details."
-      />
-    </div>
-  );
-}
-
-function MobileFeedbackGuideSheet(): React.ReactElement {
-  return (
-    <Sheet>
-      <SheetTrigger asChild>
-        <Button type="button" variant="outline" size="sm" className="lg:hidden">
-          <Menu aria-hidden="true" />
-          Feedback guide
-        </Button>
-      </SheetTrigger>
-      <SheetContent side="bottom" className="max-h-[min(88dvh,42rem)]">
-        <SheetHeader>
-          <SheetTitle>Before you submit</SheetTitle>
-          <SheetDescription>
-            Information that helps the support team understand and route the
-            request.
-          </SheetDescription>
-        </SheetHeader>
-        <div className="px-4 pb-6 sm:px-5">
-          <FeedbackGuideContent />
-        </div>
-      </SheetContent>
-    </Sheet>
-  );
-}
-
 function StatusScreen({
   state,
-}: Readonly<{ state: "success" | "invalid-link" }>): React.ReactElement {
+}: Readonly<{
+  state: "success" | "invalid-link";
+}>): React.ReactElement {
   const copy = STATE_COPY[state];
   const success = state === "success";
 
@@ -994,7 +885,7 @@ function StatusScreen({
       <ContentRoot
         width="narrow"
         density="compact"
-        className="px-3 py-8 sm:px-0 sm:py-4"
+        className="max-w-2xl px-3 py-8 sm:px-0 sm:py-6"
       >
         <div className="grid justify-items-center">
           <PublicFormStatusEmblem status={success ? "success" : "error"} />
@@ -1002,10 +893,8 @@ function StatusScreen({
 
         <ContentSection
           className={cn(
-            "shadow-lg",
-            success
-              ? "border-success/20 shadow-success/5"
-              : "border-destructive/20 shadow-destructive/5",
+            "bg-card/96 text-center shadow-xl shadow-foreground/5",
+            success ? "border-success/25" : "border-destructive/20",
           )}
           title={<span id="service-feedback-status-title">{copy.title}</span>}
           description={copy.description}
@@ -1013,6 +902,7 @@ function StatusScreen({
           <ContentStatus
             variant={success ? "success" : "destructive"}
             role="status"
+            aria-live="polite"
             icon={
               success ? (
                 <CheckCircle2 aria-hidden="true" />
@@ -1022,18 +912,19 @@ function StatusScreen({
             }
             title={
               success
-                ? "Submitted successfully"
+                ? "No further action is required"
                 : "No feedback can be submitted from this link"
             }
             description={
               success
                 ? "The support team can now review the submitted information. You may close this page."
-                : "Open the latest Ozotec feedback link before trying again."
+                : "Open the latest Ozotec EV feedback link before trying again."
             }
           />
 
-          <p className="mt-4 text-center text-caption text-muted-readable">
-            This public page never exposes internal ERP records or diagnostics.
+          <p className="mt-4 text-center text-caption leading-relaxed text-muted-readable">
+            This public page does not expose internal ERP records or diagnostic
+            data.
           </p>
         </ContentSection>
       </ContentRoot>
@@ -1049,6 +940,12 @@ export function PublicServiceFeedbackPage({
     [token],
   );
 
+  const online = React.useSyncExternalStore(
+    subscribeToOnlineStatus,
+    getOnlineStatus,
+    getServerOnlineStatus,
+  );
+
   const [step, setStep] = React.useState<StepIndex>(0);
   const [submitState, setSubmitState] = React.useState<SubmitState>("idle");
   const [formError, setFormError] = React.useState<UserFacingError | null>(
@@ -1057,13 +954,14 @@ export function PublicServiceFeedbackPage({
   const [location, setLocation] = React.useState<CapturedLocation | null>(null);
   const [actionPending, setActionPending] = React.useState(false);
 
-  const stepHeadingRef = React.useRef<HTMLSpanElement | null>(null);
+  const stepHeadingRef = React.useRef<HTMLHeadingElement | null>(null);
   const focusStepControlRef = React.useRef<StepIndex | null>(null);
-  const mountedRef = React.useRef(false);
+  const mountedRef = React.useRef(true);
   const submissionLockRef = React.useRef(false);
   const locationLockRef = React.useRef(false);
   const submissionIntentRef = React.useRef<SubmissionIntent | null>(null);
   const abortControllerRef = React.useRef<AbortController | null>(null);
+  const errorStatusRef = React.useRef<HTMLDivElement | null>(null);
 
   const form = useForm<ServiceFeedbackFormValues>({
     resolver: zodResolver(serviceFeedbackFormSchema),
@@ -1077,30 +975,63 @@ export function PublicServiceFeedbackPage({
     control: form.control,
     name: "locationMode",
   });
+
+  const issueCategory = useWatch({
+    control: form.control,
+    name: "issueCategory",
+  });
+
   const feedbackValue = useWatch({
     control: form.control,
     name: "feedback",
   });
 
+  useWatch({
+    control: form.control,
+    name: [
+      "addressLine1",
+      "addressLine2",
+      "city",
+      "district",
+      "state",
+      "postalCode",
+    ],
+  });
+
   React.useEffect(() => {
+    mountedRef.current = true;
+
     return () => {
+      mountedRef.current = false;
       abortControllerRef.current?.abort();
     };
   }, []);
 
   React.useEffect(() => {
-    if (!mountedRef.current) {
-      mountedRef.current = true;
+    if (formError === null) {
       return;
     }
 
-    const frameId = window.requestAnimationFrame(() => {
-      const shouldFocusStepControl = focusStepControlRef.current === step;
-      const targetId = shouldFocusStepControl
-        ? focusTargetIdForStep(step, form.getValues())
+    const frame = window.requestAnimationFrame(() => {
+      errorStatusRef.current?.scrollIntoView({
+        behavior: preferredScrollBehavior(),
+        block: "start",
+      });
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frame);
+    };
+  }, [formError]);
+
+  React.useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      const shouldFocusControl = focusStepControlRef.current === step;
+
+      const target = shouldFocusControl
+        ? document.getElementById(focusTargetIdForStep(step))
         : null;
-      const target =
-        targetId === null ? null : document.getElementById(targetId);
+
       const scrollTarget = target ?? stepHeadingRef.current;
 
       scrollTarget?.scrollIntoView({
@@ -1108,20 +1039,19 @@ export function PublicServiceFeedbackPage({
         block: target === null ? "start" : "center",
       });
 
-      if (target !== null) {
+      if (target instanceof HTMLElement) {
         target.focus({ preventScroll: true });
-        focusStepControlRef.current = null;
-        return;
+      } else {
+        stepHeadingRef.current?.focus({ preventScroll: true });
       }
 
       focusStepControlRef.current = null;
-      stepHeadingRef.current?.focus({ preventScroll: true });
     });
 
     return () => {
-      window.cancelAnimationFrame(frameId);
+      window.cancelAnimationFrame(frame);
     };
-  }, [form, step]);
+  }, [step]);
 
   const parsedToken = tokenResult.success ? tokenResult.data : null;
   const networkBusy =
@@ -1130,6 +1060,8 @@ export function PublicServiceFeedbackPage({
   const success = submitState === "success";
   const disabled = busy || success || parsedToken === null;
   const currentStep = STEPS[step];
+  const reviewValues = form.getValues();
+
   const canUseManualRecovery =
     step === FINAL_STEP &&
     locationMode === "GPS" &&
@@ -1149,6 +1081,11 @@ export function PublicServiceFeedbackPage({
 
     try {
       const position = await getCurrentPosition();
+
+      if (!mountedRef.current) {
+        return null;
+      }
+
       const nextLocation = locationFromPosition(position);
 
       if (nextLocation === null) {
@@ -1159,12 +1096,19 @@ export function PublicServiceFeedbackPage({
 
       setLocation(nextLocation);
       setSubmitState("idle");
+
       return nextLocation;
-    } catch (caught) {
+    } catch (caught: unknown) {
+      if (!mountedRef.current) {
+        return null;
+      }
+
       if (isGeolocationError(caught)) {
         const nextState = geolocationErrorState(caught);
+
         setSubmitState(nextState);
         setFormError(STATE_COPY[nextState]);
+
         return null;
       }
 
@@ -1174,11 +1118,13 @@ export function PublicServiceFeedbackPage({
       ) {
         setSubmitState("unsupported-browser");
         setFormError(STATE_COPY["unsupported-browser"]);
+
         return null;
       }
 
       setSubmitState("unexpected-error");
       setFormError(errorFromUnknown(caught));
+
       return null;
     } finally {
       locationLockRef.current = false;
@@ -1194,29 +1140,33 @@ export function PublicServiceFeedbackPage({
     setFormError(null);
 
     try {
-      const fields = STEP_FIELDS[step];
-      const valid = await form.trigger([...fields], { shouldFocus: true });
+      const valid = await form.trigger([...STEP_FIELDS[step]], {
+        shouldFocus: true,
+      });
 
-      if (valid) {
-        const nextStep = Math.min(step + 1, FINAL_STEP) as StepIndex;
-
-        if (nextStep !== step) {
-          focusStepControlRef.current = nextStep;
-          setStep(nextStep);
-        }
+      if (!valid) {
+        return;
       }
+
+      const nextStep = Math.min(step + 1, FINAL_STEP) as StepIndex;
+
+      focusStepControlRef.current = nextStep;
+      setStep(nextStep);
     } finally {
       setActionPending(false);
     }
   }
 
   function handleBack(): void {
-    if (busy) {
+    if (busy || step === 0) {
       return;
     }
 
+    const previousStep = Math.max(step - 1, 0) as StepIndex;
+
     setFormError(null);
-    setStep((current) => Math.max(current - 1, 0) as StepIndex);
+    focusStepControlRef.current = previousStep;
+    setStep(previousStep);
   }
 
   function useManualAddress(): void {
@@ -1225,6 +1175,8 @@ export function PublicServiceFeedbackPage({
       shouldTouch: true,
       shouldValidate: true,
     });
+
+    setLocation(null);
     setFormError(null);
     setSubmitState("idle");
 
@@ -1244,35 +1196,50 @@ export function PublicServiceFeedbackPage({
       return;
     }
 
+    if (!online) {
+      setFormError(OFFLINE_ERROR);
+      return;
+    }
+
     submissionLockRef.current = true;
     setActionPending(true);
     setFormError(null);
+
     let completed = false;
 
     try {
-      const valid = await form.trigger(undefined, { shouldFocus: true });
+      const valid = await form.trigger(undefined, {
+        shouldFocus: true,
+      });
 
       if (!valid) {
         const errorStep = firstErrorStep(form.formState.errors);
+
         focusStepControlRef.current = errorStep;
         setStep(errorStep);
+
         return;
       }
 
       const values = serviceFeedbackFormSchema.parse(form.getValues());
+
       const resolvedLocation =
         values.locationMode === "GPS"
           ? (location ?? (await captureLocation()))
           : null;
 
       if (values.locationMode === "GPS" && resolvedLocation === null) {
+        focusStepControlRef.current = FINAL_STEP;
         setStep(FINAL_STEP);
+
         return;
       }
 
       const feedback = toSubmitRequest(values, resolvedLocation);
+
       const serializedFeedback = JSON.stringify(feedback);
       const existingIntent = submissionIntentRef.current;
+
       const submissionIntent =
         existingIntent?.serializedFeedback === serializedFeedback
           ? existingIntent
@@ -1280,11 +1247,14 @@ export function PublicServiceFeedbackPage({
               idempotencyKey: createIdempotencyKey("service-feedback"),
               serializedFeedback,
             };
+
       submissionIntentRef.current = submissionIntent;
 
       const controller = new AbortController();
+
       abortControllerRef.current?.abort();
       abortControllerRef.current = controller;
+
       setSubmitState("submitting");
 
       await submitPublicServiceFeedback({
@@ -1294,14 +1264,25 @@ export function PublicServiceFeedbackPage({
         signal: controller.signal,
       });
 
-      if (controller.signal.aborted) {
+      if (controller.signal.aborted || !mountedRef.current) {
         return;
       }
 
       completed = true;
       setSubmitState("success");
-    } catch (caught) {
+    } catch (caught: unknown) {
+      if (!mountedRef.current) {
+        return;
+      }
+
       if (caught instanceof DOMException && caught.name === "AbortError") {
+        return;
+      }
+
+      if (isTerminalLinkError(caught)) {
+        submissionIntentRef.current = null;
+        setSubmitState("invalid-link");
+
         return;
       }
 
@@ -1312,6 +1293,7 @@ export function PublicServiceFeedbackPage({
       setSubmitState("api-error");
       setFormError(errorFromUnknown(caught));
     } finally {
+      abortControllerRef.current = null;
       setActionPending(false);
 
       if (!completed) {
@@ -1320,7 +1302,7 @@ export function PublicServiceFeedbackPage({
     }
   }
 
-  if (!tokenResult.success) {
+  if (!tokenResult.success || submitState === "invalid-link") {
     return <StatusScreen state="invalid-link" />;
   }
 
@@ -1328,25 +1310,25 @@ export function PublicServiceFeedbackPage({
     return <StatusScreen state="success" />;
   }
 
-  const reviewValues = step === FINAL_STEP ? form.getValues() : null;
   const footerActions = (
-    <ContentFormActions className="mx-auto w-full max-w-7xl border-0 bg-transparent p-0 shadow-none supports-[backdrop-filter]:bg-transparent sm:justify-between">
-      <div className="hidden min-w-0 flex-1 sm:block">
+    <ContentFormActions className="mx-auto w-full max-w-3xl border-0 bg-transparent p-0 shadow-none supports-[backdrop-filter]:bg-transparent sm:justify-between">
+      <div className="hidden min-w-0 flex-1 sm:block" aria-hidden="true">
         <p className="truncate text-caption text-muted-readable">
           Step {String(step + 1)} of {String(STEPS.length)}
         </p>
-        <p className="truncate text-body-sm font-medium text-foreground">
-          {currentStep.title}
+
+        <p className="truncate text-body-sm text-foreground [font-weight:var(--typography-emphasis-weight)]">
+          {currentStep.shortLabel}
         </p>
       </div>
 
-      <div className="grid w-full grid-cols-2 gap-2 sm:w-auto sm:min-w-72">
+      <div className="grid w-full grid-cols-2 gap-2 sm:w-auto sm:min-w-80">
         <Button
           type="button"
           variant="outline"
           disabled={busy || step === 0}
           onClick={handleBack}
-          className="min-h-11 w-full touch-manipulation"
+          className="min-h-12 w-full touch-manipulation"
         >
           <ArrowLeft aria-hidden="true" />
           Back
@@ -1354,15 +1336,12 @@ export function PublicServiceFeedbackPage({
 
         {step < FINAL_STEP ? (
           <Button
-            key="service-feedback-continue"
             type="button"
             disabled={disabled}
-            onClick={(event) => {
-              event.preventDefault();
-              event.stopPropagation();
+            onClick={() => {
               void handleNext();
             }}
-            className="min-h-11 w-full touch-manipulation"
+            className="min-h-12 w-full touch-manipulation"
             aria-busy={actionPending}
           >
             {actionPending ? (
@@ -1376,26 +1355,31 @@ export function PublicServiceFeedbackPage({
           </Button>
         ) : (
           <Button
-            key="service-feedback-submit"
             type="submit"
             form={FORM_ID}
-            disabled={disabled}
-            className="min-h-11 w-full touch-manipulation"
+            disabled={disabled || !online}
+            className="min-h-12 w-full touch-manipulation"
             aria-busy={busy}
+            aria-describedby="service-feedback-submit-hint"
           >
-            {busy ? (
+            {submitState === "locating" || submitState === "submitting" ? (
               <LoaderCircle
                 aria-hidden="true"
                 className="animate-spin motion-reduce:animate-none"
               />
+            ) : !online ? (
+              <WifiOff aria-hidden="true" />
             ) : (
               <ClipboardCheck aria-hidden="true" />
             )}
+
             {submitState === "locating"
-              ? "Capturing…"
+              ? "Finding location…"
               : submitState === "submitting"
                 ? "Submitting…"
-                : "Submit feedback"}
+                : !online
+                  ? "Connect to submit"
+                  : "Submit feedback"}
           </Button>
         )}
       </div>
@@ -1408,80 +1392,67 @@ export function PublicServiceFeedbackPage({
       mainLabelledBy="service-feedback-form-title"
     >
       <ContentRoot
-        width="wide"
+        width="narrow"
         density="compact"
-        className="px-3 py-3 sm:px-0 sm:py-0"
+        className="max-w-3xl px-3 py-4 sm:px-0 sm:py-2"
       >
-        <ContentHeader
-          variant="compact"
-          eyebrow={
-            <div className="flex flex-wrap items-center gap-2">
-              <Badge variant="outline">Feedback / complaints</Badge>
-              <Badge variant="secondary">3 guided steps</Badge>
-            </div>
-          }
-          title={
-            <span
-              ref={stepHeadingRef}
-              id="service-feedback-form-title"
-              tabIndex={-1}
-              className="scroll-mt-24 outline-none"
-            >
-              {currentStep.title}
-            </span>
-          }
-          description={currentStep.description}
-          actions={<MobileFeedbackGuideSheet />}
-          meta={
-            <div className="grid w-full min-w-0 gap-2 sm:grid-cols-3">
-              <div className="flex min-w-0 items-center gap-2 rounded-xl border border-primary/20 bg-primary/5 px-3 py-2.5">
-                <Clock3
-                  aria-hidden="true"
-                  className="size-4 shrink-0 text-primary"
-                />
-                <span className="text-caption text-foreground">
-                  About 3 minutes
-                </span>
-              </div>
-              <div className="flex min-w-0 items-center gap-2 rounded-xl border border-border/70 bg-muted/30 px-3 py-2.5">
-                <ListChecks
-                  aria-hidden="true"
-                  className="size-4 shrink-0 text-muted-readable"
-                />
-                <span className="text-caption text-foreground">
-                  One section at a time
-                </span>
-              </div>
-              <div className="hidden min-w-0 items-center gap-2 rounded-xl border border-border/70 bg-muted/30 px-3 py-2.5 sm:flex">
-                <ShieldCheck
-                  aria-hidden="true"
-                  className="size-4 shrink-0 text-success"
-                />
-                <span className="text-caption text-foreground">
-                  Secure ERP submission
-                </span>
-              </div>
-            </div>
-          }
-          cardClassName="border-primary/20 bg-card/92 shadow-lg shadow-primary/5"
-        >
-          <div className="mt-4 border-t border-border/70 pt-4">
-            <StepProgress step={step} />
-          </div>
-        </ContentHeader>
+        <div className="flex flex-wrap items-center justify-between gap-2 px-1">
+          <Badge variant="outline">
+            <ShieldCheck aria-hidden="true" />
+            Official feedback request
+          </Badge>
 
-        <ContentSplit
-          variant="main-context"
-          className="gap-4 lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start lg:gap-6 2xl:grid-cols-[minmax(0,1fr)_20rem]"
+          <span className="inline-flex items-center gap-1.5 text-caption text-muted-readable">
+            <Clock3 aria-hidden="true" className="size-3.5" />
+            Usually 2–3 minutes
+          </span>
+        </div>
+
+        <ContentSection
+          aria-busy={busy}
+          className="overflow-hidden border-primary/20 bg-card/96 shadow-xl shadow-primary/5"
+          contentClassName="min-w-0"
         >
-          <div className="grid min-w-0 gap-4">
-            {formError === null ? null : <FormErrorAlert error={formError} />}
+          <div className="grid gap-5 border-b border-border/70 pb-5">
+            <StepProgress step={step} />
+
+            <div className="grid gap-2">
+              <h1
+                ref={stepHeadingRef}
+                id="service-feedback-form-title"
+                tabIndex={-1}
+                className="scroll-mt-24 text-page-title text-balance outline-none"
+              >
+                {currentStep.title}
+              </h1>
+
+              <p className="max-w-2xl text-body-sm leading-relaxed text-muted-readable text-pretty sm:text-body">
+                {currentStep.description}
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-5 grid gap-5">
+            <div ref={errorStatusRef} className="scroll-mt-24">
+              {!online ? (
+                <ContentStatus
+                  variant="warning"
+                  role="status"
+                  aria-live="polite"
+                  icon={<WifiOff aria-hidden="true" />}
+                  title="You are offline"
+                  description="Continue filling the form. Reconnect before submitting."
+                />
+              ) : formError === null ? null : (
+                <FormErrorStatus error={formError} />
+              )}
+            </div>
 
             {canUseManualRecovery ? (
               <ContentSection
                 size="sm"
                 title="Continue without GPS"
-                description="Manual address entry is available and does not require browser location permission."
+                description="Manual address entry does not require browser location permission."
                 actions={
                   <Button
                     type="button"
@@ -1495,604 +1466,655 @@ export function PublicServiceFeedbackPage({
               />
             ) : null}
 
-            <ContentSection
-              aria-busy={busy}
-              className="border-primary/15 bg-card/94 shadow-md"
-              contentClassName="min-w-0"
+            <ContentForm
+              id={FORM_ID}
+              noValidate
+              className="[&_input]:text-base [&_textarea]:text-base sm:[&_input]:text-body-sm sm:[&_textarea]:text-body-sm"
+              onSubmit={(event) => {
+                event.preventDefault();
+
+                if (step !== FINAL_STEP) {
+                  return;
+                }
+
+                void handleSubmit();
+              }}
             >
-              <ContentForm
-                id={FORM_ID}
-                noValidate
-                className="[&_input]:text-base [&_textarea]:text-base sm:[&_input]:text-body-sm sm:[&_textarea]:text-body-sm"
-                onSubmit={(event) => {
-                  event.preventDefault();
+              <FieldGroup className="gap-5">
+                {step === 0 ? (
+                  <div className="grid gap-5 sm:grid-cols-2">
+                    <Field
+                      data-invalid={
+                        form.formState.errors.name === undefined
+                          ? undefined
+                          : true
+                      }
+                    >
+                      <FieldLabel htmlFor="service-feedback-name">
+                        Name
+                      </FieldLabel>
 
-                  if (step !== FINAL_STEP) {
-                    return;
-                  }
-
-                  void handleSubmit();
-                }}
-              >
-                <FieldGroup className="gap-5">
-                  {step === 0 ? (
-                    <div className="grid gap-5 sm:grid-cols-2">
-                      <Field
-                        data-invalid={
+                      <Input
+                        id="service-feedback-name"
+                        type="text"
+                        autoComplete="name"
+                        enterKeyHint="next"
+                        placeholder="Your full name"
+                        aria-invalid={
                           form.formState.errors.name === undefined
                             ? undefined
                             : true
                         }
-                      >
-                        <FieldLabel htmlFor="service-feedback-name">
-                          Name
-                        </FieldLabel>
-                        <Input
-                          id="service-feedback-name"
-                          type="text"
-                          autoComplete="name"
-                          enterKeyHint="next"
-                          placeholder="Your full name"
-                          aria-invalid={
-                            form.formState.errors.name === undefined
-                              ? undefined
-                              : true
-                          }
-                          disabled={disabled}
-                          {...form.register("name")}
-                        />
-                        {form.formState.errors.name?.message ===
-                        undefined ? null : (
-                          <FieldError>
-                            {form.formState.errors.name.message}
-                          </FieldError>
-                        )}
-                      </Field>
+                        disabled={disabled}
+                        {...form.register("name")}
+                      />
 
-                      <Field
-                        data-invalid={
-                          form.formState.errors.mobileNumber === undefined
-                            ? undefined
-                            : true
-                        }
-                      >
-                        <FieldLabel htmlFor="service-feedback-mobile">
-                          Mobile number
-                        </FieldLabel>
-                        <Controller
-                          control={form.control}
-                          name="mobileNumber"
-                          render={({ field }) => (
-                            <div className="relative">
-                              <span
-                                aria-hidden="true"
-                                className="pointer-events-none absolute inset-y-0 left-4 flex items-center text-body-sm text-muted-readable"
-                              >
-                                {INDIA_DIAL_CODE}
-                              </span>
-                              <Input
-                                id="service-feedback-mobile"
-                                type="tel"
-                                inputMode="numeric"
-                                autoComplete="tel-national"
-                                enterKeyHint="next"
-                                maxLength={INDIA_MOBILE_MAX_LENGTH}
-                                placeholder="9876543210"
-                                className="pl-16"
-                                aria-invalid={
-                                  form.formState.errors.mobileNumber ===
-                                  undefined
-                                    ? undefined
-                                    : true
-                                }
-                                disabled={disabled}
-                                value={field.value}
-                                onBlur={field.onBlur}
-                                name={field.name}
-                                ref={field.ref}
-                                onChange={(event) => {
-                                  field.onChange(
-                                    normalizeIndianMobileInput(
-                                      event.target.value,
-                                    ),
-                                  );
-                                }}
-                              />
-                            </div>
-                          )}
-                        />
-                        {form.formState.errors.mobileNumber?.message ===
-                        undefined ? null : (
-                          <FieldError>
-                            {form.formState.errors.mobileNumber.message}
-                          </FieldError>
-                        )}
-                      </Field>
+                      {form.formState.errors.name?.message ===
+                      undefined ? null : (
+                        <FieldError>
+                          {form.formState.errors.name.message}
+                        </FieldError>
+                      )}
+                    </Field>
 
-                      <Field
-                        className="sm:col-span-2"
-                        data-invalid={
+                    <Field
+                      data-invalid={
+                        form.formState.errors.mobileNumber === undefined
+                          ? undefined
+                          : true
+                      }
+                    >
+                      <FieldLabel htmlFor="service-feedback-mobile">
+                        Mobile number
+                      </FieldLabel>
+
+                      <Controller
+                        control={form.control}
+                        name="mobileNumber"
+                        render={({ field }) => (
+                          <div className="relative">
+                            <span
+                              aria-hidden="true"
+                              className="pointer-events-none absolute inset-y-0 left-4 flex items-center text-body-sm text-muted-readable"
+                            >
+                              {INDIA_DIAL_CODE}
+                            </span>
+
+                            <Input
+                              id="service-feedback-mobile"
+                              type="tel"
+                              inputMode="numeric"
+                              autoComplete="tel-national"
+                              enterKeyHint="next"
+                              maxLength={INDIA_MOBILE_MAX_LENGTH}
+                              placeholder="9876543210"
+                              className="pl-16"
+                              aria-invalid={
+                                form.formState.errors.mobileNumber === undefined
+                                  ? undefined
+                                  : true
+                              }
+                              disabled={disabled}
+                              value={field.value}
+                              onBlur={field.onBlur}
+                              name={field.name}
+                              ref={field.ref}
+                              onChange={(event) => {
+                                field.onChange(
+                                  normalizeIndianMobileInput(
+                                    event.target.value,
+                                  ),
+                                );
+                              }}
+                            />
+                          </div>
+                        )}
+                      />
+
+                      {form.formState.errors.mobileNumber?.message ===
+                      undefined ? null : (
+                        <FieldError>
+                          {form.formState.errors.mobileNumber.message}
+                        </FieldError>
+                      )}
+                    </Field>
+
+                    <Field
+                      className="sm:col-span-2"
+                      data-invalid={
+                        form.formState.errors.email === undefined
+                          ? undefined
+                          : true
+                      }
+                    >
+                      <FieldLabel htmlFor="service-feedback-email">
+                        Email{" "}
+                        <span className="text-muted-readable">(optional)</span>
+                      </FieldLabel>
+
+                      <Input
+                        id="service-feedback-email"
+                        type="email"
+                        inputMode="email"
+                        autoComplete="email"
+                        autoCapitalize="none"
+                        autoCorrect="off"
+                        enterKeyHint="done"
+                        placeholder="name@example.com"
+                        aria-invalid={
                           form.formState.errors.email === undefined
                             ? undefined
                             : true
                         }
-                      >
-                        <FieldLabel htmlFor="service-feedback-email">
-                          Email{" "}
-                          <span className="text-muted-readable">
-                            (optional)
-                          </span>
-                        </FieldLabel>
-                        <Input
-                          id="service-feedback-email"
-                          type="email"
-                          inputMode="email"
-                          autoComplete="email"
-                          autoCapitalize="none"
-                          autoCorrect="off"
-                          enterKeyHint="done"
-                          placeholder="name@example.com"
-                          aria-invalid={
-                            form.formState.errors.email === undefined
-                              ? undefined
-                              : true
-                          }
-                          disabled={disabled}
-                          {...form.register("email")}
-                        />
-                        <FieldDescription>
-                          Used only when email follow-up is appropriate.
-                        </FieldDescription>
-                        {form.formState.errors.email?.message ===
-                        undefined ? null : (
-                          <FieldError>
-                            {form.formState.errors.email.message}
-                          </FieldError>
-                        )}
-                      </Field>
-                    </div>
-                  ) : null}
+                        disabled={disabled}
+                        {...form.register("email")}
+                      />
 
-                  {step === 1 ? (
-                    <div className="grid gap-5">
-                      <Controller
-                        control={form.control}
-                        name="issueCategory"
-                        render={({ field }) => (
-                          <Field
-                            data-invalid={
+                      <FieldDescription>
+                        Used only when email follow-up is appropriate.
+                      </FieldDescription>
+
+                      {form.formState.errors.email?.message ===
+                      undefined ? null : (
+                        <FieldError>
+                          {form.formState.errors.email.message}
+                        </FieldError>
+                      )}
+                    </Field>
+
+                    <ContentStatus
+                      className="sm:col-span-2"
+                      variant="info"
+                      role="note"
+                      icon={<ShieldCheck aria-hidden="true" />}
+                      title="Contact details are used for follow-up"
+                      description="Do not enter OTPs, passwords, payment information, Aadhaar, PAN, or unrelated identity-document details."
+                    />
+                  </div>
+                ) : null}
+
+                {step === 1 ? (
+                  <Controller
+                    control={form.control}
+                    name="issueCategory"
+                    render={({ field }) => (
+                      <Field
+                        data-invalid={
+                          form.formState.errors.issueCategory === undefined
+                            ? undefined
+                            : true
+                        }
+                      >
+                        <FieldLabel htmlFor="service-feedback-category">
+                          Issue category
+                        </FieldLabel>
+
+                        <Select
+                          value={field.value}
+                          disabled={disabled}
+                          onValueChange={(nextValue) => {
+                            const selected = ISSUE_CATEGORY_OPTIONS.find(
+                              (option) => option.value === nextValue,
+                            );
+
+                            if (selected !== undefined) {
+                              field.onChange(selected.value);
+                              field.onBlur();
+                            }
+                          }}
+                        >
+                          <SelectTrigger
+                            id="service-feedback-category"
+                            className="min-h-12 w-full"
+                            aria-invalid={
                               form.formState.errors.issueCategory === undefined
                                 ? undefined
                                 : true
                             }
                           >
-                            <FieldLabel htmlFor="service-feedback-category">
-                              Issue category
-                            </FieldLabel>
-                            <IssueCategoryDialog
-                              value={field.value}
-                              disabled={disabled}
-                              onValueChange={(nextValue) => {
-                                field.onChange(nextValue);
-                                field.onBlur();
-                              }}
-                            />
-                            <FieldDescription>
-                              Choose the closest match. The support team can
-                              refine the category during review.
-                            </FieldDescription>
-                            {form.formState.errors.issueCategory?.message ===
-                            undefined ? null : (
-                              <FieldError>
-                                {form.formState.errors.issueCategory.message}
-                              </FieldError>
-                            )}
-                          </Field>
-                        )}
-                      />
+                            <SelectValue placeholder="Choose a category" />
+                          </SelectTrigger>
 
-                      <Field
-                        data-invalid={
+                          <SelectContent>
+                            {ISSUE_CATEGORY_OPTIONS.map((option) => (
+                              <SelectItem
+                                key={option.value}
+                                value={option.value}
+                              >
+                                {option.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+
+                        <FieldDescription>
+                          {descriptionFor(
+                            ISSUE_CATEGORY_OPTIONS,
+                            issueCategory,
+                          )}
+                        </FieldDescription>
+
+                        {form.formState.errors.issueCategory?.message ===
+                        undefined ? null : (
+                          <FieldError>
+                            {form.formState.errors.issueCategory.message}
+                          </FieldError>
+                        )}
+                      </Field>
+                    )}
+                  />
+                ) : null}
+
+                {step === 2 ? (
+                  <div className="grid gap-5">
+                    <Field
+                      data-invalid={
+                        form.formState.errors.feedback === undefined
+                          ? undefined
+                          : true
+                      }
+                    >
+                      <FieldLabel htmlFor="service-feedback-message">
+                        Feedback or complaint
+                      </FieldLabel>
+
+                      <Textarea
+                        id="service-feedback-message"
+                        rows={8}
+                        maxLength={8_000}
+                        placeholder="Describe the issue, when it happened, vehicle symptoms, previous service visits, and the support you need."
+                        aria-invalid={
                           form.formState.errors.feedback === undefined
                             ? undefined
                             : true
                         }
-                      >
-                        <FieldLabel htmlFor="service-feedback-message">
-                          Feedback or complaint
-                        </FieldLabel>
-                        <Textarea
-                          id="service-feedback-message"
-                          rows={8}
-                          maxLength={8_000}
-                          placeholder="Describe the issue, when it happened, any vehicle symptoms, previous service visits, and the support needed."
-                          aria-invalid={
-                            form.formState.errors.feedback === undefined
-                              ? undefined
-                              : true
-                          }
-                          aria-describedby="service-feedback-message-help service-feedback-message-count"
-                          disabled={disabled}
-                          className="min-h-44 resize-y"
-                          {...form.register("feedback")}
-                        />
-                        <div className="flex flex-col gap-1 text-caption text-muted-readable sm:flex-row sm:items-center sm:justify-between">
-                          <span id="service-feedback-message-help">
-                            Do not include OTPs, passwords, payment information,
-                            or unrelated identity documents.
-                          </span>
-                          <span
-                            id="service-feedback-message-count"
-                            className="text-tabular"
-                          >
-                            {feedbackValue.length}/8000
-                          </span>
-                        </div>
-                        {form.formState.errors.feedback?.message ===
-                        undefined ? null : (
-                          <FieldError>
-                            {form.formState.errors.feedback.message}
-                          </FieldError>
-                        )}
-                      </Field>
-
-                      <ContentStatus
-                        variant="info"
-                        role="note"
-                        icon={<MessageSquareText aria-hidden="true" />}
-                        title="Details improve routing"
-                        description="Clear dates, symptoms, service history, and the support expected help the team route the request accurately."
+                        aria-describedby="service-feedback-message-help service-feedback-message-count"
+                        disabled={disabled}
+                        className="min-h-48 resize-y"
+                        {...form.register("feedback")}
                       />
-                    </div>
-                  ) : null}
 
-                  {step === 2 ? (
-                    <>
-                      {reviewValues === null ? null : (
-                        <ApplicationReview
-                          values={reviewValues}
-                          locationCaptured={location !== null}
-                        />
+                      <div className="flex flex-col gap-1 text-caption text-muted-readable sm:flex-row sm:items-center sm:justify-between">
+                        <span id="service-feedback-message-help">
+                          Include dates and symptoms when known. Avoid sensitive
+                          financial or identity information.
+                        </span>
+
+                        <span
+                          id="service-feedback-message-count"
+                          className="shrink-0 text-tabular"
+                        >
+                          {String(feedbackValue.length)}/8000
+                        </span>
+                      </div>
+
+                      {form.formState.errors.feedback?.message ===
+                      undefined ? null : (
+                        <FieldError>
+                          {form.formState.errors.feedback.message}
+                        </FieldError>
                       )}
+                    </Field>
 
-                      <FieldSet disabled={disabled}>
-                        <FieldLegend>
-                          How would you like to provide the location?
-                        </FieldLegend>
-                        <FieldDescription>
-                          Choose one method. You do not need to provide both GPS
-                          and a manual address.
-                        </FieldDescription>
+                    <ContentStatus
+                      variant="info"
+                      role="note"
+                      icon={<MessageSquareText aria-hidden="true" />}
+                      title="Clear details improve routing"
+                      description="Explain what happened, when it happened, previous service action, and the resolution you expect."
+                    />
+                  </div>
+                ) : null}
 
-                        <Controller
-                          control={form.control}
-                          name="locationMode"
-                          render={({ field }) => (
-                            <ChoiceCards
-                              name="service-feedback-location-mode"
-                              value={field.value}
-                              options={LOCATION_MODE_OPTIONS}
-                              disabled={disabled}
-                              onChange={(nextMode) => {
-                                field.onChange(nextMode);
-                                setFormError(null);
-                                setSubmitState("idle");
-                              }}
-                            />
-                          )}
-                        />
-                      </FieldSet>
+                {step === 3 ? (
+                  <div className="grid gap-5">
+                    <FieldSet disabled={disabled}>
+                      <FieldLegend>Choose a location method</FieldLegend>
 
-                      {locationMode === "GPS" ? (
-                        <div className="grid gap-4 rounded-2xl border border-border/70 bg-muted/30 p-4 sm:p-5">
-                          <div className="flex items-start gap-3">
-                            <span className="flex size-10 shrink-0 items-center justify-center rounded-2xl border border-primary/15 bg-primary/10 text-primary">
-                              <LocateFixed
-                                aria-hidden="true"
-                                className="size-5"
-                              />
-                            </span>
-                            <div className="grid min-w-0 gap-1">
-                              <p className="text-card-title">
-                                Capture current location
-                              </p>
-                              <p className="text-body-sm leading-relaxed text-muted-readable">
-                                Use this while present at the relevant service
-                                or follow-up location.
-                              </p>
-                            </div>
-                          </div>
+                      <FieldDescription>
+                        Provide either one current GPS position or one manual
+                        address.
+                      </FieldDescription>
 
-                          <Button
-                            type="button"
-                            variant={location === null ? "default" : "outline"}
+                      <Controller
+                        control={form.control}
+                        name="locationMode"
+                        render={({ field }) => (
+                          <ChoiceCards
+                            name="service-feedback-location-mode"
+                            value={field.value}
+                            options={LOCATION_MODE_OPTIONS}
                             disabled={disabled}
-                            onClick={() => {
-                              void captureLocation();
+                            onChange={(nextMode) => {
+                              field.onChange(nextMode);
+                              field.onBlur();
+                              setLocation(null);
+                              setFormError(null);
+                              setSubmitState("idle");
                             }}
-                            className="min-h-12 w-full touch-manipulation rounded-2xl"
-                          >
-                            {submitState === "locating" ? (
-                              <LoaderCircle
-                                aria-hidden="true"
-                                className="animate-spin motion-reduce:animate-none"
-                              />
-                            ) : (
-                              <LocateFixed aria-hidden="true" />
-                            )}
-                            {location === null
-                              ? "Capture current GPS location"
-                              : "Refresh GPS location"}
-                          </Button>
-
-                          {location === null ? (
-                            <p className="text-caption text-muted-readable">
-                              Your browser will request permission. Coordinates
-                              are submitted only with this feedback.
-                            </p>
-                          ) : (
-                            <Alert
-                              variant="success"
-                              role="status"
-                              aria-live="polite"
-                            >
-                              <CheckCircle2 aria-hidden="true" />
-                              <AlertTitle>GPS location captured</AlertTitle>
-                              <AlertDescription>
-                                The position is ready for secure submission
-                                {location.accuracyMeters === undefined
-                                  ? "."
-                                  : ` with approximately ${String(
-                                      Math.round(location.accuracyMeters),
-                                    )} metres accuracy.`}
-                              </AlertDescription>
-                            </Alert>
-                          )}
-                        </div>
-                      ) : (
-                        <div className="grid gap-5">
-                          <ContentStatus
-                            variant="info"
-                            role="note"
-                            icon={<MapPin aria-hidden="true" />}
-                            title="Manual follow-up address"
-                            description="Manual entry avoids location permission. The PIN code may be used for approximate service routing."
                           />
+                        )}
+                      />
+                    </FieldSet>
 
-                          <div className="grid gap-5 sm:grid-cols-2">
-                            <Field
-                              className="sm:col-span-2"
-                              data-invalid={
+                    {locationMode === "GPS" ? (
+                      <div className="grid gap-4 rounded-3xl border border-border/70 bg-muted/30 p-4 sm:p-5">
+                        <div className="flex items-start gap-3">
+                          <span className="flex size-10 shrink-0 items-center justify-center rounded-2xl border border-primary/15 bg-primary/10 text-primary">
+                            <LocateFixed
+                              aria-hidden="true"
+                              className="size-5"
+                            />
+                          </span>
+
+                          <div className="grid min-w-0 gap-1">
+                            <p className="text-card-title">
+                              Current GPS location
+                            </p>
+
+                            <p className="text-body-sm leading-relaxed text-muted-readable">
+                              Capture the position while you are at the relevant
+                              service or follow-up location.
+                            </p>
+                          </div>
+                        </div>
+
+                        <Button
+                          type="button"
+                          variant={location === null ? "default" : "outline"}
+                          disabled={disabled}
+                          onClick={() => {
+                            void captureLocation();
+                          }}
+                          className="min-h-12 w-full touch-manipulation"
+                        >
+                          {submitState === "locating" ? (
+                            <LoaderCircle
+                              aria-hidden="true"
+                              className="animate-spin motion-reduce:animate-none"
+                            />
+                          ) : (
+                            <LocateFixed aria-hidden="true" />
+                          )}
+
+                          {location === null
+                            ? "Capture current location"
+                            : "Refresh current location"}
+                        </Button>
+
+                        {location === null ? (
+                          <p className="text-caption leading-relaxed text-muted-readable">
+                            The browser asks for permission before any location
+                            is captured. Submission can also request the
+                            location automatically.
+                          </p>
+                        ) : (
+                          <ContentStatus
+                            variant="success"
+                            role="status"
+                            aria-live="polite"
+                            icon={<CheckCircle2 aria-hidden="true" />}
+                            title="Location ready"
+                            description={
+                              location.accuracyMeters === undefined
+                                ? "The current position is ready for secure submission."
+                                : `The current position is ready with approximately ${String(
+                                    Math.round(location.accuracyMeters),
+                                  )} metres accuracy.`
+                            }
+                          />
+                        )}
+                      </div>
+                    ) : (
+                      <div className="grid gap-5">
+                        <ContentStatus
+                          variant="info"
+                          role="note"
+                          icon={<MapPin aria-hidden="true" />}
+                          title="Manual follow-up address"
+                          description="Manual entry does not require browser location permission."
+                        />
+
+                        <div className="grid gap-5 sm:grid-cols-2">
+                          <Field
+                            className="sm:col-span-2"
+                            data-invalid={
+                              form.formState.errors.addressLine1 === undefined
+                                ? undefined
+                                : true
+                            }
+                          >
+                            <FieldLabel htmlFor="service-feedback-address-1">
+                              Address line 1
+                            </FieldLabel>
+
+                            <Input
+                              id="service-feedback-address-1"
+                              type="text"
+                              autoComplete="address-line1"
+                              enterKeyHint="next"
+                              placeholder="House / shop number, street, area"
+                              aria-invalid={
                                 form.formState.errors.addressLine1 === undefined
                                   ? undefined
                                   : true
                               }
-                            >
-                              <FieldLabel htmlFor="service-feedback-address-1">
-                                Address line 1
-                              </FieldLabel>
-                              <Input
-                                id="service-feedback-address-1"
-                                type="text"
-                                autoComplete="address-line1"
-                                enterKeyHint="next"
-                                placeholder="House / shop number, street, area"
-                                aria-invalid={
-                                  form.formState.errors.addressLine1 ===
-                                  undefined
-                                    ? undefined
-                                    : true
-                                }
-                                disabled={disabled}
-                                {...form.register("addressLine1")}
-                              />
-                              {form.formState.errors.addressLine1?.message ===
-                              undefined ? null : (
-                                <FieldError>
-                                  {form.formState.errors.addressLine1.message}
-                                </FieldError>
-                              )}
-                            </Field>
+                              disabled={disabled}
+                              {...form.register("addressLine1")}
+                            />
 
-                            <Field className="sm:col-span-2">
-                              <FieldLabel htmlFor="service-feedback-address-2">
-                                Address line 2{" "}
-                                <span className="text-muted-readable">
-                                  (optional)
-                                </span>
-                              </FieldLabel>
-                              <Input
-                                id="service-feedback-address-2"
-                                type="text"
-                                autoComplete="address-line2"
-                                enterKeyHint="next"
-                                placeholder="Landmark or nearby location"
-                                disabled={disabled}
-                                {...form.register("addressLine2")}
-                              />
-                            </Field>
+                            {form.formState.errors.addressLine1?.message ===
+                            undefined ? null : (
+                              <FieldError>
+                                {form.formState.errors.addressLine1.message}
+                              </FieldError>
+                            )}
+                          </Field>
 
-                            <Field
-                              data-invalid={
+                          <Field className="sm:col-span-2">
+                            <FieldLabel htmlFor="service-feedback-address-2">
+                              Address line 2{" "}
+                              <span className="text-muted-readable">
+                                (optional)
+                              </span>
+                            </FieldLabel>
+
+                            <Input
+                              id="service-feedback-address-2"
+                              type="text"
+                              autoComplete="address-line2"
+                              enterKeyHint="next"
+                              placeholder="Landmark or nearby location"
+                              disabled={disabled}
+                              {...form.register("addressLine2")}
+                            />
+                          </Field>
+
+                          <Field
+                            data-invalid={
+                              form.formState.errors.city === undefined
+                                ? undefined
+                                : true
+                            }
+                          >
+                            <FieldLabel htmlFor="service-feedback-city">
+                              City
+                            </FieldLabel>
+
+                            <Input
+                              id="service-feedback-city"
+                              type="text"
+                              autoComplete="address-level2"
+                              enterKeyHint="next"
+                              aria-invalid={
                                 form.formState.errors.city === undefined
                                   ? undefined
                                   : true
                               }
-                            >
-                              <FieldLabel htmlFor="service-feedback-city">
-                                City
-                              </FieldLabel>
-                              <Input
-                                id="service-feedback-city"
-                                type="text"
-                                autoComplete="address-level2"
-                                enterKeyHint="next"
-                                aria-invalid={
-                                  form.formState.errors.city === undefined
-                                    ? undefined
-                                    : true
-                                }
-                                disabled={disabled}
-                                {...form.register("city")}
-                              />
-                              {form.formState.errors.city?.message ===
-                              undefined ? null : (
-                                <FieldError>
-                                  {form.formState.errors.city.message}
-                                </FieldError>
-                              )}
-                            </Field>
+                              disabled={disabled}
+                              {...form.register("city")}
+                            />
 
-                            <Field
-                              data-invalid={
+                            {form.formState.errors.city?.message ===
+                            undefined ? null : (
+                              <FieldError>
+                                {form.formState.errors.city.message}
+                              </FieldError>
+                            )}
+                          </Field>
+
+                          <Field
+                            data-invalid={
+                              form.formState.errors.district === undefined
+                                ? undefined
+                                : true
+                            }
+                          >
+                            <FieldLabel htmlFor="service-feedback-district">
+                              District
+                            </FieldLabel>
+
+                            <Input
+                              id="service-feedback-district"
+                              type="text"
+                              enterKeyHint="next"
+                              aria-invalid={
                                 form.formState.errors.district === undefined
                                   ? undefined
                                   : true
                               }
-                            >
-                              <FieldLabel htmlFor="service-feedback-district">
-                                District
-                              </FieldLabel>
-                              <Input
-                                id="service-feedback-district"
-                                type="text"
-                                enterKeyHint="next"
-                                aria-invalid={
-                                  form.formState.errors.district === undefined
-                                    ? undefined
-                                    : true
-                                }
-                                disabled={disabled}
-                                {...form.register("district")}
-                              />
-                              {form.formState.errors.district?.message ===
-                              undefined ? null : (
-                                <FieldError>
-                                  {form.formState.errors.district.message}
-                                </FieldError>
-                              )}
-                            </Field>
+                              disabled={disabled}
+                              {...form.register("district")}
+                            />
 
-                            <Field
-                              data-invalid={
+                            {form.formState.errors.district?.message ===
+                            undefined ? null : (
+                              <FieldError>
+                                {form.formState.errors.district.message}
+                              </FieldError>
+                            )}
+                          </Field>
+
+                          <Field
+                            data-invalid={
+                              form.formState.errors.state === undefined
+                                ? undefined
+                                : true
+                            }
+                          >
+                            <FieldLabel htmlFor="service-feedback-state">
+                              State
+                            </FieldLabel>
+
+                            <Input
+                              id="service-feedback-state"
+                              type="text"
+                              autoComplete="address-level1"
+                              enterKeyHint="next"
+                              aria-invalid={
                                 form.formState.errors.state === undefined
                                   ? undefined
                                   : true
                               }
-                            >
-                              <FieldLabel htmlFor="service-feedback-state">
-                                State
-                              </FieldLabel>
-                              <Input
-                                id="service-feedback-state"
-                                type="text"
-                                autoComplete="address-level1"
-                                enterKeyHint="next"
-                                aria-invalid={
-                                  form.formState.errors.state === undefined
-                                    ? undefined
-                                    : true
-                                }
-                                disabled={disabled}
-                                {...form.register("state")}
-                              />
-                              {form.formState.errors.state?.message ===
-                              undefined ? null : (
-                                <FieldError>
-                                  {form.formState.errors.state.message}
-                                </FieldError>
-                              )}
-                            </Field>
+                              disabled={disabled}
+                              {...form.register("state")}
+                            />
 
-                            <Field
-                              data-invalid={
-                                form.formState.errors.postalCode === undefined
-                                  ? undefined
-                                  : true
-                              }
-                            >
-                              <FieldLabel htmlFor="service-feedback-postal-code">
-                                PIN code
-                              </FieldLabel>
-                              <Controller
-                                control={form.control}
-                                name="postalCode"
-                                render={({ field }) => (
-                                  <Input
-                                    id="service-feedback-postal-code"
-                                    type="text"
-                                    inputMode="numeric"
-                                    autoComplete="postal-code"
-                                    enterKeyHint="done"
-                                    maxLength={6}
-                                    aria-invalid={
-                                      form.formState.errors.postalCode ===
-                                      undefined
-                                        ? undefined
-                                        : true
-                                    }
-                                    disabled={disabled}
-                                    value={field.value}
-                                    onBlur={field.onBlur}
-                                    name={field.name}
-                                    ref={field.ref}
-                                    onChange={(event) => {
-                                      field.onChange(
-                                        normalizePostalCodeInput(
-                                          event.target.value,
-                                        ),
-                                      );
-                                    }}
-                                  />
-                                )}
-                              />
-                              {form.formState.errors.postalCode?.message ===
-                              undefined ? null : (
-                                <FieldError>
-                                  {form.formState.errors.postalCode.message}
-                                </FieldError>
+                            {form.formState.errors.state?.message ===
+                            undefined ? null : (
+                              <FieldError>
+                                {form.formState.errors.state.message}
+                              </FieldError>
+                            )}
+                          </Field>
+
+                          <Field
+                            data-invalid={
+                              form.formState.errors.postalCode === undefined
+                                ? undefined
+                                : true
+                            }
+                          >
+                            <FieldLabel htmlFor="service-feedback-postal-code">
+                              PIN code
+                            </FieldLabel>
+
+                            <Controller
+                              control={form.control}
+                              name="postalCode"
+                              render={({ field }) => (
+                                <Input
+                                  id="service-feedback-postal-code"
+                                  type="text"
+                                  inputMode="numeric"
+                                  autoComplete="postal-code"
+                                  enterKeyHint="done"
+                                  maxLength={6}
+                                  aria-invalid={
+                                    form.formState.errors.postalCode ===
+                                    undefined
+                                      ? undefined
+                                      : true
+                                  }
+                                  disabled={disabled}
+                                  value={field.value}
+                                  onBlur={field.onBlur}
+                                  name={field.name}
+                                  ref={field.ref}
+                                  onChange={(event) => {
+                                    field.onChange(
+                                      normalizePostalCodeInput(
+                                        event.target.value,
+                                      ),
+                                    );
+                                  }}
+                                />
                               )}
-                            </Field>
-                          </div>
+                            />
+
+                            {form.formState.errors.postalCode?.message ===
+                            undefined ? null : (
+                              <FieldError>
+                                {form.formState.errors.postalCode.message}
+                              </FieldError>
+                            )}
+                          </Field>
                         </div>
-                      )}
+                      </div>
+                    )}
 
-                      <ContentStatus
-                        variant="info"
-                        role="note"
-                        icon={<ShieldCheck aria-hidden="true" />}
-                        title="Secure support submission"
-                        description="Your response is sent only through the Ozotec ERP gateway and is used for support evaluation and follow-up."
-                      />
-                    </>
-                  ) : null}
-                </FieldGroup>
-              </ContentForm>
-            </ContentSection>
+                    <SubmissionReview
+                      values={reviewValues}
+                      locationCaptured={location !== null}
+                    />
 
-            <ContentStatus
-              variant="info"
-              role="note"
-              icon={<Info aria-hidden="true" />}
-              title="Your progress stays on this device"
-              description="Entered details remain available while this page stays open. Safe retry protection prevents duplicate feedback when the same submission is retried."
-              className="lg:hidden"
-            />
+                    <ContentStatus
+                      variant="info"
+                      role="note"
+                      icon={<ShieldCheck aria-hidden="true" />}
+                      title="Secure support submission"
+                      description="Your response is sent through the Ozotec ERP gateway for support evaluation and follow-up."
+                    />
+
+                    <p
+                      id="service-feedback-submit-hint"
+                      className="text-caption leading-relaxed text-muted-readable"
+                    >
+                      By submitting, you confirm that the information is
+                      accurate and authorize Ozotec EV to contact you about this
+                      request.
+                    </p>
+                  </div>
+                ) : null}
+              </FieldGroup>
+            </ContentForm>
           </div>
+        </ContentSection>
 
-          <aside
-            className="hidden min-w-0 lg:sticky lg:top-20 lg:block"
-            aria-label="Feedback guidance"
-          >
-            <ContentSection
-              title="Before you submit"
-              description="Prepare these details for a faster support review."
-              className="bg-card/90 shadow-md"
-            >
-              <FeedbackGuideContent />
-            </ContentSection>
-          </aside>
-        </ContentSplit>
+        <p className="px-3 text-center text-caption leading-relaxed text-muted-readable text-pretty">
+          Safe retry protection prevents duplicate submissions when the same
+          completed feedback is retried.
+        </p>
       </ContentRoot>
     </PublicServiceFeedbackShell>
   );

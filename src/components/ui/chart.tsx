@@ -3,7 +3,7 @@
 
 import * as React from "react";
 import * as RechartsPrimitive from "recharts";
-import type { TooltipValueType } from "recharts";
+import type { CartesianPosition, TooltipValueType } from "recharts";
 
 import { cn } from "@/lib/utils";
 
@@ -482,14 +482,18 @@ function ChartLegendContent({
   className,
   hideIcon = false,
   payload,
-  verticalAlign = "bottom",
+  position = "bottom",
   nameKey,
 }: React.ComponentProps<"div"> &
   Readonly<{
     hideIcon?: boolean;
     nameKey?: string;
+    position?: CartesianPosition;
   }> &
-  RechartsPrimitive.DefaultLegendContentProps): React.ReactElement | null {
+  Omit<
+    RechartsPrimitive.DefaultLegendContentProps,
+    "verticalAlign"
+  >): React.ReactElement | null {
   const { config } = useChart();
 
   if (!payload?.length) {
@@ -500,7 +504,7 @@ function ChartLegendContent({
     <div
       className={cn(
         "flex items-center justify-center gap-4 text-caption",
-        verticalAlign === "top" ? "pb-3" : "pt-3",
+        position === "top" ? "pb-3" : "pt-3",
         className,
       )}
     >

@@ -46,7 +46,7 @@ Production origins:
 - React 19
 - TypeScript with strict ESM configuration
 - Node.js 24
-- npm 11.16.0
+- npm 12.0.1
 - Tailwind CSS 4
 - shadcn/ui and Base UI primitives
 - React Hook Form and Zod
@@ -95,13 +95,13 @@ Expected versions:
 
 ```text
 Node.js: 24.x
-npm:     11.16.0
+npm:     12.0.1
 ```
 
 The repository declares:
 
 ```json
-"packageManager": "npm@11.16.0"
+"packageManager": "npm@12.0.1"
 ```
 
 ## Local setup
@@ -269,22 +269,24 @@ The interface follows a premium, calm ERP design language:
 
 ## Commands
 
-| Command                | Purpose                                                          |
-| ---------------------- | ---------------------------------------------------------------- |
-| `npm run dev`          | Start the local Next.js development server.                      |
-| `npm run typecheck`    | Generate Next.js route types and run strict TypeScript checking. |
-| `npm run lint`         | Run ESLint with zero warnings allowed.                           |
-| `npm run lint:fix`     | Apply safe ESLint fixes.                                         |
-| `npm run format`       | Format supported files with Prettier.                            |
-| `npm run format:check` | Verify Prettier formatting.                                      |
-| `npm run test`         | Run Node contract and regression tests.                          |
-| `npm run check`        | Run typecheck, lint, format check, and tests.                    |
-| `npm run build`        | Create the Next.js production build.                             |
-| `npm run build:cf`     | Create the OpenNext Cloudflare bundle.                           |
-| `npm run preview`      | Build and preview the Cloudflare output locally.                 |
-| `npm run audit:prod`   | Audit production dependencies at high severity.                  |
-| `npm run verify`       | Run the complete local production verification gate.             |
-| `npm run cf:typegen`   | Regenerate Cloudflare binding types.                             |
+| Command                  | Purpose                                                          |
+| ------------------------ | ---------------------------------------------------------------- |
+| `npm run dev`            | Start the local Next.js development server.                      |
+| `npm run typecheck`      | Generate Next.js route types and run strict TypeScript checking. |
+| `npm run lint`           | Run ESLint with zero warnings allowed.                           |
+| `npm run lint:fix`       | Apply safe ESLint fixes.                                         |
+| `npm run format`         | Format supported files with Prettier.                            |
+| `npm run format:check`   | Verify Prettier formatting.                                      |
+| `npm run test`           | Run Node contract and regression tests.                          |
+| `npm run deps:validate`  | Reject invalid or conflicting dependency peer trees.             |
+| `npm run check`          | Run typecheck, lint, format check, and tests.                    |
+| `npm run build`          | Create the Next.js production build.                             |
+| `npm run build:cf`       | Create the OpenNext Cloudflare bundle.                           |
+| `npm run preview`        | Build and preview the Cloudflare output locally.                 |
+| `npm run audit:prod`     | Audit production dependencies at high severity.                  |
+| `npm run security:audit` | Audit the complete dependency graph at high severity.            |
+| `npm run verify`         | Run the complete local production verification gate.             |
+| `npm run cf:typegen`     | Regenerate Cloudflare binding types.                             |
 
 ## Required verification
 
@@ -304,7 +306,23 @@ Prettier formatting validation
 Contract and regression tests
 Next.js production build
 Production dependency audit
+Complete dependency graph audit
 ```
+
+Moderate findings that have no compatible upstream remediation must be documented in
+[`docs/security/dependency-advisories.md`](docs/security/dependency-advisories.md) with exposure,
+compensating controls, and a review condition. High and critical findings remain release blockers.
+
+## Dependency updates
+
+Dependency updates are reviewed and applied explicitly. Keep TypeScript below 7 until
+`typescript-eslint` supports it, keep `@types/node` on major 24 while the runtime is Node 24, and
+keep ESLint below 10 until Next's bundled plugins accept it.
+
+Every dependency update must regenerate `package-lock.json` with Node 24/npm 12, retain only exact
+version-pinned install-script approvals, and complete a clean `npm ci` without blocked scripts. Run
+`npm run verify`, the OpenNext build, Wrangler type generation and startup analysis, and
+`wrangler deploy --dry-run` before deployment.
 
 For Cloudflare-specific changes, also run:
 
@@ -338,7 +356,7 @@ It runs on pushes to `main` and manual dispatches through the protected `product
 The workflow:
 
 1. validates required configuration and the Wrangler manifest;
-2. pins Node.js 24 and npm 11.16.0;
+2. pins Node.js 24 and npm 12.0.1;
 3. validates `package.json` and `package-lock.json` consistency;
 4. installs dependencies with `npm ci`;
 5. runs typecheck, lint, format validation, tests, production build, and audit;
@@ -378,6 +396,8 @@ Never:
 - cache protected data publicly;
 - log authentication headers, cookies, passwords, OTPs, JWTs, API keys, signatures, financial data, government identifiers, addresses, or raw PII;
 - weaken TypeScript, lint, validation, tests, or security controls to make a build pass;
+- run `npm audit fix --force`; inspect `npm audit fix --dry-run --json`, upgrade explicit
+  top-level dependencies, regenerate the lockfile, and run the complete verification gate instead;
 - introduce an open redirect;
 - perform cookie-authenticated mutations without Origin and CSRF protection;
 - add Cloudflare data products or new dependencies without approval.

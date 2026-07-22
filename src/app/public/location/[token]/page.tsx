@@ -4,8 +4,9 @@ import type { ReactElement } from "react";
 
 import { PublicLocationRequestPage } from "@/features/engagement/location-requests";
 
-const PAGE_TITLE = "Share location";
-const PAGE_DESCRIPTION = "Securely share your current location with Ozotec EV.";
+const PAGE_TITLE = "Share requested location";
+const PAGE_DESCRIPTION =
+  "Securely share one current location with Ozotec EV after browser permission.";
 
 type PublicLocationPageProps = Readonly<{
   params: Promise<
@@ -22,7 +23,14 @@ export const fetchCache = "force-no-store";
 export const metadata = {
   title: PAGE_TITLE,
   description: PAGE_DESCRIPTION,
+  applicationName: "Ozotec EV",
+  category: "business",
   referrer: "no-referrer",
+  formatDetection: {
+    telephone: false,
+    email: false,
+    address: false,
+  },
   robots: {
     index: false,
     follow: false,

@@ -11,14 +11,13 @@ import {
   Clock3,
   FileCheck2,
   FileText,
-  Info,
-  ListChecks,
+  Files,
   LoaderCircle,
   LockKeyhole,
-  Menu,
   RefreshCw,
   ShieldCheck,
   UploadCloud,
+  WifiOff,
   X,
 } from "lucide-react";
 import { Controller, useForm, useWatch } from "react-hook-form";
@@ -28,10 +27,8 @@ import {
   ContentDescriptionList,
   ContentForm,
   ContentFormActions,
-  ContentHeader,
   ContentRoot,
   ContentSection,
-  ContentSplit,
   ContentStatus,
 } from "@/components/common/content-shell";
 import { Badge } from "@/components/ui/badge";
@@ -45,18 +42,10 @@ import {
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
-} from "@/components/ui/sheet";
 import { Textarea } from "@/components/ui/textarea";
 import { isApiHttpError } from "@/lib/api/problem";
-import { cn } from "@/lib/utils";
 import { idempotencyKey as createIdempotencyKey } from "@/lib/security/request-identifiers";
+import { cn } from "@/lib/utils";
 
 import { PublicFormStatusEmblem } from "@/features/engagement/shared/ui/public-form-status-emblem";
 import {
@@ -64,7 +53,6 @@ import {
   submitPublicWarrantyApplication,
   uploadPublicWarrantyApplicationFile,
 } from "@/features/engagement/warranty-applications/api/warranty-application.client";
-import { PublicWarrantyShell } from "@/features/engagement/warranty-applications/ui/warranty-application-shell";
 import {
   WARRANTY_APPLICATION_ALLOWED_UPLOAD_EXTENSIONS,
   WARRANTY_APPLICATION_ALLOWED_UPLOAD_MIME_TYPES,
@@ -78,6 +66,7 @@ import {
   type WarrantyApplicationSubmitRequest,
   type WarrantyApplicationUploadedFile,
 } from "@/features/engagement/warranty-applications/contracts/warranty-application.schema";
+import { PublicWarrantyShell } from "@/features/engagement/warranty-applications/ui/warranty-application-shell";
 
 export type PublicWarrantyApplicationPageProps = Readonly<{
   token: string;
@@ -102,9 +91,10 @@ type UserFacingError = Readonly<{
 type StepDefinition = Readonly<{
   title: string;
   description: string;
+  shortLabel: string;
 }>;
 
-type StepIndex = 0 | 1 | 2;
+type StepIndex = 0 | 1 | 2 | 3;
 type WarrantyFieldName = keyof WarrantyApplicationFormValues;
 
 type InvoiceUploadItem = Readonly<{
@@ -136,13 +126,20 @@ type InvoiceUploadPickerProps = Readonly<{
   onFilesSelected: (files: readonly File[]) => void;
 }>;
 
+type SubmissionIntent = Readonly<{
+  idempotencyKey: string;
+  serializedApplication: string;
+}>;
+
 const FORM_ID = "public-warranty-application-form";
-const FINAL_STEP: StepIndex = 2;
+const FINAL_STEP: StepIndex = 3;
 const MAX_TEXT_LENGTH = 160;
 const MAX_FILE_NAME_LENGTH = 140;
 const INDIAN_MOBILE_PREFIX = "+91";
 const INDIAN_MOBILE_MAX_LENGTH = 10;
 const MAX_REQUEST_ID_LENGTH = 128;
+const MAX_RETRY_AFTER_SECONDS = 86_400;
+const SERVICE_UPLOAD_CONCURRENCY = 2;
 const C0_CONTROL_CHARACTER_MAX_CODE_POINT = 0x1f;
 const DELETE_CONTROL_CHARACTER_CODE_POINT = 0x7f;
 const NON_DIGIT_PATTERN = /\D/gu;
@@ -159,10 +156,7 @@ const ACCEPTED_EXTENSIONS = new Set<string>(
   WARRANTY_APPLICATION_ALLOWED_UPLOAD_EXTENSIONS,
 );
 
-const STATE_COPY: Record<
-  SubmitState,
-  Readonly<{ title: string; description: string }>
-> = {
+const STATE_COPY = {
   idle: {
     title: "Warranty application",
     description:
@@ -171,7 +165,7 @@ const STATE_COPY: Record<
   submitting: {
     title: "Submitting securely",
     description:
-      "Your invoices and warranty application are being sent through the secure ERP gateway.",
+      "Your private invoices and warranty application are being sent through the Ozotec ERP gateway.",
   },
   success: {
     title: "Application received",
@@ -179,36 +173,55 @@ const STATE_COPY: Record<
       "Thank you. Ozotec EV has received your warranty application for evaluation.",
   },
   "invalid-link": {
-    title: "Invalid warranty link",
+    title: "Warranty link unavailable",
     description:
-      "This warranty application link is invalid. Please use the latest link sent by Ozotec EV.",
+      "This secure link is invalid, inactive, expired, or already completed. Use the latest link from Ozotec EV.",
   },
   "api-error": {
     title: "Application could not be submitted",
     description:
-      "We could not submit your warranty application right now. Your entered details remain on this page; try again using the same link.",
+      "Your entered details remain on this page. Review them and try again using the same secure link.",
   },
   "unexpected-error": {
     title: "Something went wrong",
     description:
-      "The warranty application could not be completed. Refresh the page and try again.",
+      "The warranty application could not be completed safely. Refresh the page and try again.",
   },
-};
+} as const satisfies Record<
+  SubmitState,
+  Readonly<{ title: string; description: string }>
+>;
+
+const OFFLINE_ERROR = {
+  title: "Connect to the internet",
+  description:
+    "Your details and selected files remain on this page. Reconnect before uploading or submitting.",
+} as const satisfies UserFacingError;
 
 const STEPS = [
   {
-    title: "Customer details",
-    description: "Provide the primary contact for this warranty request.",
+    title: "How can we contact you?",
+    description:
+      "Provide the primary customer details for this warranty request.",
+    shortLabel: "Contact",
   },
   {
-    title: "Service address",
+    title: "Where is the vehicle located?",
     description:
-      "Enter the address where the vehicle or warranty component is located.",
+      "Enter the service address connected to this warranty application.",
+    shortLabel: "Address",
   },
   {
-    title: "Warranty details",
+    title: "What needs warranty review?",
     description:
-      "Add the VIN or serial number, describe the concern, and attach the invoices.",
+      "Add the VIN or serial number and explain the component concern.",
+    shortLabel: "Warranty",
+  },
+  {
+    title: "Attach the required invoices",
+    description:
+      "Select one purchase invoice and at least one service invoice, then review the application.",
+    shortLabel: "Documents",
   },
 ] as const satisfies readonly StepDefinition[];
 
@@ -216,6 +229,7 @@ const STEP_FIELDS = [
   ["name", "mobileNumber", "email"],
   ["addressLine1", "addressLine2", "city", "postalCode", "district", "state"],
   ["vinNumber", "componentDetails"],
+  [],
 ] as const satisfies Record<StepIndex, readonly WarrantyFieldName[]>;
 
 const DEFAULT_VALUES = {
@@ -232,6 +246,24 @@ const DEFAULT_VALUES = {
   componentDetails: "",
 } as const satisfies WarrantyApplicationFormValues;
 
+function subscribeToOnlineStatus(onStoreChange: () => void): () => void {
+  window.addEventListener("online", onStoreChange);
+  window.addEventListener("offline", onStoreChange);
+
+  return () => {
+    window.removeEventListener("online", onStoreChange);
+    window.removeEventListener("offline", onStoreChange);
+  };
+}
+
+function getOnlineStatus(): boolean {
+  return navigator.onLine;
+}
+
+function getServerOnlineStatus(): boolean {
+  return true;
+}
+
 function safeRequestId(value: string | undefined): string | undefined {
   const normalized = value?.trim();
 
@@ -247,6 +279,35 @@ function safeRequestId(value: string | undefined): string | undefined {
   return normalized;
 }
 
+function normalizeRetryAfterSeconds(value: number | undefined): number | null {
+  if (
+    value === undefined ||
+    !Number.isInteger(value) ||
+    value < 0 ||
+    value > MAX_RETRY_AFTER_SECONDS
+  ) {
+    return null;
+  }
+
+  return value;
+}
+
+function retryAfterDescription(seconds: number | null): string {
+  if (seconds === null || seconds === 0) {
+    return "Please wait briefly before trying again.";
+  }
+
+  if (seconds < 60) {
+    return `Please wait about ${String(seconds)} seconds before trying again.`;
+  }
+
+  const minutes = Math.max(1, Math.ceil(seconds / 60));
+
+  return `Please wait about ${String(minutes)} minute${
+    minutes === 1 ? "" : "s"
+  } before trying again.`;
+}
+
 function withRequestId(
   base: Readonly<{ title: string; description: string }>,
   requestId: string | undefined,
@@ -254,35 +315,71 @@ function withRequestId(
   return requestId === undefined ? base : { ...base, requestId };
 }
 
-function errorFromUnknown(error: unknown): UserFacingError {
+function isTerminalLinkError(error: unknown): boolean {
   if (isApiHttpError(error)) {
     const code = error.code.toUpperCase();
+
+    return (
+      error.status === 401 ||
+      error.status === 403 ||
+      error.status === 404 ||
+      error.status === 410 ||
+      code.includes("EXPIRED") ||
+      code.includes("USED") ||
+      code.includes("CONSUMED") ||
+      code.includes("NOT_FOUND") ||
+      code.includes("INVALID_TOKEN")
+    );
+  }
+
+  if (isPublicWarrantyUploadError(error)) {
+    const code = error.code.toUpperCase();
+
+    return (
+      error.status === 401 ||
+      error.status === 403 ||
+      error.status === 404 ||
+      error.status === 410 ||
+      code.includes("EXPIRED") ||
+      code.includes("USED") ||
+      code.includes("CONSUMED") ||
+      code.includes("NOT_FOUND") ||
+      code.includes("INVALID_TOKEN")
+    );
+  }
+
+  return false;
+}
+
+function errorFromUnknown(error: unknown): UserFacingError {
+  if (isApiHttpError(error)) {
     const requestId = safeRequestId(error.requestId);
     let baseError: Omit<UserFacingError, "requestId">;
 
-    if (
-      error.status === 404 ||
-      error.status === 409 ||
-      code.includes("EXPIRED") ||
-      code.includes("USED") ||
-      code.includes("NOT_FOUND")
-    ) {
+    if (error.status === 409) {
       baseError = {
-        title: "Link expired or already used",
+        title: "Submission details changed",
         description:
-          "This warranty application link is no longer active. Please use the latest link from Ozotec EV.",
+          "A protected attempt used different details. Review the application and submit again to create a fresh attempt.",
+      };
+    } else if (error.status === 400 || error.status === 422) {
+      baseError = {
+        title: "Some details were not accepted",
+        description:
+          "Review every required field and invoice selection, then submit again.",
       };
     } else if (error.status === 429) {
       baseError = {
         title: "Too many submission attempts",
-        description:
-          "Please wait briefly before trying to submit this warranty application again.",
+        description: retryAfterDescription(
+          normalizeRetryAfterSeconds(error.retryAfterSeconds),
+        ),
       };
     } else if (error.status >= 500) {
       baseError = {
         title: "Warranty service temporarily unavailable",
         description:
-          "The warranty service is temporarily unavailable. Your entered details remain on this page; try again shortly.",
+          "Your details and uploaded invoice references remain ready on this page. Try again shortly.",
       };
     } else {
       baseError = STATE_COPY["api-error"];
@@ -296,18 +393,7 @@ function errorFromUnknown(error: unknown): UserFacingError {
     const requestId = safeRequestId(error.requestId);
     let baseError: Omit<UserFacingError, "requestId">;
 
-    if (
-      error.status === 404 ||
-      code.includes("EXPIRED") ||
-      code.includes("USED") ||
-      code.includes("NOT_FOUND")
-    ) {
-      baseError = {
-        title: "Link expired or already used",
-        description:
-          "This warranty application link is no longer active. Please use the latest link from Ozotec EV.",
-      };
-    } else if (error.status === 413 || code.includes("TOO_LARGE")) {
+    if (error.status === 413 || code.includes("TOO_LARGE")) {
       baseError = {
         title: "Invoice file is too large",
         description: `Choose a file that is ${formatBytes(
@@ -322,13 +408,15 @@ function errorFromUnknown(error: unknown): UserFacingError {
     } else if (error.status === 429) {
       baseError = {
         title: "Too many upload attempts",
-        description: "Please wait briefly before retrying the invoice upload.",
+        description: retryAfterDescription(
+          normalizeRetryAfterSeconds(error.retryAfterSeconds),
+        ),
       };
     } else if (error.status === 0 || error.status >= 500) {
       baseError = {
         title: "Invoice upload interrupted",
         description:
-          "The invoice could not be uploaded. Check your connection and retry the failed file.",
+          "Check the internet connection and retry the failed invoice file.",
       };
     } else {
       baseError = {
@@ -338,6 +426,14 @@ function errorFromUnknown(error: unknown): UserFacingError {
     }
 
     return withRequestId(baseError, requestId);
+  }
+
+  if (error instanceof Error && error.name === "NetworkError") {
+    return {
+      title: "Network request failed",
+      description:
+        "Check the internet connection and try again. Your details remain on this page.",
+    };
   }
 
   return STATE_COPY["unexpected-error"];
@@ -536,7 +632,7 @@ function toSubmitRequest(
   values: WarrantyApplicationFormValues,
   invoices: InvoiceSubmissionIds,
 ): WarrantyApplicationSubmitRequest {
-  const email = optionalNonEmpty(values.email);
+  const email = optionalNonEmpty(values.email)?.toLocaleLowerCase("en-US");
   const addressLine2 = optionalNonEmpty(values.addressLine2);
 
   return {
@@ -556,7 +652,26 @@ function toSubmitRequest(
   };
 }
 
-function FormErrorAlert({
+function focusTargetIdForStep(step: StepIndex): string {
+  switch (step) {
+    case 0:
+      return "warranty-name";
+    case 1:
+      return "warranty-address-line-1";
+    case 2:
+      return "warranty-vin";
+    case 3:
+      return "warranty-purchase-invoice";
+  }
+}
+
+function preferredScrollBehavior(): ScrollBehavior {
+  return window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    ? "auto"
+    : "smooth";
+}
+
+function FormErrorStatus({
   error,
 }: Readonly<{ error: UserFacingError }>): React.ReactElement {
   return (
@@ -570,32 +685,17 @@ function FormErrorAlert({
       description={
         <>
           {error.description}
+
           {error.requestId === undefined ? null : (
             <span className="mt-2 block text-caption">
-              Reference: <code>{error.requestId}</code>
+              Reference:{" "}
+              <code className="break-all text-tabular">{error.requestId}</code>
             </span>
           )}
         </>
       }
     />
   );
-}
-
-function focusTargetIdForStep(step: StepIndex): string {
-  switch (step) {
-    case 0:
-      return "warranty-name";
-    case 1:
-      return "warranty-address-line-1";
-    case 2:
-      return "warranty-vin";
-  }
-}
-
-function preferredScrollBehavior(): ScrollBehavior {
-  return window.matchMedia("(prefers-reduced-motion: reduce)").matches
-    ? "auto"
-    : "smooth";
 }
 
 function StepProgress({
@@ -609,6 +709,7 @@ function StepProgress({
         <span>
           Step {String(step + 1)} of {String(STEPS.length)}
         </span>
+
         <span className="text-tabular">
           {String(Math.round(percentage))}% complete
         </span>
@@ -621,7 +722,7 @@ function StepProgress({
       />
 
       <ol
-        className="hidden grid-cols-3 gap-2 sm:grid"
+        className="hidden grid-cols-4 gap-2 sm:grid"
         aria-label="Warranty application steps"
       >
         {STEPS.map((item, index) => {
@@ -630,7 +731,7 @@ function StepProgress({
 
           return (
             <li
-              key={item.title}
+              key={item.shortLabel}
               aria-current={current ? "step" : undefined}
               className={cn(
                 "flex min-w-0 items-center gap-2 rounded-xl border px-2.5 py-2",
@@ -641,7 +742,7 @@ function StepProgress({
             >
               <span
                 className={cn(
-                  "flex size-6 shrink-0 items-center justify-center rounded-full text-caption font-semibold",
+                  "flex size-6 shrink-0 items-center justify-center rounded-full text-caption [font-weight:var(--typography-emphasis-weight)]",
                   complete
                     ? "bg-success text-success-foreground"
                     : current
@@ -655,8 +756,9 @@ function StepProgress({
                   index + 1
                 )}
               </span>
-              <span className="min-w-0 truncate text-caption font-medium">
-                {item.title}
+
+              <span className="min-w-0 truncate text-caption [font-weight:var(--typography-emphasis-weight)]">
+                {item.shortLabel}
               </span>
             </li>
           );
@@ -717,9 +819,10 @@ function UploadItemCard({
         </div>
 
         <div className="grid min-w-0 flex-1 gap-1">
-          <p className="break-words text-body-sm font-medium text-foreground [overflow-wrap:anywhere]">
+          <p className="break-words text-body-sm text-foreground [font-weight:var(--typography-emphasis-weight)] [overflow-wrap:anywhere]">
             {item.fileName}
           </p>
+
           <p className="break-words text-caption text-muted-readable [overflow-wrap:anywhere]">
             {formatBytes(item.sizeBytes)}
             {item.mimeType.length > 0 ? ` · ${item.mimeType}` : ""}
@@ -751,6 +854,7 @@ function UploadItemCard({
             value={item.progress}
             aria-label={`${item.fileName} upload progress`}
           />
+
           <div className="flex items-center justify-between gap-3 text-caption text-muted-readable">
             <span>Uploading invoice securely…</span>
             <span className="shrink-0 text-tabular">{item.progress}%</span>
@@ -764,7 +868,7 @@ function UploadItemCard({
           role="status"
           icon={<FileCheck2 aria-hidden="true" />}
           title="Upload complete"
-          description="The invoice is locked to this secure warranty link."
+          description="The invoice is locked to this secure warranty request."
         />
       ) : null}
 
@@ -777,6 +881,7 @@ function UploadItemCard({
             title="Upload failed"
             description={item.error ?? "Invoice upload failed."}
           />
+
           {canRetry ? (
             <Button
               type="button"
@@ -833,9 +938,10 @@ function InvoiceUploadPicker({
         </span>
 
         <span className="grid min-w-0 flex-1 gap-0.5">
-          <span className="break-words font-medium [overflow-wrap:anywhere]">
+          <span className="break-words [font-weight:var(--typography-emphasis-weight)] [overflow-wrap:anywhere]">
             {title}
           </span>
+
           <span className="break-words text-caption leading-relaxed text-muted-readable [overflow-wrap:anywhere]">
             {description}
           </span>
@@ -849,14 +955,24 @@ function InvoiceUploadPicker({
   );
 }
 
+function concernPreview(value: string): string {
+  const normalized = value.trim();
+
+  if (normalized.length === 0) {
+    return "Not provided";
+  }
+
+  return normalized.length <= 180
+    ? normalized
+    : `${normalized.slice(0, 179).trimEnd()}…`;
+}
+
 function WarrantyApplicationReview({
   values,
-  vinNumber,
   purchaseInvoice,
   serviceInvoices,
 }: Readonly<{
   values: WarrantyApplicationFormValues;
-  vinNumber: string;
   purchaseInvoice: InvoiceUploadItem | null;
   serviceInvoices: readonly InvoiceUploadItem[];
 }>): React.ReactElement {
@@ -876,103 +992,54 @@ function WarrantyApplicationReview({
   return (
     <ContentSection
       size="sm"
-      title="Review your application"
-      description="Confirm the customer, service address, warranty reference, and invoice selection before submission."
-      className="bg-muted/20"
+      title="Review before submitting"
+      description="Use Back to correct customer, address, or warranty details."
+      className="bg-muted/25"
     >
       <ContentDescriptionList columns="two">
         <ContentDescriptionItem term="Customer">
-          {values.name.trim() || "Not provided"}
+          <span className="break-words">
+            {values.name.trim() || "Not provided"} · {INDIAN_MOBILE_PREFIX}{" "}
+            {values.mobileNumber.trim() || "Not provided"}
+          </span>
         </ContentDescriptionItem>
-        <ContentDescriptionItem term="Mobile">
-          {values.mobileNumber.trim().length === INDIAN_MOBILE_MAX_LENGTH
-            ? `${INDIAN_MOBILE_PREFIX} ${values.mobileNumber.trim()}`
-            : "Not provided"}
-        </ContentDescriptionItem>
+
         <ContentDescriptionItem term="Email">
           <span className="break-all">{email}</span>
         </ContentDescriptionItem>
+
         <ContentDescriptionItem term="VIN / serial number">
           <span className="break-all font-mono">
-            {normalizeVinInput(vinNumber) || "Not provided"}
+            {normalizeVinInput(values.vinNumber) || "Not provided"}
           </span>
         </ContentDescriptionItem>
+
         <ContentDescriptionItem term="Service address">
           <span className="break-words">{address || "Not provided"}</span>
         </ContentDescriptionItem>
+
+        <ContentDescriptionItem term="Concern">
+          <span className="break-words">
+            {concernPreview(values.componentDetails)}
+          </span>
+        </ContentDescriptionItem>
+
         <ContentDescriptionItem term="Invoice selection">
           {purchaseInvoice === null
             ? "Purchase invoice missing"
             : "1 purchase invoice"}
-          {` · ${String(serviceInvoices.length)} service invoice${serviceInvoices.length === 1 ? "" : "s"}`}
+          {` · ${String(serviceInvoices.length)} service invoice${
+            serviceInvoices.length === 1 ? "" : "s"
+          }`}
         </ContentDescriptionItem>
       </ContentDescriptionList>
     </ContentSection>
   );
 }
 
-function WarrantyGuideContent(): React.ReactElement {
-  return (
-    <div className="grid min-w-0 gap-4">
-      <ContentDescriptionList columns="one">
-        <ContentDescriptionItem term="Estimated time">
-          About 5 minutes, excluding upload time
-        </ContentDescriptionItem>
-        <ContentDescriptionItem term="Keep ready">
-          Customer details, service address, VIN or serial number, purchase
-          invoice, and at least one service invoice.
-        </ContentDescriptionItem>
-        <ContentDescriptionItem term="Supported files">
-          PDF, JPG, JPEG, PNG, or WEBP. Each file must be 10 MB or smaller.
-        </ContentDescriptionItem>
-        <ContentDescriptionItem term="After submission">
-          The warranty team reviews the application and contacts the customer
-          using the submitted mobile number or email address.
-        </ContentDescriptionItem>
-      </ContentDescriptionList>
-
-      <ContentStatus
-        variant="info"
-        role="note"
-        icon={<LockKeyhole aria-hidden="true" />}
-        title="Private invoice handling"
-        description="Invoice files are stored privately for this warranty request and are not published through a public CDN."
-      />
-    </div>
-  );
-}
-
-function MobileWarrantyGuideSheet(): React.ReactElement {
-  return (
-    <Sheet>
-      <SheetTrigger asChild>
-        <Button type="button" variant="outline" size="sm" className="lg:hidden">
-          <Menu aria-hidden="true" />
-          Application guide
-        </Button>
-      </SheetTrigger>
-      <SheetContent side="bottom" className="max-h-[min(88dvh,44rem)]">
-        <SheetHeader>
-          <SheetTitle>Before you apply</SheetTitle>
-          <SheetDescription>
-            Documents and information needed for a complete warranty request.
-          </SheetDescription>
-        </SheetHeader>
-        <div className="px-4 pb-6 sm:px-5">
-          <WarrantyGuideContent />
-        </div>
-      </SheetContent>
-    </Sheet>
-  );
-}
-
 function StatusScreen({
   state,
-  error,
-}: Readonly<{
-  state: "success" | "invalid-link";
-  error?: UserFacingError;
-}>): React.ReactElement {
+}: Readonly<{ state: "success" | "invalid-link" }>): React.ReactElement {
   const copy = STATE_COPY[state];
   const success = state === "success";
 
@@ -984,7 +1051,7 @@ function StatusScreen({
       <ContentRoot
         width="narrow"
         density="compact"
-        className="px-3 py-8 sm:px-0 sm:py-4"
+        className="max-w-2xl px-3 py-8 sm:px-0 sm:py-6"
       >
         <div className="grid justify-items-center">
           <PublicFormStatusEmblem status={success ? "success" : "error"} />
@@ -992,10 +1059,8 @@ function StatusScreen({
 
         <ContentSection
           className={cn(
-            "shadow-lg",
-            success
-              ? "border-success/20 shadow-success/5"
-              : "border-destructive/20 shadow-destructive/5",
+            "bg-card/96 text-center shadow-xl shadow-foreground/5",
+            success ? "border-success/25" : "border-destructive/20",
           )}
           title={<span id="warranty-status-title">{copy.title}</span>}
           description={copy.description}
@@ -1003,6 +1068,7 @@ function StatusScreen({
           <ContentStatus
             variant={success ? "success" : "destructive"}
             role="status"
+            aria-live="polite"
             icon={
               success ? (
                 <FileCheck2 aria-hidden="true" />
@@ -1012,24 +1078,19 @@ function StatusScreen({
             }
             title={
               success
-                ? "The warranty application is safely recorded"
-                : "No warranty application can be submitted from this link"
+                ? "No further action is required"
+                : "No application can be submitted from this link"
             }
             description={
               success
-                ? "The warranty team can now evaluate the application and its private invoice references."
-                : "Use the latest secure warranty link sent by Ozotec EV."
+                ? "The warranty team can now review the application and private invoice references. You may close this page."
+                : "Open the latest Ozotec EV warranty link before trying again."
             }
           />
 
-          {error === undefined ? null : (
-            <div className="mt-4">
-              <FormErrorAlert error={error} />
-            </div>
-          )}
-
-          <p className="mt-4 text-center text-caption text-muted-readable">
-            No internal ERP records or private invoice files are exposed here.
+          <p className="mt-4 text-center text-caption leading-relaxed text-muted-readable">
+            This public page does not expose internal ERP records or private
+            invoice files.
           </p>
         </ContentSection>
       </ContentRoot>
@@ -1045,6 +1106,12 @@ export function PublicWarrantyApplicationPage({
     [token],
   );
 
+  const online = React.useSyncExternalStore(
+    subscribeToOnlineStatus,
+    getOnlineStatus,
+    getServerOnlineStatus,
+  );
+
   const [step, setStep] = React.useState<StepIndex>(0);
   const [submitState, setSubmitState] = React.useState<SubmitState>("idle");
   const [formError, setFormError] = React.useState<UserFacingError | null>(
@@ -1057,13 +1124,13 @@ export function PublicWarrantyApplicationPage({
     readonly InvoiceUploadItem[]
   >([]);
 
-  const stepHeadingRef = React.useRef<HTMLSpanElement | null>(null);
+  const stepHeadingRef = React.useRef<HTMLHeadingElement | null>(null);
   const errorRef = React.useRef<HTMLDivElement | null>(null);
-  const mountedRef = React.useRef(false);
-  const navigationDirectionRef = React.useRef<"forward" | "back">("forward");
+  const mountedRef = React.useRef(true);
+  const focusStepControlRef = React.useRef<StepIndex | null>(null);
   const submissionLockRef = React.useRef(false);
   const uploadLocksRef = React.useRef<Set<string>>(new Set());
-  const submissionIdempotencyKeyRef = React.useRef<string | null>(null);
+  const submissionIntentRef = React.useRef<SubmissionIntent | null>(null);
   const flowAbortControllerRef = React.useRef<AbortController | null>(null);
 
   const form = useForm<WarrantyApplicationFormValues>({
@@ -1073,54 +1140,41 @@ export function PublicWarrantyApplicationPage({
     reValidateMode: "onChange",
     shouldFocusError: true,
   });
+
   const componentDetails = useWatch({
     control: form.control,
     name: "componentDetails",
   });
-  const vinNumber = useWatch({
-    control: form.control,
-    name: "vinNumber",
-  });
 
   React.useEffect(() => {
-    return form.subscribe({
-      formState: { values: true },
-      callback: () => {
-        if (!submissionLockRef.current) {
-          submissionIdempotencyKeyRef.current = null;
-        }
-      },
-    });
-  }, [form]);
+    mountedRef.current = true;
 
-  React.useEffect(() => {
     return () => {
+      mountedRef.current = false;
       flowAbortControllerRef.current?.abort();
     };
   }, []);
 
   React.useEffect(() => {
-    if (!mountedRef.current) {
-      mountedRef.current = true;
-      return;
-    }
-
     const frameId = window.requestAnimationFrame(() => {
-      stepHeadingRef.current?.scrollIntoView({
+      const shouldFocusControl = focusStepControlRef.current === step;
+      const control = shouldFocusControl
+        ? document.getElementById(focusTargetIdForStep(step))
+        : null;
+      const scrollTarget = control ?? stepHeadingRef.current;
+
+      scrollTarget?.scrollIntoView({
         behavior: preferredScrollBehavior(),
-        block: "start",
+        block: control === null ? "start" : "center",
       });
 
-      const targetId =
-        navigationDirectionRef.current === "forward"
-          ? focusTargetIdForStep(step)
-          : null;
-      const target =
-        targetId === null
-          ? stepHeadingRef.current
-          : document.getElementById(targetId);
+      if (control instanceof HTMLElement) {
+        control.focus({ preventScroll: true });
+      } else {
+        stepHeadingRef.current?.focus({ preventScroll: true });
+      }
 
-      target?.focus({ preventScroll: true });
+      focusStepControlRef.current = null;
     });
 
     return () => {
@@ -1136,7 +1190,7 @@ export function PublicWarrantyApplicationPage({
     const frameId = window.requestAnimationFrame(() => {
       errorRef.current?.scrollIntoView({
         behavior: preferredScrollBehavior(),
-        block: "center",
+        block: "start",
       });
     });
 
@@ -1154,10 +1208,10 @@ export function PublicWarrantyApplicationPage({
   const success = submitState === "success";
   const disabled = busy || success || parsedToken === null;
   const currentStep = STEPS[step];
-  const reviewValues = step === FINAL_STEP ? form.getValues() : null;
+  const reviewValues = form.getValues();
 
   function resetSubmissionIntent(): void {
-    submissionIdempotencyKeyRef.current = null;
+    submissionIntentRef.current = null;
   }
 
   function validateInvoiceSelection(): UserFacingError | null {
@@ -1271,12 +1325,14 @@ export function PublicWarrantyApplicationPage({
     }
 
     uploadLocksRef.current.add(item.id);
+
     const uploadingItem: InvoiceUploadItem = {
       ...item,
       status: "uploading",
       progress: Math.max(item.progress, 1),
       error: null,
     };
+
     onUpdate(item.id, uploadingItem);
 
     try {
@@ -1303,9 +1359,10 @@ export function PublicWarrantyApplicationPage({
         error: null,
         retryable: false,
       };
+
       onUpdate(item.id, uploadedItem);
       return uploadedItem;
-    } catch (caught) {
+    } catch (caught: unknown) {
       const nextError = errorFromUnknown(caught);
       const failedItem: InvoiceUploadItem = {
         ...item,
@@ -1315,11 +1372,80 @@ export function PublicWarrantyApplicationPage({
         error: nextError.description,
         retryable: isRetryableUploadError(caught),
       };
+
       onUpdate(item.id, failedItem);
       throw caught;
     } finally {
       uploadLocksRef.current.delete(item.id);
     }
+  }
+
+  async function uploadServiceInvoices(
+    items: readonly InvoiceUploadItem[],
+    signal: AbortSignal,
+  ): Promise<readonly string[]> {
+    const fileIds = new Array<string | undefined>(items.length);
+    let cursor = 0;
+    const uploadErrors: Error[] = [];
+
+    async function worker(): Promise<void> {
+      while (uploadErrors.length === 0) {
+        const index = cursor;
+        cursor += 1;
+
+        const item = items[index];
+
+        if (item === undefined) {
+          return;
+        }
+
+        try {
+          const uploadedItem = await uploadInvoiceItem(
+            item,
+            "SERVICE_INVOICE",
+            signal,
+            updateServiceUploadProgress,
+            updateServiceUpload,
+          );
+
+          if (uploadedItem.fileId === null) {
+            throw new Error("service_invoice_upload_failed");
+          }
+
+          fileIds[index] = uploadedItem.fileId;
+        } catch (caught: unknown) {
+          const uploadError =
+            caught instanceof Error
+              ? caught
+              : new Error("service_invoice_upload_failed", { cause: caught });
+          uploadErrors.push(uploadError);
+        }
+      }
+    }
+
+    const workerCount = Math.min(SERVICE_UPLOAD_CONCURRENCY, items.length);
+
+    await Promise.all(
+      Array.from({ length: workerCount }, async () => {
+        await worker();
+      }),
+    );
+
+    const firstError = uploadErrors[0];
+
+    if (firstError !== undefined) {
+      throw firstError;
+    }
+
+    const normalized = fileIds.filter(
+      (fileId): fileId is string => fileId !== undefined,
+    );
+
+    if (normalized.length !== items.length) {
+      throw new Error("service_invoice_upload_incomplete");
+    }
+
+    return normalized;
   }
 
   async function uploadRequiredInvoices(
@@ -1343,23 +1469,10 @@ export function PublicWarrantyApplicationPage({
       throw new Error("purchase_invoice_upload_failed");
     }
 
-    const serviceInvoiceFileIds: string[] = [];
-
-    for (const item of serviceInvoiceUploads) {
-      const uploadedItem = await uploadInvoiceItem(
-        item,
-        "SERVICE_INVOICE",
-        signal,
-        updateServiceUploadProgress,
-        updateServiceUpload,
-      );
-
-      if (uploadedItem.fileId === null) {
-        throw new Error("service_invoice_upload_failed");
-      }
-
-      serviceInvoiceFileIds.push(uploadedItem.fileId);
-    }
+    const serviceInvoiceFileIds = await uploadServiceInvoices(
+      serviceInvoiceUploads,
+      signal,
+    );
 
     if (serviceInvoiceFileIds.length === 0) {
       throw new Error("service_invoice_required");
@@ -1380,7 +1493,7 @@ export function PublicWarrantyApplicationPage({
       setFormError({
         title: "Purchase invoice already uploaded",
         description:
-          "The uploaded purchase invoice is locked to this secure link. Continue with the application or request a new warranty link if the document is incorrect.",
+          "The uploaded purchase invoice is locked to this secure link. Request a new warranty link if the document is incorrect.",
       });
       return;
     }
@@ -1450,10 +1563,14 @@ export function PublicWarrantyApplicationPage({
     if (duplicateCount > 0 || limitRejectedCount > 0) {
       const details = [
         duplicateCount > 0
-          ? `${String(duplicateCount)} duplicate file${duplicateCount === 1 ? " was" : "s were"} skipped.`
+          ? `${String(duplicateCount)} duplicate file${
+              duplicateCount === 1 ? " was" : "s were"
+            } skipped.`
           : null,
         limitRejectedCount > 0
-          ? `${String(limitRejectedCount)} file${limitRejectedCount === 1 ? " exceeds" : "s exceed"} the ${MAX_SERVICE_INVOICE_FILES_LABEL}-file limit.`
+          ? `${String(limitRejectedCount)} file${
+              limitRejectedCount === 1 ? " exceeds" : "s exceed"
+            } the ${MAX_SERVICE_INVOICE_FILES_LABEL}-file limit.`
           : null,
       ].filter((value): value is string => value !== null);
 
@@ -1472,7 +1589,13 @@ export function PublicWarrantyApplicationPage({
       return;
     }
 
+    if (!online) {
+      setFormError(OFFLINE_ERROR);
+      return;
+    }
+
     setFormError(null);
+
     const controller = new AbortController();
     flowAbortControllerRef.current?.abort();
     flowAbortControllerRef.current = controller;
@@ -1485,9 +1608,20 @@ export function PublicWarrantyApplicationPage({
         updatePurchaseUploadProgress,
         updatePurchaseUpload,
       );
-    } catch (caught) {
-      if (!controller.signal.aborted) {
-        setFormError(errorFromUnknown(caught));
+    } catch (caught: unknown) {
+      if (controller.signal.aborted || !mountedRef.current) {
+        return;
+      }
+
+      if (isTerminalLinkError(caught)) {
+        setSubmitState("invalid-link");
+        return;
+      }
+
+      setFormError(errorFromUnknown(caught));
+    } finally {
+      if (flowAbortControllerRef.current === controller) {
+        flowAbortControllerRef.current = null;
       }
     }
   }
@@ -1497,7 +1631,13 @@ export function PublicWarrantyApplicationPage({
       return;
     }
 
+    if (!online) {
+      setFormError(OFFLINE_ERROR);
+      return;
+    }
+
     setFormError(null);
+
     const controller = new AbortController();
     flowAbortControllerRef.current?.abort();
     flowAbortControllerRef.current = controller;
@@ -1510,19 +1650,25 @@ export function PublicWarrantyApplicationPage({
         updateServiceUploadProgress,
         updateServiceUpload,
       );
-    } catch (caught) {
-      if (!controller.signal.aborted) {
-        setFormError(errorFromUnknown(caught));
+    } catch (caught: unknown) {
+      if (controller.signal.aborted || !mountedRef.current) {
+        return;
+      }
+
+      if (isTerminalLinkError(caught)) {
+        setSubmitState("invalid-link");
+        return;
+      }
+
+      setFormError(errorFromUnknown(caught));
+    } finally {
+      if (flowAbortControllerRef.current === controller) {
+        flowAbortControllerRef.current = null;
       }
     }
   }
 
-  async function handleNext(
-    event: React.MouseEvent<HTMLButtonElement>,
-  ): Promise<void> {
-    event.preventDefault();
-    event.stopPropagation();
-
+  async function handleNext(): Promise<void> {
     if (disabled || step >= FINAL_STEP) {
       return;
     }
@@ -1531,26 +1677,32 @@ export function PublicWarrantyApplicationPage({
     setFormError(null);
 
     try {
-      const fields = STEP_FIELDS[step];
-      const valid = await form.trigger([...fields], { shouldFocus: true });
+      const valid = await form.trigger([...STEP_FIELDS[step]], {
+        shouldFocus: true,
+      });
 
-      if (valid) {
-        navigationDirectionRef.current = "forward";
-        setStep((current) => Math.min(current + 1, FINAL_STEP) as StepIndex);
+      if (!valid) {
+        return;
       }
+
+      const nextStep = Math.min(step + 1, FINAL_STEP) as StepIndex;
+      focusStepControlRef.current = nextStep;
+      setStep(nextStep);
     } finally {
       setActionPending(false);
     }
   }
 
   function handleBack(): void {
-    if (busy) {
+    if (busy || step === 0) {
       return;
     }
 
+    const previousStep = Math.max(step - 1, 0) as StepIndex;
+
     setFormError(null);
-    navigationDirectionRef.current = "back";
-    setStep((current) => Math.max(current - 1, 0) as StepIndex);
+    focusStepControlRef.current = previousStep;
+    setStep(previousStep);
   }
 
   async function handleSubmit(): Promise<void> {
@@ -1564,17 +1716,30 @@ export function PublicWarrantyApplicationPage({
       return;
     }
 
+    if (!online) {
+      setFormError(OFFLINE_ERROR);
+      return;
+    }
+
     submissionLockRef.current = true;
     setActionPending(true);
     setFormError(null);
+
     let completed = false;
+    const controller = new AbortController();
+    const submissionIsInactive = (): boolean =>
+      controller.signal.aborted || !mountedRef.current;
+
+    flowAbortControllerRef.current?.abort();
+    flowAbortControllerRef.current = controller;
 
     try {
       const valid = await form.trigger(undefined, { shouldFocus: true });
 
       if (!valid) {
-        navigationDirectionRef.current = "forward";
-        setStep(firstErrorStep(form.formState.errors));
+        const errorStep = firstErrorStep(form.formState.errors);
+        focusStepControlRef.current = errorStep;
+        setStep(errorStep);
         return;
       }
 
@@ -1586,37 +1751,54 @@ export function PublicWarrantyApplicationPage({
       }
 
       const values = warrantyApplicationFormSchema.parse(form.getValues());
-      const submissionIdempotencyKey =
-        submissionIdempotencyKeyRef.current ??
-        createIdempotencyKey("warranty-submit");
-      submissionIdempotencyKeyRef.current = submissionIdempotencyKey;
 
-      const controller = new AbortController();
-      flowAbortControllerRef.current?.abort();
-      flowAbortControllerRef.current = controller;
       setSubmitState("submitting");
 
       const invoices = await uploadRequiredInvoices(controller.signal);
 
-      if (controller.signal.aborted) {
+      if (submissionIsInactive()) {
         return;
       }
 
+      const application = toSubmitRequest(values, invoices);
+      const serializedApplication = JSON.stringify(application);
+      const existingIntent = submissionIntentRef.current;
+      const submissionIntent =
+        existingIntent?.serializedApplication === serializedApplication
+          ? existingIntent
+          : {
+              idempotencyKey: createIdempotencyKey("warranty-submit"),
+              serializedApplication,
+            };
+
+      submissionIntentRef.current = submissionIntent;
+
       await submitPublicWarrantyApplication({
         token: parsedToken,
-        idempotencyKey: submissionIdempotencyKey,
-        application: toSubmitRequest(values, invoices),
+        idempotencyKey: submissionIntent.idempotencyKey,
+        application,
         signal: controller.signal,
       });
 
+      if (submissionIsInactive()) {
+        return;
+      }
+
       completed = true;
       setSubmitState("success");
-    } catch (caught) {
-      if (
-        (caught instanceof DOMException && caught.name === "AbortError") ||
-        flowAbortControllerRef.current?.signal.aborted === true
-      ) {
+    } catch (caught: unknown) {
+      if (submissionIsInactive()) {
         return;
+      }
+
+      if (isTerminalLinkError(caught)) {
+        submissionIntentRef.current = null;
+        setSubmitState("invalid-link");
+        return;
+      }
+
+      if (isApiHttpError(caught) && caught.status === 409) {
+        submissionIntentRef.current = null;
       }
 
       setSubmitState("api-error");
@@ -1624,13 +1806,17 @@ export function PublicWarrantyApplicationPage({
     } finally {
       setActionPending(false);
 
+      if (flowAbortControllerRef.current === controller) {
+        flowAbortControllerRef.current = null;
+      }
+
       if (!completed) {
         submissionLockRef.current = false;
       }
     }
   }
 
-  if (!tokenResult.success) {
+  if (!tokenResult.success || submitState === "invalid-link") {
     return <StatusScreen state="invalid-link" />;
   }
 
@@ -1639,23 +1825,24 @@ export function PublicWarrantyApplicationPage({
   }
 
   const footerActions = (
-    <ContentFormActions className="mx-auto w-full max-w-7xl border-0 bg-transparent p-0 shadow-none supports-[backdrop-filter]:bg-transparent sm:justify-between">
-      <div className="hidden min-w-0 flex-1 sm:block">
+    <ContentFormActions className="mx-auto w-full max-w-3xl border-0 bg-transparent p-0 shadow-none supports-[backdrop-filter]:bg-transparent sm:justify-between">
+      <div className="hidden min-w-0 flex-1 sm:block" aria-hidden="true">
         <p className="truncate text-caption text-muted-readable">
           Step {String(step + 1)} of {String(STEPS.length)}
         </p>
-        <p className="truncate text-body-sm font-medium text-foreground">
-          {currentStep.title}
+
+        <p className="truncate text-body-sm text-foreground [font-weight:var(--typography-emphasis-weight)]">
+          {currentStep.shortLabel}
         </p>
       </div>
 
-      <div className="grid w-full grid-cols-2 gap-2 sm:w-auto sm:min-w-72">
+      <div className="grid w-full grid-cols-2 gap-2 sm:w-auto sm:min-w-80">
         <Button
           type="button"
           variant="outline"
           disabled={busy || step === 0}
           onClick={handleBack}
-          className="min-h-11 w-full touch-manipulation"
+          className="min-h-12 w-full touch-manipulation"
         >
           <ArrowLeft aria-hidden="true" />
           Back
@@ -1663,13 +1850,12 @@ export function PublicWarrantyApplicationPage({
 
         {step < FINAL_STEP ? (
           <Button
-            key="warranty-continue"
             type="button"
             disabled={disabled}
-            onClick={(event) => {
-              void handleNext(event);
+            onClick={() => {
+              void handleNext();
             }}
-            className="min-h-11 w-full touch-manipulation"
+            className="min-h-12 w-full touch-manipulation"
             aria-busy={actionPending}
           >
             {actionPending ? (
@@ -1683,26 +1869,31 @@ export function PublicWarrantyApplicationPage({
           </Button>
         ) : (
           <Button
-            key="warranty-submit"
             type="submit"
             form={FORM_ID}
-            disabled={disabled}
-            className="min-h-11 w-full touch-manipulation"
+            disabled={disabled || !online}
+            className="min-h-12 w-full touch-manipulation"
             aria-busy={busy}
+            aria-describedby="warranty-submit-hint"
           >
-            {busy ? (
+            {uploadsBusy || submitState === "submitting" ? (
               <LoaderCircle
                 aria-hidden="true"
                 className="animate-spin motion-reduce:animate-none"
               />
+            ) : !online ? (
+              <WifiOff aria-hidden="true" />
             ) : (
               <FileCheck2 aria-hidden="true" />
             )}
+
             {uploadsBusy
               ? "Uploading…"
               : submitState === "submitting"
                 ? "Submitting…"
-                : "Submit warranty"}
+                : !online
+                  ? "Connect to submit"
+                  : "Submit warranty"}
           </Button>
         )}
       </div>
@@ -1715,406 +1906,147 @@ export function PublicWarrantyApplicationPage({
       mainLabelledBy="warranty-form-title"
     >
       <ContentRoot
-        width="wide"
+        width="narrow"
         density="compact"
-        className="px-3 py-3 sm:px-0 sm:py-0"
+        className="max-w-3xl px-3 py-4 sm:px-0 sm:py-2"
       >
-        <ContentHeader
-          variant="compact"
-          eyebrow={
-            <div className="flex flex-wrap items-center gap-2">
-              <Badge variant="outline">Warranty application</Badge>
-              <Badge variant="secondary">3 guided steps</Badge>
-            </div>
-          }
-          title={
-            <span
-              ref={stepHeadingRef}
-              id="warranty-form-title"
-              tabIndex={-1}
-              className="scroll-mt-24 outline-none"
-            >
-              {currentStep.title}
-            </span>
-          }
-          description={currentStep.description}
-          actions={<MobileWarrantyGuideSheet />}
-          meta={
-            <div className="grid w-full min-w-0 gap-2 sm:grid-cols-3">
-              <div className="flex min-w-0 items-center gap-2 rounded-xl border border-primary/20 bg-primary/5 px-3 py-2.5">
-                <Clock3
-                  aria-hidden="true"
-                  className="size-4 shrink-0 text-primary"
-                />
-                <span className="text-caption text-foreground">
-                  About 5 minutes
-                </span>
-              </div>
-              <div className="flex min-w-0 items-center gap-2 rounded-xl border border-border/70 bg-muted/30 px-3 py-2.5">
-                <ListChecks
-                  aria-hidden="true"
-                  className="size-4 shrink-0 text-muted-readable"
-                />
-                <span className="text-caption text-foreground">
-                  One section at a time
-                </span>
-              </div>
-              <div className="hidden min-w-0 items-center gap-2 rounded-xl border border-border/70 bg-muted/30 px-3 py-2.5 sm:flex">
-                <LockKeyhole
-                  aria-hidden="true"
-                  className="size-4 shrink-0 text-success"
-                />
-                <span className="text-caption text-foreground">
-                  Private invoice storage
-                </span>
-              </div>
-            </div>
-          }
-          cardClassName="border-primary/20 bg-card/92 shadow-lg shadow-primary/5"
+        <div className="flex flex-wrap items-center justify-between gap-2 px-1">
+          <Badge variant="outline">
+            <ShieldCheck aria-hidden="true" />
+            Official warranty request
+          </Badge>
+
+          <span className="inline-flex items-center gap-1.5 text-caption text-muted-readable">
+            <Clock3 aria-hidden="true" className="size-3.5" />
+            Usually 4–6 minutes
+          </span>
+        </div>
+
+        <ContentSection
+          aria-busy={busy}
+          className="overflow-hidden border-primary/20 bg-card/96 shadow-xl shadow-primary/5"
+          contentClassName="min-w-0"
         >
-          <div className="mt-4 border-t border-border/70 pt-4">
+          <div className="grid gap-5 border-b border-border/70 pb-5">
             <StepProgress step={step} />
-          </div>
-        </ContentHeader>
 
-        <ContentSplit
-          variant="main-context"
-          className="gap-4 lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start lg:gap-6 2xl:grid-cols-[minmax(0,1fr)_20rem]"
-        >
-          <div className="grid min-w-0 gap-4">
-            {formError === null ? null : (
-              <div ref={errorRef} className="scroll-mt-24">
-                <FormErrorAlert error={formError} />
-              </div>
-            )}
-
-            <ContentSection
-              aria-busy={busy}
-              className="border-primary/15 bg-card/94 shadow-md"
-              contentClassName="min-w-0"
-            >
-              <ContentForm
-                id={FORM_ID}
-                noValidate
-                className="[&_input]:text-base [&_textarea]:text-base sm:[&_input]:text-body-sm sm:[&_textarea]:text-body-sm"
-                onSubmit={(event) => {
-                  event.preventDefault();
-
-                  if (step !== FINAL_STEP) {
-                    return;
-                  }
-
-                  void handleSubmit();
-                }}
+            <div className="grid gap-2">
+              <h1
+                ref={stepHeadingRef}
+                id="warranty-form-title"
+                tabIndex={-1}
+                className="scroll-mt-24 text-page-title text-balance outline-none"
               >
-                <FieldGroup className="gap-5">
-                  {step === 0 ? (
-                    <div className="grid gap-5 sm:grid-cols-2">
-                      <Field
-                        data-invalid={
+                {currentStep.title}
+              </h1>
+
+              <p className="max-w-2xl text-body-sm leading-relaxed text-muted-readable text-pretty sm:text-body">
+                {currentStep.description}
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-5 grid gap-5">
+            <div ref={errorRef} className="scroll-mt-24">
+              {!online ? (
+                <ContentStatus
+                  variant="warning"
+                  role="status"
+                  aria-live="polite"
+                  icon={<WifiOff aria-hidden="true" />}
+                  title="You are offline"
+                  description="Continue filling the form and selecting invoices. Reconnect before uploading or submitting."
+                />
+              ) : formError === null ? null : (
+                <FormErrorStatus error={formError} />
+              )}
+            </div>
+
+            <ContentForm
+              id={FORM_ID}
+              noValidate
+              className="[&_input]:text-base [&_textarea]:text-base sm:[&_input]:text-body-sm sm:[&_textarea]:text-body-sm"
+              onSubmit={(event) => {
+                event.preventDefault();
+
+                if (step !== FINAL_STEP) {
+                  return;
+                }
+
+                void handleSubmit();
+              }}
+            >
+              <FieldGroup className="gap-5">
+                {step === 0 ? (
+                  <div className="grid gap-5 sm:grid-cols-2">
+                    <Field
+                      data-invalid={
+                        form.formState.errors.name === undefined
+                          ? undefined
+                          : true
+                      }
+                    >
+                      <FieldLabel htmlFor="warranty-name">
+                        Customer name
+                      </FieldLabel>
+
+                      <Input
+                        id="warranty-name"
+                        type="text"
+                        autoComplete="name"
+                        enterKeyHint="next"
+                        placeholder="Your full name"
+                        aria-invalid={
                           form.formState.errors.name === undefined
                             ? undefined
                             : true
                         }
-                      >
-                        <FieldLabel htmlFor="warranty-name">
-                          Customer name
-                        </FieldLabel>
-                        <Input
-                          id="warranty-name"
-                          type="text"
-                          autoComplete="name"
-                          enterKeyHint="next"
-                          placeholder="Your full name"
-                          aria-invalid={
-                            form.formState.errors.name === undefined
-                              ? undefined
-                              : true
-                          }
-                          disabled={disabled}
-                          {...form.register("name")}
-                        />
-                        {form.formState.errors.name?.message ===
-                        undefined ? null : (
-                          <FieldError>
-                            {form.formState.errors.name.message}
-                          </FieldError>
-                        )}
-                      </Field>
+                        disabled={disabled}
+                        {...form.register("name")}
+                      />
 
-                      <Field
-                        data-invalid={
-                          form.formState.errors.mobileNumber === undefined
-                            ? undefined
-                            : true
-                        }
-                      >
-                        <FieldLabel htmlFor="warranty-mobile">
-                          Mobile number
-                        </FieldLabel>
-                        <Controller
-                          control={form.control}
-                          name="mobileNumber"
-                          render={({ field }) => (
-                            <div className="relative">
-                              <span
-                                aria-hidden="true"
-                                className="pointer-events-none absolute inset-y-0 left-4 flex items-center text-body-sm text-muted-readable"
-                              >
-                                {INDIAN_MOBILE_PREFIX}
-                              </span>
-                              <Input
-                                id="warranty-mobile"
-                                type="tel"
-                                inputMode="numeric"
-                                autoComplete="tel-national"
-                                enterKeyHint="next"
-                                maxLength={INDIAN_MOBILE_MAX_LENGTH}
-                                placeholder="9876543210"
-                                className="pl-16 text-base sm:text-body-sm"
-                                aria-invalid={
-                                  form.formState.errors.mobileNumber ===
-                                  undefined
-                                    ? undefined
-                                    : true
-                                }
-                                disabled={disabled}
-                                value={field.value}
-                                onBlur={field.onBlur}
-                                name={field.name}
-                                ref={field.ref}
-                                onChange={(event) => {
-                                  field.onChange(
-                                    normalizeMobileInput(event.target.value),
-                                  );
-                                }}
-                              />
-                            </div>
-                          )}
-                        />
-                        {form.formState.errors.mobileNumber?.message ===
-                        undefined ? null : (
-                          <FieldError>
-                            {form.formState.errors.mobileNumber.message}
-                          </FieldError>
-                        )}
-                      </Field>
+                      {form.formState.errors.name?.message ===
+                      undefined ? null : (
+                        <FieldError>
+                          {form.formState.errors.name.message}
+                        </FieldError>
+                      )}
+                    </Field>
 
-                      <Field
-                        className="sm:col-span-2"
-                        data-invalid={
-                          form.formState.errors.email === undefined
-                            ? undefined
-                            : true
-                        }
-                      >
-                        <FieldLabel htmlFor="warranty-email">
-                          Email{" "}
-                          <span className="text-muted-readable">
-                            (optional)
-                          </span>
-                        </FieldLabel>
-                        <Input
-                          id="warranty-email"
-                          type="email"
-                          autoComplete="email"
-                          inputMode="email"
-                          autoCapitalize="none"
-                          autoCorrect="off"
-                          enterKeyHint="done"
-                          placeholder="you@example.com"
-                          aria-invalid={
-                            form.formState.errors.email === undefined
-                              ? undefined
-                              : true
-                          }
-                          disabled={disabled}
-                          {...form.register("email")}
-                        />
-                        {form.formState.errors.email?.message ===
-                        undefined ? null : (
-                          <FieldError>
-                            {form.formState.errors.email.message}
-                          </FieldError>
-                        )}
-                      </Field>
-                    </div>
-                  ) : null}
+                    <Field
+                      data-invalid={
+                        form.formState.errors.mobileNumber === undefined
+                          ? undefined
+                          : true
+                      }
+                    >
+                      <FieldLabel htmlFor="warranty-mobile">
+                        Mobile number
+                      </FieldLabel>
 
-                  {step === 1 ? (
-                    <div className="grid gap-5 sm:grid-cols-2">
-                      <Field
-                        className="sm:col-span-2"
-                        data-invalid={
-                          form.formState.errors.addressLine1 === undefined
-                            ? undefined
-                            : true
-                        }
-                      >
-                        <FieldLabel htmlFor="warranty-address-line-1">
-                          Address line 1
-                        </FieldLabel>
-                        <Input
-                          id="warranty-address-line-1"
-                          type="text"
-                          autoComplete="address-line1"
-                          enterKeyHint="next"
-                          placeholder="House number, street, area"
-                          aria-invalid={
-                            form.formState.errors.addressLine1 === undefined
-                              ? undefined
-                              : true
-                          }
-                          disabled={disabled}
-                          {...form.register("addressLine1")}
-                        />
-                        {form.formState.errors.addressLine1?.message ===
-                        undefined ? null : (
-                          <FieldError>
-                            {form.formState.errors.addressLine1.message}
-                          </FieldError>
-                        )}
-                      </Field>
+                      <Controller
+                        control={form.control}
+                        name="mobileNumber"
+                        render={({ field }) => (
+                          <div className="relative">
+                            <span
+                              aria-hidden="true"
+                              className="pointer-events-none absolute inset-y-0 left-4 flex items-center text-body-sm text-muted-readable"
+                            >
+                              {INDIAN_MOBILE_PREFIX}
+                            </span>
 
-                      <Field className="sm:col-span-2">
-                        <FieldLabel htmlFor="warranty-address-line-2">
-                          Address line 2{" "}
-                          <span className="text-muted-readable">
-                            (optional)
-                          </span>
-                        </FieldLabel>
-                        <Input
-                          id="warranty-address-line-2"
-                          type="text"
-                          autoComplete="address-line2"
-                          enterKeyHint="next"
-                          placeholder="Landmark or nearby location"
-                          disabled={disabled}
-                          {...form.register("addressLine2")}
-                        />
-                        {form.formState.errors.addressLine2?.message ===
-                        undefined ? null : (
-                          <FieldError>
-                            {form.formState.errors.addressLine2.message}
-                          </FieldError>
-                        )}
-                      </Field>
-
-                      <Field
-                        data-invalid={
-                          form.formState.errors.city === undefined
-                            ? undefined
-                            : true
-                        }
-                      >
-                        <FieldLabel htmlFor="warranty-city">City</FieldLabel>
-                        <Input
-                          id="warranty-city"
-                          type="text"
-                          autoComplete="address-level2"
-                          enterKeyHint="next"
-                          placeholder="City"
-                          aria-invalid={
-                            form.formState.errors.city === undefined
-                              ? undefined
-                              : true
-                          }
-                          disabled={disabled}
-                          {...form.register("city")}
-                        />
-                        {form.formState.errors.city?.message ===
-                        undefined ? null : (
-                          <FieldError>
-                            {form.formState.errors.city.message}
-                          </FieldError>
-                        )}
-                      </Field>
-
-                      <Field
-                        data-invalid={
-                          form.formState.errors.district === undefined
-                            ? undefined
-                            : true
-                        }
-                      >
-                        <FieldLabel htmlFor="warranty-district">
-                          District
-                        </FieldLabel>
-                        <Input
-                          id="warranty-district"
-                          type="text"
-                          enterKeyHint="next"
-                          placeholder="District"
-                          aria-invalid={
-                            form.formState.errors.district === undefined
-                              ? undefined
-                              : true
-                          }
-                          disabled={disabled}
-                          {...form.register("district")}
-                        />
-                        {form.formState.errors.district?.message ===
-                        undefined ? null : (
-                          <FieldError>
-                            {form.formState.errors.district.message}
-                          </FieldError>
-                        )}
-                      </Field>
-
-                      <Field
-                        data-invalid={
-                          form.formState.errors.state === undefined
-                            ? undefined
-                            : true
-                        }
-                      >
-                        <FieldLabel htmlFor="warranty-state">State</FieldLabel>
-                        <Input
-                          id="warranty-state"
-                          type="text"
-                          autoComplete="address-level1"
-                          enterKeyHint="next"
-                          placeholder="Tamil Nadu"
-                          aria-invalid={
-                            form.formState.errors.state === undefined
-                              ? undefined
-                              : true
-                          }
-                          disabled={disabled}
-                          {...form.register("state")}
-                        />
-                        {form.formState.errors.state?.message ===
-                        undefined ? null : (
-                          <FieldError>
-                            {form.formState.errors.state.message}
-                          </FieldError>
-                        )}
-                      </Field>
-
-                      <Field
-                        data-invalid={
-                          form.formState.errors.postalCode === undefined
-                            ? undefined
-                            : true
-                        }
-                      >
-                        <FieldLabel htmlFor="warranty-postal-code">
-                          PIN code
-                        </FieldLabel>
-                        <Controller
-                          control={form.control}
-                          name="postalCode"
-                          render={({ field }) => (
                             <Input
-                              id="warranty-postal-code"
-                              type="text"
+                              id="warranty-mobile"
+                              type="tel"
                               inputMode="numeric"
-                              autoComplete="postal-code"
-                              enterKeyHint="done"
-                              maxLength={6}
-                              placeholder="600001"
+                              autoComplete="tel-national"
+                              enterKeyHint="next"
+                              maxLength={INDIAN_MOBILE_MAX_LENGTH}
+                              placeholder="9876543210"
+                              className="pl-16"
                               aria-invalid={
-                                form.formState.errors.postalCode === undefined
+                                form.formState.errors.mobileNumber === undefined
                                   ? undefined
                                   : true
                               }
@@ -2125,306 +2057,577 @@ export function PublicWarrantyApplicationPage({
                               ref={field.ref}
                               onChange={(event) => {
                                 field.onChange(
-                                  normalizePincodeInput(event.target.value),
+                                  normalizeMobileInput(event.target.value),
                                 );
                               }}
                             />
-                          )}
-                        />
-                        {form.formState.errors.postalCode?.message ===
-                        undefined ? null : (
-                          <FieldError>
-                            {form.formState.errors.postalCode.message}
-                          </FieldError>
-                        )}
-                      </Field>
-                    </div>
-                  ) : null}
-
-                  {step === 2 ? (
-                    <div className="grid gap-5">
-                      {reviewValues === null ? null : (
-                        <WarrantyApplicationReview
-                          values={reviewValues}
-                          vinNumber={vinNumber}
-                          purchaseInvoice={purchaseInvoiceUpload}
-                          serviceInvoices={serviceInvoiceUploads}
-                        />
-                      )}
-                      <div className="grid gap-3 rounded-2xl border border-info/20 bg-info/5 p-4 text-info dark:border-info/30 dark:bg-info/10">
-                        <div className="flex gap-3">
-                          <ShieldCheck
-                            aria-hidden="true"
-                            className="mt-0.5 size-5 shrink-0"
-                          />
-                          <div className="grid gap-1">
-                            <p className="text-card-title">
-                              Private warranty documents
-                            </p>
-                            <p className="text-body-sm leading-relaxed">
-                              Files are validated before upload and stored
-                              privately. One purchase invoice and at least one
-                              service invoice are required by the current
-                              warranty workflow.
-                            </p>
                           </div>
-                        </div>
-                      </div>
+                        )}
+                      />
 
-                      <div className="grid gap-5 sm:grid-cols-2">
-                        <Field
-                          data-invalid={
-                            form.formState.errors.vinNumber === undefined
-                              ? undefined
-                              : true
-                          }
-                        >
-                          <FieldLabel htmlFor="warranty-vin">
-                            VIN / serial number
-                          </FieldLabel>
-                          <Controller
-                            control={form.control}
-                            name="vinNumber"
-                            render={({ field }) => (
-                              <Input
-                                id="warranty-vin"
-                                type="text"
-                                autoCapitalize="characters"
-                                autoCorrect="off"
-                                enterKeyHint="next"
-                                maxLength={17}
-                                placeholder="Vehicle VIN or product serial"
-                                aria-invalid={
-                                  form.formState.errors.vinNumber === undefined
-                                    ? undefined
-                                    : true
-                                }
-                                disabled={disabled}
-                                value={field.value}
-                                onBlur={field.onBlur}
-                                name={field.name}
-                                ref={field.ref}
-                                onChange={(event) => {
-                                  field.onChange(
-                                    normalizeVinInput(event.target.value),
-                                  );
-                                }}
-                              />
-                            )}
-                          />
-                          <FieldDescription>
-                            Use 11–17 letters and digits. I, O, and Q are
-                            excluded from standard VINs.
-                          </FieldDescription>
-                          {form.formState.errors.vinNumber?.message ===
-                          undefined ? null : (
-                            <FieldError>
-                              {form.formState.errors.vinNumber.message}
-                            </FieldError>
-                          )}
-                        </Field>
+                      {form.formState.errors.mobileNumber?.message ===
+                      undefined ? null : (
+                        <FieldError>
+                          {form.formState.errors.mobileNumber.message}
+                        </FieldError>
+                      )}
+                    </Field>
 
-                        <Field
-                          className="sm:col-span-2"
-                          data-invalid={
-                            form.formState.errors.componentDetails === undefined
-                              ? undefined
-                              : true
-                          }
-                        >
-                          <FieldLabel htmlFor="warranty-component-details">
-                            Component and concern details
-                          </FieldLabel>
-                          <Textarea
-                            id="warranty-component-details"
-                            rows={5}
-                            maxLength={4_000}
+                    <Field
+                      className="sm:col-span-2"
+                      data-invalid={
+                        form.formState.errors.email === undefined
+                          ? undefined
+                          : true
+                      }
+                    >
+                      <FieldLabel htmlFor="warranty-email">
+                        Email{" "}
+                        <span className="text-muted-readable">(optional)</span>
+                      </FieldLabel>
+
+                      <Input
+                        id="warranty-email"
+                        type="email"
+                        autoComplete="email"
+                        inputMode="email"
+                        autoCapitalize="none"
+                        autoCorrect="off"
+                        enterKeyHint="done"
+                        placeholder="name@example.com"
+                        aria-invalid={
+                          form.formState.errors.email === undefined
+                            ? undefined
+                            : true
+                        }
+                        disabled={disabled}
+                        {...form.register("email")}
+                      />
+
+                      <FieldDescription>
+                        Used only when email follow-up is appropriate.
+                      </FieldDescription>
+
+                      {form.formState.errors.email?.message ===
+                      undefined ? null : (
+                        <FieldError>
+                          {form.formState.errors.email.message}
+                        </FieldError>
+                      )}
+                    </Field>
+
+                    <ContentStatus
+                      className="sm:col-span-2"
+                      variant="info"
+                      role="note"
+                      icon={<ShieldCheck aria-hidden="true" />}
+                      title="Contact details are used for warranty follow-up"
+                      description="Do not enter OTPs, passwords, payment information, Aadhaar, PAN, or unrelated identity-document details."
+                    />
+                  </div>
+                ) : null}
+
+                {step === 1 ? (
+                  <div className="grid gap-5 sm:grid-cols-2">
+                    <Field
+                      className="sm:col-span-2"
+                      data-invalid={
+                        form.formState.errors.addressLine1 === undefined
+                          ? undefined
+                          : true
+                      }
+                    >
+                      <FieldLabel htmlFor="warranty-address-line-1">
+                        Address line 1
+                      </FieldLabel>
+
+                      <Input
+                        id="warranty-address-line-1"
+                        type="text"
+                        autoComplete="address-line1"
+                        enterKeyHint="next"
+                        placeholder="House number, street, area"
+                        aria-invalid={
+                          form.formState.errors.addressLine1 === undefined
+                            ? undefined
+                            : true
+                        }
+                        disabled={disabled}
+                        {...form.register("addressLine1")}
+                      />
+
+                      {form.formState.errors.addressLine1?.message ===
+                      undefined ? null : (
+                        <FieldError>
+                          {form.formState.errors.addressLine1.message}
+                        </FieldError>
+                      )}
+                    </Field>
+
+                    <Field className="sm:col-span-2">
+                      <FieldLabel htmlFor="warranty-address-line-2">
+                        Address line 2{" "}
+                        <span className="text-muted-readable">(optional)</span>
+                      </FieldLabel>
+
+                      <Input
+                        id="warranty-address-line-2"
+                        type="text"
+                        autoComplete="address-line2"
+                        enterKeyHint="next"
+                        placeholder="Landmark or nearby location"
+                        disabled={disabled}
+                        {...form.register("addressLine2")}
+                      />
+
+                      {form.formState.errors.addressLine2?.message ===
+                      undefined ? null : (
+                        <FieldError>
+                          {form.formState.errors.addressLine2.message}
+                        </FieldError>
+                      )}
+                    </Field>
+
+                    <Field
+                      data-invalid={
+                        form.formState.errors.city === undefined
+                          ? undefined
+                          : true
+                      }
+                    >
+                      <FieldLabel htmlFor="warranty-city">City</FieldLabel>
+
+                      <Input
+                        id="warranty-city"
+                        type="text"
+                        autoComplete="address-level2"
+                        enterKeyHint="next"
+                        placeholder="City"
+                        aria-invalid={
+                          form.formState.errors.city === undefined
+                            ? undefined
+                            : true
+                        }
+                        disabled={disabled}
+                        {...form.register("city")}
+                      />
+
+                      {form.formState.errors.city?.message ===
+                      undefined ? null : (
+                        <FieldError>
+                          {form.formState.errors.city.message}
+                        </FieldError>
+                      )}
+                    </Field>
+
+                    <Field
+                      data-invalid={
+                        form.formState.errors.district === undefined
+                          ? undefined
+                          : true
+                      }
+                    >
+                      <FieldLabel htmlFor="warranty-district">
+                        District
+                      </FieldLabel>
+
+                      <Input
+                        id="warranty-district"
+                        type="text"
+                        enterKeyHint="next"
+                        placeholder="District"
+                        aria-invalid={
+                          form.formState.errors.district === undefined
+                            ? undefined
+                            : true
+                        }
+                        disabled={disabled}
+                        {...form.register("district")}
+                      />
+
+                      {form.formState.errors.district?.message ===
+                      undefined ? null : (
+                        <FieldError>
+                          {form.formState.errors.district.message}
+                        </FieldError>
+                      )}
+                    </Field>
+
+                    <Field
+                      data-invalid={
+                        form.formState.errors.state === undefined
+                          ? undefined
+                          : true
+                      }
+                    >
+                      <FieldLabel htmlFor="warranty-state">State</FieldLabel>
+
+                      <Input
+                        id="warranty-state"
+                        type="text"
+                        autoComplete="address-level1"
+                        enterKeyHint="next"
+                        placeholder="Tamil Nadu"
+                        aria-invalid={
+                          form.formState.errors.state === undefined
+                            ? undefined
+                            : true
+                        }
+                        disabled={disabled}
+                        {...form.register("state")}
+                      />
+
+                      {form.formState.errors.state?.message ===
+                      undefined ? null : (
+                        <FieldError>
+                          {form.formState.errors.state.message}
+                        </FieldError>
+                      )}
+                    </Field>
+
+                    <Field
+                      data-invalid={
+                        form.formState.errors.postalCode === undefined
+                          ? undefined
+                          : true
+                      }
+                    >
+                      <FieldLabel htmlFor="warranty-postal-code">
+                        PIN code
+                      </FieldLabel>
+
+                      <Controller
+                        control={form.control}
+                        name="postalCode"
+                        render={({ field }) => (
+                          <Input
+                            id="warranty-postal-code"
+                            type="text"
+                            inputMode="numeric"
+                            autoComplete="postal-code"
                             enterKeyHint="done"
-                            placeholder="Describe the battery, motor, controller, charger, or other component and explain the concern."
+                            maxLength={6}
+                            placeholder="600001"
                             aria-invalid={
-                              form.formState.errors.componentDetails ===
-                              undefined
+                              form.formState.errors.postalCode === undefined
                                 ? undefined
                                 : true
                             }
                             disabled={disabled}
-                            {...form.register("componentDetails")}
+                            value={field.value}
+                            onBlur={field.onBlur}
+                            name={field.name}
+                            ref={field.ref}
+                            onChange={(event) => {
+                              field.onChange(
+                                normalizePincodeInput(event.target.value),
+                              );
+                            }}
                           />
-                          <div className="flex flex-col gap-1 text-caption text-muted-readable sm:flex-row sm:items-center sm:justify-between">
-                            <span>
-                              Do not enter OTPs, passwords, bank information,
-                              identity documents, or unrelated personal data.
-                            </span>
-                            <span className="text-tabular">
-                              {componentDetails.length}/4000
+                        )}
+                      />
+
+                      {form.formState.errors.postalCode?.message ===
+                      undefined ? null : (
+                        <FieldError>
+                          {form.formState.errors.postalCode.message}
+                        </FieldError>
+                      )}
+                    </Field>
+                  </div>
+                ) : null}
+
+                {step === 2 ? (
+                  <div className="grid gap-5">
+                    <Field
+                      data-invalid={
+                        form.formState.errors.vinNumber === undefined
+                          ? undefined
+                          : true
+                      }
+                    >
+                      <FieldLabel htmlFor="warranty-vin">
+                        VIN / serial number
+                      </FieldLabel>
+
+                      <Controller
+                        control={form.control}
+                        name="vinNumber"
+                        render={({ field }) => (
+                          <Input
+                            id="warranty-vin"
+                            type="text"
+                            autoCapitalize="characters"
+                            autoCorrect="off"
+                            enterKeyHint="next"
+                            maxLength={17}
+                            placeholder="Vehicle VIN or product serial"
+                            aria-invalid={
+                              form.formState.errors.vinNumber === undefined
+                                ? undefined
+                                : true
+                            }
+                            disabled={disabled}
+                            value={field.value}
+                            onBlur={field.onBlur}
+                            name={field.name}
+                            ref={field.ref}
+                            onChange={(event) => {
+                              field.onChange(
+                                normalizeVinInput(event.target.value),
+                              );
+                            }}
+                          />
+                        )}
+                      />
+
+                      <FieldDescription>
+                        Use 11–17 letters and digits. I, O, and Q are excluded
+                        from standard VINs.
+                      </FieldDescription>
+
+                      {form.formState.errors.vinNumber?.message ===
+                      undefined ? null : (
+                        <FieldError>
+                          {form.formState.errors.vinNumber.message}
+                        </FieldError>
+                      )}
+                    </Field>
+
+                    <Field
+                      data-invalid={
+                        form.formState.errors.componentDetails === undefined
+                          ? undefined
+                          : true
+                      }
+                    >
+                      <FieldLabel htmlFor="warranty-component-details">
+                        Component and concern details
+                      </FieldLabel>
+
+                      <Textarea
+                        id="warranty-component-details"
+                        rows={8}
+                        maxLength={4_000}
+                        enterKeyHint="done"
+                        placeholder="Describe the battery, motor, controller, charger, or other component, when the concern started, and any previous service action."
+                        aria-invalid={
+                          form.formState.errors.componentDetails === undefined
+                            ? undefined
+                            : true
+                        }
+                        aria-describedby="warranty-component-help warranty-component-count"
+                        disabled={disabled}
+                        className="min-h-48 resize-y"
+                        {...form.register("componentDetails")}
+                      />
+
+                      <div className="flex flex-col gap-1 text-caption text-muted-readable sm:flex-row sm:items-center sm:justify-between">
+                        <span id="warranty-component-help">
+                          Include symptoms and previous service action. Avoid
+                          sensitive financial or identity information.
+                        </span>
+
+                        <span
+                          id="warranty-component-count"
+                          className="shrink-0 text-tabular"
+                        >
+                          {String(componentDetails.length)}/4000
+                        </span>
+                      </div>
+
+                      {form.formState.errors.componentDetails?.message ===
+                      undefined ? null : (
+                        <FieldError>
+                          {form.formState.errors.componentDetails.message}
+                        </FieldError>
+                      )}
+                    </Field>
+
+                    <ContentStatus
+                      variant="info"
+                      role="note"
+                      icon={<FileText aria-hidden="true" />}
+                      title="Clear warranty details improve evaluation"
+                      description="Explain the affected component, symptoms, when the concern started, and any dealer or service action already completed."
+                    />
+                  </div>
+                ) : null}
+
+                {step === 3 ? (
+                  <div className="grid gap-5">
+                    <ContentStatus
+                      variant="info"
+                      role="note"
+                      icon={<LockKeyhole aria-hidden="true" />}
+                      title="Private invoice uploads"
+                      description={`Upload PDF, JPG, JPEG, PNG, or WEBP files. Each file must be ${formatBytes(
+                        WARRANTY_APPLICATION_UPLOAD_MAX_BYTES,
+                      )} or smaller.`}
+                    />
+
+                    <Field>
+                      <FieldLabel htmlFor="warranty-purchase-invoice">
+                        Purchase invoice
+                      </FieldLabel>
+
+                      <FieldDescription>
+                        Exactly one purchase invoice is required.
+                      </FieldDescription>
+
+                      <InvoiceUploadPicker
+                        inputId="warranty-purchase-invoice"
+                        title={
+                          purchaseInvoiceUpload?.status === "uploaded"
+                            ? "Purchase invoice uploaded"
+                            : "Choose purchase invoice"
+                        }
+                        description={`PDF, JPG, JPEG, PNG, or WEBP · up to ${formatBytes(
+                          WARRANTY_APPLICATION_UPLOAD_MAX_BYTES,
+                        )}`}
+                        disabled={
+                          disabled ||
+                          purchaseInvoiceUpload?.status === "uploaded"
+                        }
+                        onFilesSelected={(files) => {
+                          handlePurchaseInvoiceChange(
+                            getFirstSelectedFile(files),
+                          );
+                        }}
+                      >
+                        {purchaseInvoiceUpload === null ? (
+                          <div className="flex min-w-0 items-center gap-3 rounded-2xl border border-dashed border-border/70 bg-background/30 p-3 text-body-sm text-muted-readable">
+                            <UploadCloud
+                              aria-hidden="true"
+                              className="size-4 shrink-0"
+                            />
+
+                            <span className="min-w-0 break-words [overflow-wrap:anywhere]">
+                              No purchase invoice selected.
                             </span>
                           </div>
-                          {form.formState.errors.componentDetails?.message ===
-                          undefined ? null : (
-                            <FieldError>
-                              {form.formState.errors.componentDetails.message}
-                            </FieldError>
-                          )}
-                        </Field>
-                      </div>
+                        ) : (
+                          <UploadItemCard
+                            item={purchaseInvoiceUpload}
+                            disabled={busy || !online}
+                            onRemove={() => {
+                              resetSubmissionIntent();
+                              setPurchaseInvoiceUpload(null);
+                              setFormError(null);
+                            }}
+                            onRetry={() => {
+                              void retryPurchaseInvoice(purchaseInvoiceUpload);
+                            }}
+                          />
+                        )}
+                      </InvoiceUploadPicker>
+                    </Field>
 
-                      <Field>
-                        <FieldLabel htmlFor="warranty-purchase-invoice">
-                          Purchase invoice
-                        </FieldLabel>
-                        <FieldDescription>
-                          Exactly one purchase invoice is required.
-                        </FieldDescription>
+                    <Field>
+                      <FieldLabel htmlFor="warranty-service-invoices">
+                        Service invoices
+                      </FieldLabel>
 
-                        <InvoiceUploadPicker
-                          inputId="warranty-purchase-invoice"
-                          title={
-                            purchaseInvoiceUpload?.status === "uploaded"
-                              ? "Purchase invoice uploaded"
-                              : "Choose purchase invoice"
-                          }
-                          description={`PDF, JPG, JPEG, PNG, or WEBP · up to ${formatBytes(
-                            WARRANTY_APPLICATION_UPLOAD_MAX_BYTES,
-                          )}`}
-                          disabled={
-                            disabled ||
-                            purchaseInvoiceUpload?.status === "uploaded"
-                          }
-                          onFilesSelected={(files) => {
-                            handlePurchaseInvoiceChange(
-                              getFirstSelectedFile(files),
-                            );
-                          }}
-                        >
-                          {purchaseInvoiceUpload === null ? (
-                            <div className="flex min-w-0 items-center gap-3 rounded-2xl border border-dashed border-border/70 bg-background/30 p-3 text-body-sm text-muted-readable">
-                              <UploadCloud
-                                aria-hidden="true"
-                                className="size-4 shrink-0"
-                              />
-                              <span className="min-w-0 break-words [overflow-wrap:anywhere]">
-                                No purchase invoice selected.
-                              </span>
-                            </div>
-                          ) : (
-                            <UploadItemCard
-                              item={purchaseInvoiceUpload}
-                              disabled={busy}
-                              onRemove={() => {
-                                resetSubmissionIntent();
-                                setPurchaseInvoiceUpload(null);
-                                setFormError(null);
-                              }}
-                              onRetry={() => {
-                                void retryPurchaseInvoice(
-                                  purchaseInvoiceUpload,
-                                );
-                              }}
+                      <FieldDescription>
+                        Select 1–{MAX_SERVICE_INVOICE_FILES_LABEL} service
+                        invoices. Duplicate selections are ignored.
+                      </FieldDescription>
+
+                      <InvoiceUploadPicker
+                        inputId="warranty-service-invoices"
+                        title="Choose service invoices"
+                        description={`Selected ${String(
+                          serviceInvoiceUploads.length,
+                        )} of ${MAX_SERVICE_INVOICE_FILES_LABEL} · PDF or image`}
+                        multiple
+                        disabled={
+                          disabled ||
+                          serviceInvoiceUploads.length >=
+                            WARRANTY_APPLICATION_MAX_SERVICE_INVOICE_FILES
+                        }
+                        onFilesSelected={handleServiceInvoicesChange}
+                      >
+                        {serviceInvoiceUploads.length === 0 ? (
+                          <div className="flex min-w-0 items-center gap-3 rounded-2xl border border-dashed border-border/70 bg-background/30 p-3 text-body-sm text-muted-readable">
+                            <UploadCloud
+                              aria-hidden="true"
+                              className="size-4 shrink-0"
                             />
-                          )}
-                        </InvoiceUploadPicker>
-                      </Field>
 
-                      <Field>
-                        <FieldLabel htmlFor="warranty-service-invoices">
-                          Service invoices
-                        </FieldLabel>
-                        <FieldDescription>
-                          Select 1–{MAX_SERVICE_INVOICE_FILES_LABEL} service
-                          invoices. Duplicate selections are ignored.
-                        </FieldDescription>
-
-                        <InvoiceUploadPicker
-                          inputId="warranty-service-invoices"
-                          title="Choose service invoices"
-                          description={`Selected ${String(
-                            serviceInvoiceUploads.length,
-                          )} of ${MAX_SERVICE_INVOICE_FILES_LABEL} · PDF or image`}
-                          multiple
-                          disabled={
-                            disabled ||
-                            serviceInvoiceUploads.length >=
-                              WARRANTY_APPLICATION_MAX_SERVICE_INVOICE_FILES
-                          }
-                          onFilesSelected={handleServiceInvoicesChange}
-                        >
-                          {serviceInvoiceUploads.length === 0 ? (
-                            <div className="flex min-w-0 items-center gap-3 rounded-2xl border border-dashed border-border/70 bg-background/30 p-3 text-body-sm text-muted-readable">
-                              <UploadCloud
-                                aria-hidden="true"
-                                className="size-4 shrink-0"
+                            <span className="min-w-0 break-words [overflow-wrap:anywhere]">
+                              No service invoices selected.
+                            </span>
+                          </div>
+                        ) : (
+                          <div className="grid min-w-0 max-w-full gap-3 overflow-hidden">
+                            {serviceInvoiceUploads.map((item) => (
+                              <UploadItemCard
+                                key={item.id}
+                                item={item}
+                                disabled={busy || !online}
+                                onRemove={() => {
+                                  resetSubmissionIntent();
+                                  setServiceInvoiceUploads((current) =>
+                                    current.filter(
+                                      (currentItem) =>
+                                        currentItem.id !== item.id,
+                                    ),
+                                  );
+                                  setFormError(null);
+                                }}
+                                onRetry={() => {
+                                  void retryServiceInvoice(item);
+                                }}
                               />
-                              <span className="min-w-0 break-words [overflow-wrap:anywhere]">
-                                No service invoices selected.
-                              </span>
-                            </div>
-                          ) : (
-                            <div className="grid min-w-0 max-w-full gap-3 overflow-hidden">
-                              {serviceInvoiceUploads.map((item) => (
-                                <UploadItemCard
-                                  key={item.id}
-                                  item={item}
-                                  disabled={busy}
-                                  onRemove={() => {
-                                    resetSubmissionIntent();
-                                    setServiceInvoiceUploads((current) =>
-                                      current.filter(
-                                        (currentItem) =>
-                                          currentItem.id !== item.id,
-                                      ),
-                                    );
-                                    setFormError(null);
-                                  }}
-                                  onRetry={() => {
-                                    void retryServiceInvoice(item);
-                                  }}
-                                />
-                              ))}
-                            </div>
-                          )}
-                        </InvoiceUploadPicker>
-                      </Field>
+                            ))}
+                          </div>
+                        )}
+                      </InvoiceUploadPicker>
+                    </Field>
 
-                      <div className="flex items-start gap-3 rounded-2xl border border-border/70 bg-muted/30 p-4 text-muted-readable">
-                        <LockKeyhole
-                          aria-hidden="true"
-                          className="mt-0.5 size-5 shrink-0 text-primary"
-                        />
-                        <p className="text-body-sm leading-relaxed">
-                          Invoice uploads use the public warranty token only for
-                          this request and are stored in private warranty
-                          storage; they are not published through a public CDN.
-                        </p>
-                      </div>
-                    </div>
-                  ) : null}
-                </FieldGroup>
-              </ContentForm>
-            </ContentSection>
+                    <ContentStatus
+                      variant="default"
+                      role="note"
+                      icon={<Files aria-hidden="true" />}
+                      title="Uploads are bounded and retry-safe"
+                      description={`Service invoices upload with at most ${String(
+                        SERVICE_UPLOAD_CONCURRENCY,
+                      )} concurrent transfers. Failed transient uploads can be retried with the same file-specific idempotency key.`}
+                    />
 
-            <ContentStatus
-              variant="info"
-              role="note"
-              icon={<Info aria-hidden="true" />}
-              title="Your progress stays on this device"
-              description="Entered details and selected files remain available while this page stays open. Uploaded files are private and linked only to this warranty request."
-              className="lg:hidden"
-            />
+                    <WarrantyApplicationReview
+                      values={reviewValues}
+                      purchaseInvoice={purchaseInvoiceUpload}
+                      serviceInvoices={serviceInvoiceUploads}
+                    />
+
+                    <ContentStatus
+                      variant="info"
+                      role="note"
+                      icon={<ShieldCheck aria-hidden="true" />}
+                      title="Secure warranty submission"
+                      description="The completed application is sent through the Ozotec ERP gateway. Backend validation, token status, idempotency, and private document authorization remain authoritative."
+                    />
+
+                    <p
+                      id="warranty-submit-hint"
+                      className="text-caption leading-relaxed text-muted-readable"
+                    >
+                      By submitting, you confirm that the details and invoices
+                      belong to this warranty request and authorize Ozotec EV to
+                      contact you about its evaluation.
+                    </p>
+                  </div>
+                ) : null}
+              </FieldGroup>
+            </ContentForm>
           </div>
+        </ContentSection>
 
-          <aside
-            className="hidden min-w-0 lg:sticky lg:top-20 lg:block"
-            aria-label="Warranty application guidance"
-          >
-            <ContentSection
-              title="Before you apply"
-              description="Prepare these details and documents for a faster application."
-              className="bg-card/90 shadow-md"
-            >
-              <WarrantyGuideContent />
-            </ContentSection>
-          </aside>
-        </ContentSplit>
+        <p className="px-3 text-center text-caption leading-relaxed text-muted-readable text-pretty">
+          Safe retry protection prevents duplicate application submissions and
+          duplicate file uploads when the same intent is retried.
+        </p>
       </ContentRoot>
     </PublicWarrantyShell>
   );

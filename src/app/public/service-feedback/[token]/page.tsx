@@ -4,9 +4,13 @@ import type { ReactElement } from "react";
 
 import { PublicServiceFeedbackPage } from "@/features/engagement/service-feedback";
 
-const PAGE_TITLE = "Feedback / complaints";
+const PAGE_TITLE = "Service feedback";
 const PAGE_DESCRIPTION =
-  "Submit your Ozotec EV feedback or complaint securely.";
+  "Submit service feedback or a complaint securely to Ozotec EV.";
+
+type ServiceFeedbackPublicPageProps = Readonly<{
+  params: Promise<Readonly<{ token: string }>>;
+}>;
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -15,7 +19,14 @@ export const fetchCache = "force-no-store";
 export const metadata = {
   title: PAGE_TITLE,
   description: PAGE_DESCRIPTION,
+  applicationName: "Ozotec EV",
+  category: "business",
   referrer: "no-referrer",
+  formatDetection: {
+    telephone: false,
+    email: false,
+    address: false,
+  },
   robots: {
     index: false,
     follow: false,
@@ -46,10 +57,6 @@ export const viewport = {
     { media: "(prefers-color-scheme: dark)", color: "#09090b" },
   ],
 } satisfies Viewport;
-
-type ServiceFeedbackPublicPageProps = Readonly<{
-  params: Promise<Readonly<{ token: string }>>;
-}>;
 
 export default async function ServiceFeedbackPublicPage({
   params,

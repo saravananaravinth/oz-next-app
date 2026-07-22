@@ -11,7 +11,7 @@
 
 name = "oz-next-app"
 main = ".open-next/worker.js"
-compatibility_date = "2026-07-09"
+compatibility_date = "2026-07-22"
 compatibility_flags = [
   "nodejs_compat",
   "global_fetch_strictly_public",

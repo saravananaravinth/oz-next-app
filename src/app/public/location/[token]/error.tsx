@@ -38,13 +38,14 @@ export default function PublicLocationError({
   reset,
 }: PublicLocationErrorProps): ReactElement {
   const reference = useMemo(() => safeDigest(error.digest), [error.digest]);
+
   const handleReset = useCallback((): void => {
     reset();
   }, [reset]);
 
   const footerActions = (
-    <ContentFormActions className="mx-auto w-full max-w-2xl border-0 bg-transparent p-0 shadow-none supports-[backdrop-filter]:bg-transparent">
-      <Button type="button" onClick={handleReset} className="min-h-11 w-full">
+    <ContentFormActions className="mx-auto w-full max-w-3xl border-0 bg-transparent p-0 shadow-none supports-[backdrop-filter]:bg-transparent">
+      <Button type="button" onClick={handleReset} className="min-h-12 w-full">
         <RotateCcw aria-hidden="true" />
         Try again
       </Button>
@@ -60,20 +61,20 @@ export default function PublicLocationError({
       <ContentRoot
         width="narrow"
         density="compact"
-        className="px-3 py-8 sm:px-0 sm:py-4"
+        className="max-w-2xl px-3 py-8 sm:px-0 sm:py-6"
       >
         <div className="grid justify-items-center">
           <PublicFormStatusEmblem status="error" />
         </div>
 
         <ContentSection
-          className="border-destructive/20 shadow-lg shadow-destructive/5"
+          className="border-destructive/20 bg-card/96 text-center shadow-xl shadow-destructive/5"
           title={
             <span id="public-location-error-title">
               Location page could not be opened
             </span>
           }
-          description="Retry the secure location page. No location was captured or submitted by this failure."
+          description="Retry the secure page. This failure did not capture or submit a location."
         >
           <ContentStatus
             variant="destructive"
@@ -84,8 +85,8 @@ export default function PublicLocationError({
             title="The page failed safely"
             description={
               <>
-                The public location request could not render safely. Try again
-                using the same link.
+                The public request could not render safely. Retry using the same
+                secure link.
                 {reference === null ? null : (
                   <span className="mt-2 block text-caption">
                     Reference:{" "}
@@ -96,9 +97,9 @@ export default function PublicLocationError({
             }
           />
 
-          <p className="mt-4 text-center text-caption text-muted-readable">
-            Retrying does not submit a location until browser permission is
-            approved.
+          <p className="mt-4 text-center text-caption leading-relaxed text-muted-readable">
+            Retrying does not submit anything until browser location permission
+            is approved.
           </p>
         </ContentSection>
       </ContentRoot>

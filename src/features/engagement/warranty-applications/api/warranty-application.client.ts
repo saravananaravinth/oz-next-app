@@ -1,11 +1,16 @@
 // oz-next-app/src/features/engagement/warranty-applications/api/warranty-application.client.ts
 "use client";
 
+import { z } from "zod";
+
 import { apiClient, buildEdgeUrl } from "@/lib/api/browser-client";
 import { CT, HDR, HTTP_METHODS } from "@/lib/api/http-contract";
 import { correlationId, requestId } from "@/lib/security/request-identifiers";
 
 import {
+  WARRANTY_APPLICATION_ALLOWED_UPLOAD_EXTENSIONS,
+  WARRANTY_APPLICATION_ALLOWED_UPLOAD_MIME_TYPES,
+  WARRANTY_APPLICATION_UPLOAD_MAX_BYTES,
   buildPublicWarrantyApplicationFileUploadPath,
   buildPublicWarrantyApplicationSubmitPath,
   warrantyApplicationFilePurposeSchema,
@@ -20,6 +25,8 @@ import {
 } from "@/features/engagement/warranty-applications/contracts/warranty-application.schema";
 
 const UPLOAD_TIMEOUT_MS = 60_000;
+const MAX_UPLOAD_RESPONSE_BYTES = 128 * 1024;
+const MAX_RETRY_AFTER_SECONDS = 86_400;
 
 const UPLOAD_MIME_TYPE_BY_EXTENSION = new Map<string, string>([
   ["pdf", "application/pdf"],
@@ -28,6 +35,20 @@ const UPLOAD_MIME_TYPE_BY_EXTENSION = new Map<string, string>([
   ["png", "image/png"],
   ["webp", "image/webp"],
 ]);
+
+const ACCEPTED_UPLOAD_MIME_TYPES = new Set<string>(
+  WARRANTY_APPLICATION_ALLOWED_UPLOAD_MIME_TYPES,
+);
+const ACCEPTED_UPLOAD_EXTENSIONS = new Set<string>(
+  WARRANTY_APPLICATION_ALLOWED_UPLOAD_EXTENSIONS,
+);
+
+const uploadIdempotencyKeySchema = z
+  .string()
+  .trim()
+  .min(16)
+  .max(128)
+  .regex(/^[A-Za-z0-9:_./@-]+$/u);
 
 export type SubmitPublicWarrantyApplicationInput = Readonly<{
   token: string;
@@ -49,6 +70,7 @@ export class PublicWarrantyUploadError extends Error {
   readonly status: number;
   readonly code: string;
   readonly requestId: string | undefined;
+  readonly retryAfterSeconds: number | undefined;
 
   constructor(
     input: Readonly<{
@@ -56,6 +78,7 @@ export class PublicWarrantyUploadError extends Error {
       code: string;
       message: string;
       requestId?: string;
+      retryAfterSeconds?: number;
     }>,
   ) {
     super(input.message);
@@ -63,6 +86,7 @@ export class PublicWarrantyUploadError extends Error {
     this.status = input.status;
     this.code = input.code;
     this.requestId = input.requestId;
+    this.retryAfterSeconds = input.retryAfterSeconds;
   }
 }
 
@@ -121,8 +145,15 @@ function fileForUpload(file: File): File {
   });
 }
 
+function byteLength(value: string): number {
+  return new TextEncoder().encode(value).byteLength;
+}
+
 function readJsonPayload(text: string): unknown {
-  if (text.trim().length === 0) {
+  if (
+    text.trim().length === 0 ||
+    byteLength(text) > MAX_UPLOAD_RESPONSE_BYTES
+  ) {
     return null;
   }
 
@@ -133,9 +164,38 @@ function readJsonPayload(text: string): unknown {
   }
 }
 
+function parseRetryAfterSeconds(value: string | null): number | undefined {
+  if (value === null) {
+    return undefined;
+  }
+
+  const normalized = value.trim();
+
+  if (/^\d+$/u.test(normalized)) {
+    const seconds = Number(normalized);
+
+    return Number.isInteger(seconds) &&
+      seconds >= 0 &&
+      seconds <= MAX_RETRY_AFTER_SECONDS
+      ? seconds
+      : undefined;
+  }
+
+  const retryDate = Date.parse(normalized);
+
+  if (!Number.isFinite(retryDate)) {
+    return undefined;
+  }
+
+  const seconds = Math.max(0, Math.ceil((retryDate - Date.now()) / 1_000));
+
+  return seconds <= MAX_RETRY_AFTER_SECONDS ? seconds : undefined;
+}
+
 function toUploadError(
   status: number,
   payload: unknown,
+  retryAfterSeconds: number | undefined,
 ): PublicWarrantyUploadError {
   const parsed = warrantyApplicationProblemEnvelopeSchema.safeParse(payload);
 
@@ -144,6 +204,7 @@ function toUploadError(
       status,
       code: "WARRANTY_UPLOAD_FAILED",
       message: "The invoice file could not be uploaded.",
+      ...(retryAfterSeconds === undefined ? {} : { retryAfterSeconds }),
     });
   }
 
@@ -153,13 +214,62 @@ function toUploadError(
     message:
       parsed.data.detail.length > 0 ? parsed.data.detail : parsed.data.title,
     requestId: parsed.data.request_id,
+    ...(retryAfterSeconds === undefined ? {} : { retryAfterSeconds }),
   });
+}
+
+function validateUploadFile(file: File): PublicWarrantyUploadError | null {
+  const extension = fileExtension(file.name);
+
+  if (!ACCEPTED_UPLOAD_EXTENSIONS.has(extension)) {
+    return new PublicWarrantyUploadError({
+      status: 415,
+      code: "WARRANTY_UPLOAD_EXTENSION_UNSUPPORTED",
+      message: "Upload a PDF, JPG, JPEG, PNG, or WEBP invoice file.",
+    });
+  }
+
+  if (
+    file.type.trim().length > 0 &&
+    !ACCEPTED_UPLOAD_MIME_TYPES.has(file.type.trim().toLowerCase())
+  ) {
+    return new PublicWarrantyUploadError({
+      status: 415,
+      code: "WARRANTY_UPLOAD_MEDIA_TYPE_UNSUPPORTED",
+      message: "The selected invoice media type is not supported.",
+    });
+  }
+
+  if (file.size <= 0) {
+    return new PublicWarrantyUploadError({
+      status: 422,
+      code: "WARRANTY_UPLOAD_FILE_EMPTY",
+      message: "The selected invoice file is empty.",
+    });
+  }
+
+  if (file.size > WARRANTY_APPLICATION_UPLOAD_MAX_BYTES) {
+    return new PublicWarrantyUploadError({
+      status: 413,
+      code: "WARRANTY_UPLOAD_FILE_TOO_LARGE",
+      message: "The selected invoice file exceeds the allowed size.",
+    });
+  }
+
+  return null;
 }
 
 export function uploadPublicWarrantyApplicationFile(
   input: UploadPublicWarrantyApplicationFileInput,
 ): Promise<WarrantyApplicationUploadedFile> {
   const purpose = warrantyApplicationFilePurposeSchema.parse(input.purpose);
+  const idempotencyKey = uploadIdempotencyKeySchema.parse(input.idempotencyKey);
+  const uploadFile = fileForUpload(input.file);
+  const validationError = validateUploadFile(uploadFile);
+
+  if (validationError !== null) {
+    return Promise.reject(validationError);
+  }
 
   return new Promise<WarrantyApplicationUploadedFile>((resolve, reject) => {
     const xhr = new XMLHttpRequest();
@@ -197,8 +307,6 @@ export function uploadPublicWarrantyApplicationFile(
 
     input.signal?.addEventListener("abort", abortUpload, { once: true });
 
-    const uploadFile = fileForUpload(input.file);
-
     formData.set("purpose", purpose);
     formData.set("file", uploadFile, uploadFile.name);
 
@@ -214,7 +322,7 @@ export function uploadPublicWarrantyApplicationFile(
     xhr.setRequestHeader(HDR.ACCEPT, CT.JSON);
     xhr.setRequestHeader(HDR.REQUEST_ID, requestId("web"));
     xhr.setRequestHeader(HDR.CORRELATION_ID, correlationId("corr"));
-    xhr.setRequestHeader(HDR.IDEMPOTENCY_KEY, input.idempotencyKey);
+    xhr.setRequestHeader(HDR.IDEMPOTENCY_KEY, idempotencyKey);
 
     xhr.upload.addEventListener("progress", (event) => {
       if (!event.lengthComputable || event.total <= 0) {
@@ -230,10 +338,13 @@ export function uploadPublicWarrantyApplicationFile(
         return;
       }
 
+      const retryAfterSeconds = parseRetryAfterSeconds(
+        xhr.getResponseHeader(HDR.RETRY_AFTER),
+      );
       const payload = readJsonPayload(xhr.responseText);
 
       if (xhr.status < 200 || xhr.status >= 300) {
-        fail(toUploadError(xhr.status, payload));
+        fail(toUploadError(xhr.status, payload, retryAfterSeconds));
         return;
       }
 

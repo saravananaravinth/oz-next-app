@@ -6,36 +6,21 @@ import {
   AlertTriangle,
   CheckCircle2,
   Clock3,
-  Info,
   LoaderCircle,
   LocateFixed,
   MapPin,
-  Menu,
   Navigation,
   ShieldCheck,
-  Smartphone,
+  WifiOff,
 } from "lucide-react";
 
 import {
-  ContentDescriptionItem,
-  ContentDescriptionList,
   ContentFormActions,
-  ContentHeader,
   ContentRoot,
   ContentSection,
-  ContentSplit,
   ContentStatus,
 } from "@/components/common/content-shell";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
-} from "@/components/ui/sheet";
 import { isApiHttpError } from "@/lib/api/problem";
 import { idempotencyKey as createIdempotencyKey } from "@/lib/security/request-identifiers";
 import { cn } from "@/lib/utils";
@@ -58,6 +43,7 @@ type CaptureState =
   | "submitting"
   | "success"
   | "invalid-link"
+  | "offline"
   | "unsupported-browser"
   | "permission-denied"
   | "location-unavailable"
@@ -71,22 +57,22 @@ type UserFacingError = Readonly<{
   requestId?: string;
 }>;
 
+type StatusScreenState = "success" | "invalid-link";
+
 const GEOLOCATION_TIMEOUT_MS = 15_000;
 const GEO_PERMISSION_DENIED = 1;
 const GEO_POSITION_UNAVAILABLE = 2;
 const GEO_TIMEOUT = 3;
 const MAX_REQUEST_ID_LENGTH = 128;
 const MAX_ACCURACY_METERS = 100_000;
+const MAX_RETRY_AFTER_SECONDS = 86_400;
 const SAFE_REQUEST_ID_PATTERN = /^[A-Za-z0-9_.:/@-]+$/u;
 
-const STATE_COPY: Record<
-  CaptureState,
-  Readonly<{ title: string; description: string }>
-> = {
+const STATE_COPY = {
   idle: {
-    title: "Share your current location",
+    title: "Share the requested location",
     description:
-      "Approve one secure browser request to send your current GPS position to Ozotec EV.",
+      "Send one current GPS position to Ozotec EV after your browser asks for permission.",
   },
   locating: {
     title: "Finding your location",
@@ -96,22 +82,27 @@ const STATE_COPY: Record<
   submitting: {
     title: "Sending your location",
     description:
-      "Your validated position is being submitted through the secure ERP gateway.",
+      "Your confirmed position is being submitted through the secure Ozotec gateway.",
   },
   success: {
     title: "Location shared",
     description:
-      "Thank you. Ozotec EV has received your location for this request.",
+      "Thank you. Ozotec EV has received the location for this request.",
   },
   "invalid-link": {
     title: "Location link unavailable",
     description:
-      "This location request link is invalid. Open the latest link sent by Ozotec EV.",
+      "This request link is invalid, expired, or already completed. Open the latest link sent by Ozotec EV.",
+  },
+  offline: {
+    title: "Connect to the internet",
+    description:
+      "A network connection is required to send the location securely. Reconnect, then continue.",
   },
   "unsupported-browser": {
     title: "Location is not supported",
     description:
-      "This browser cannot provide secure geolocation. Open the link in a current version of Chrome, Safari, Edge, or Firefox.",
+      "Open this link in a current version of Chrome, Safari, Edge, or Firefox on a device with location services.",
   },
   "permission-denied": {
     title: "Location permission is blocked",
@@ -121,24 +112,45 @@ const STATE_COPY: Record<
   "location-unavailable": {
     title: "Location unavailable",
     description:
-      "Your device could not determine a valid position. Check GPS and network access, move to an open area, and try again.",
+      "Turn on GPS, check the network signal, move to an open area, and try again.",
   },
   timeout: {
     title: "Location request timed out",
     description:
-      "Your device took too long to provide a position. Check GPS and network signal, then try again.",
+      "Your device took too long to confirm a position. Check GPS and network signal, then try again.",
   },
   "api-error": {
-    title: "Location could not be submitted",
+    title: "Location could not be sent",
     description:
-      "We could not submit your location right now. Your secure link remains on this page so you can retry.",
+      "The location remains ready on this page. Try again without closing or refreshing it.",
   },
   "unexpected-error": {
     title: "Something went wrong",
     description:
-      "The location request could not be completed. Refresh the page and try again.",
+      "The request could not be completed safely. Refresh the page and try again.",
   },
-};
+} as const satisfies Record<
+  CaptureState,
+  Readonly<{ title: string; description: string }>
+>;
+
+function subscribeToOnlineStatus(onStoreChange: () => void): () => void {
+  window.addEventListener("online", onStoreChange);
+  window.addEventListener("offline", onStoreChange);
+
+  return () => {
+    window.removeEventListener("online", onStoreChange);
+    window.removeEventListener("offline", onStoreChange);
+  };
+}
+
+function getOnlineStatus(): boolean {
+  return navigator.onLine;
+}
+
+function getServerOnlineStatus(): boolean {
+  return true;
+}
 
 function safeRequestId(value: string | undefined): string | undefined {
   const normalized = value?.trim();
@@ -153,6 +165,35 @@ function safeRequestId(value: string | undefined): string | undefined {
   }
 
   return normalized;
+}
+
+function normalizeRetryAfterSeconds(value: number | undefined): number | null {
+  if (
+    value === undefined ||
+    !Number.isInteger(value) ||
+    value < 0 ||
+    value > MAX_RETRY_AFTER_SECONDS
+  ) {
+    return null;
+  }
+
+  return value;
+}
+
+function retryAfterDescription(seconds: number | null): string {
+  if (seconds === null || seconds === 0) {
+    return "Please wait briefly before trying to share this location again.";
+  }
+
+  if (seconds < 60) {
+    return `Please wait about ${String(seconds)} seconds before trying again.`;
+  }
+
+  const minutes = Math.max(1, Math.ceil(seconds / 60));
+
+  return `Please wait about ${String(minutes)} minute${
+    minutes === 1 ? "" : "s"
+  } before trying again.`;
 }
 
 function isGeolocationError(error: unknown): error is GeolocationPositionError {
@@ -174,10 +215,13 @@ function geolocationErrorState(error: GeolocationPositionError): CaptureState {
   switch (error.code) {
     case GEO_PERMISSION_DENIED:
       return "permission-denied";
+
     case GEO_POSITION_UNAVAILABLE:
       return "location-unavailable";
+
     case GEO_TIMEOUT:
       return "timeout";
+
     default:
       return "unexpected-error";
   }
@@ -185,7 +229,7 @@ function geolocationErrorState(error: GeolocationPositionError): CaptureState {
 
 function getCurrentPosition(): Promise<GeolocationPosition> {
   return new Promise<GeolocationPosition>((resolve, reject) => {
-    if (!("geolocation" in navigator)) {
+    if (!window.isSecureContext || !("geolocation" in navigator)) {
       reject(new Error("geolocation_unsupported"));
       return;
     }
@@ -230,37 +274,54 @@ function locationFromPosition(
   };
 }
 
+function isTerminalLinkError(error: unknown): boolean {
+  if (!isApiHttpError(error)) {
+    return false;
+  }
+
+  const code = error.code.toUpperCase();
+
+  return (
+    error.status === 401 ||
+    error.status === 403 ||
+    error.status === 404 ||
+    error.status === 409 ||
+    error.status === 410 ||
+    code.includes("EXPIRED") ||
+    code.includes("USED") ||
+    code.includes("CONSUMED") ||
+    code.includes("NOT_FOUND") ||
+    code.includes("INVALID_TOKEN")
+  );
+}
+
+function shouldDiscardCapturedLocation(error: unknown): boolean {
+  return isApiHttpError(error) && error.status === 422;
+}
+
 function errorFromUnknown(error: unknown): UserFacingError {
   if (isApiHttpError(error)) {
-    const code = error.code.toUpperCase();
     const requestId = safeRequestId(error.requestId);
     let baseError: Omit<UserFacingError, "requestId">;
 
-    if (
-      error.status === 404 ||
-      error.status === 409 ||
-      error.status === 410 ||
-      code.includes("EXPIRED") ||
-      code.includes("USED") ||
-      code.includes("CONSUMED") ||
-      code.includes("NOT_FOUND")
-    ) {
+    if (error.status === 422) {
       baseError = {
-        title: "Link expired or already used",
+        title: "Location could not be accepted",
         description:
-          "This location request link is no longer active. Open the latest link sent by Ozotec EV.",
+          "The device returned a position that could not be validated. Move to an open area and capture the location again.",
       };
     } else if (error.status === 429) {
       baseError = {
         title: "Too many attempts",
-        description:
-          "Please wait briefly before trying to share this location again.",
+        description: retryAfterDescription(
+          normalizeRetryAfterSeconds(error.retryAfterSeconds),
+        ),
       };
     } else if (error.status >= 500) {
       baseError = {
         title: "Service temporarily unavailable",
         description:
-          "The location service is temporarily unavailable. Keep this page open and try again shortly.",
+          "The confirmed location remains ready on this page. Keep the page open and try again shortly.",
       };
     } else {
       baseError = {
@@ -272,10 +333,82 @@ function errorFromUnknown(error: unknown): UserFacingError {
     return requestId === undefined ? baseError : { ...baseError, requestId };
   }
 
+  if (error instanceof Error && error.name === "NetworkError") {
+    return {
+      title: "Network request failed",
+      description:
+        "Check the internet connection and try again. The confirmed location remains ready on this page.",
+    };
+  }
+
   return {
     title: STATE_COPY["unexpected-error"].title,
     description: STATE_COPY["unexpected-error"].description,
   };
+}
+
+function actionLabel(state: CaptureState): string {
+  switch (state) {
+    case "locating":
+      return "Finding location…";
+
+    case "submitting":
+      return "Sending securely…";
+
+    case "success":
+      return "Location shared";
+
+    case "offline":
+      return "Connect to continue";
+
+    case "permission-denied":
+    case "location-unavailable":
+    case "timeout":
+    case "api-error":
+    case "unexpected-error":
+      return "Try again";
+
+    case "unsupported-browser":
+      return "Location unavailable";
+
+    case "idle":
+    case "invalid-link":
+      return "Share current location";
+  }
+}
+
+function actionHint(state: CaptureState): string {
+  switch (state) {
+    case "locating":
+      return "Keep this page open while the device determines its position.";
+
+    case "submitting":
+      return "Do not refresh or close the page until confirmation appears.";
+
+    case "success":
+      return "The request is complete. You may close this page.";
+
+    case "offline":
+      return "Reconnect to the internet before continuing.";
+
+    case "unsupported-browser":
+      return "Use a current browser on a device with location services.";
+
+    case "permission-denied":
+      return "Enable location permission for this site before retrying.";
+
+    case "location-unavailable":
+    case "timeout":
+      return "Check GPS and network signal, then retry.";
+
+    case "api-error":
+    case "unexpected-error":
+      return "The secure request remains available for another attempt.";
+
+    case "idle":
+    case "invalid-link":
+      return "Your browser will ask for permission before anything is sent.";
+  }
 }
 
 function FormErrorStatus({
@@ -292,6 +425,7 @@ function FormErrorStatus({
       description={
         <>
           {error.description}
+
           {error.requestId === undefined ? null : (
             <span className="mt-2 block text-caption">
               Reference:{" "}
@@ -304,130 +438,67 @@ function FormErrorStatus({
   );
 }
 
-function actionLabel(state: CaptureState): string {
-  switch (state) {
-    case "locating":
-      return "Finding location…";
-    case "submitting":
-      return "Sending securely…";
-    case "success":
-      return "Location shared";
-    case "permission-denied":
-    case "location-unavailable":
-    case "timeout":
-    case "api-error":
-    case "unexpected-error":
-      return "Try again";
-    case "unsupported-browser":
-      return "Location unavailable";
-    case "idle":
-    case "invalid-link":
-      return "Share current location";
-  }
-}
-
-function actionHint(state: CaptureState): string {
-  switch (state) {
-    case "locating":
-      return "Keep this page open while your device determines its position.";
-    case "submitting":
-      return "Do not refresh or close this page until confirmation appears.";
-    case "success":
-      return "The location was submitted successfully. You may close this page.";
-    case "unsupported-browser":
-      return "Open this link in a current browser that supports secure geolocation.";
-    case "permission-denied":
-      return "Enable location permission for this site before trying again.";
-    case "location-unavailable":
-    case "timeout":
-      return "Check GPS and network signal, then retry the request.";
-    case "api-error":
-    case "unexpected-error":
-      return "Your secure link remains available on this page for another attempt.";
-    case "idle":
-    case "invalid-link":
-      return "Your browser will ask for permission. Keep this page open until confirmation.";
-  }
-}
-
-function LocationGuideContent(): React.ReactElement {
+function RequestStep({
+  number,
+  title,
+  description,
+}: Readonly<{
+  number: number;
+  title: string;
+  description: string;
+}>): React.ReactElement {
   return (
-    <div className="grid min-w-0 gap-4">
-      <ContentDescriptionList columns="one">
-        <ContentDescriptionItem term="Before you start">
-          Stand at the place you want to share and turn on GPS and mobile data
-          or Wi-Fi.
-        </ContentDescriptionItem>
-        <ContentDescriptionItem term="Browser permission">
-          Choose Allow only when your browser asks for access to this site.
-        </ContentDescriptionItem>
-        <ContentDescriptionItem term="Expected time">
-          A strong GPS and network signal normally completes this request within
-          30 seconds.
-        </ContentDescriptionItem>
-      </ContentDescriptionList>
+    <li className="grid min-w-0 grid-cols-[2rem_minmax(0,1fr)] gap-3">
+      <span
+        aria-hidden="true"
+        className="flex size-8 items-center justify-center rounded-xl border border-primary/20 bg-primary/8 text-caption text-primary [font-weight:var(--typography-emphasis-weight)]"
+      >
+        {number}
+      </span>
 
-      <ContentStatus
-        variant="info"
-        role="note"
-        icon={<ShieldCheck aria-hidden="true" />}
-        title="No continuous tracking"
-        description="This page requests one current position. It does not keep tracking your movement after submission."
-      />
-    </div>
+      <div className="min-w-0">
+        <p className="text-body-sm text-foreground [font-weight:var(--typography-emphasis-weight)]">
+          {title}
+        </p>
+
+        <p className="mt-0.5 text-caption leading-relaxed text-muted-readable">
+          {description}
+        </p>
+      </div>
+    </li>
   );
 }
 
-function MobileLocationGuideSheet(): React.ReactElement {
+function TrustItem({
+  icon,
+  label,
+}: Readonly<{
+  icon: React.ReactNode;
+  label: string;
+}>): React.ReactElement {
   return (
-    <Sheet>
-      <SheetTrigger asChild>
-        <Button type="button" variant="outline" size="sm" className="lg:hidden">
-          <Menu aria-hidden="true" />
-          How it works
-        </Button>
-      </SheetTrigger>
-
-      <SheetContent side="bottom" className="max-h-[min(88dvh,40rem)]">
-        <SheetHeader>
-          <SheetTitle>Before sharing your location</SheetTitle>
-          <SheetDescription>
-            Prepare the device for a fast and accurate location request.
-          </SheetDescription>
-        </SheetHeader>
-
-        <div className="px-4 pb-6 sm:px-5">
-          <LocationGuideContent />
-        </div>
-      </SheetContent>
-    </Sheet>
+    <div className="flex min-w-0 flex-col items-center gap-1.5 rounded-2xl border border-border/70 bg-muted/30 px-2 py-3 text-center">
+      <span className="text-primary">{icon}</span>
+      <span className="text-caption text-foreground">{label}</span>
+    </div>
   );
 }
 
 function StatusScreen({
   state,
-}: Readonly<{ state: "success" | "invalid-link" }>): React.ReactElement {
+}: Readonly<{ state: StatusScreenState }>): React.ReactElement {
   const success = state === "success";
   const copy = STATE_COPY[state];
-  const footerActions = success ? (
-    <ContentFormActions className="mx-auto w-full max-w-2xl border-0 bg-transparent p-0 shadow-none supports-[backdrop-filter]:bg-transparent">
-      <Button type="button" disabled className="min-h-11 w-full">
-        <CheckCircle2 aria-hidden="true" />
-        Location shared
-      </Button>
-    </ContentFormActions>
-  ) : undefined;
 
   return (
     <PublicLocationShell
-      footerActions={footerActions}
       mainLabelledBy="public-location-status-title"
       mainClassName="items-center"
     >
       <ContentRoot
         width="narrow"
         density="compact"
-        className="px-3 py-8 sm:px-0 sm:py-4"
+        className="max-w-2xl px-3 py-8 sm:px-0 sm:py-6"
       >
         <div className="grid justify-items-center">
           <PublicFormStatusEmblem status={success ? "success" : "error"} />
@@ -435,10 +506,8 @@ function StatusScreen({
 
         <ContentSection
           className={cn(
-            "shadow-lg",
-            success
-              ? "border-success/20 shadow-success/5"
-              : "border-destructive/20 shadow-destructive/5",
+            "border-border/70 bg-card/96 text-center shadow-xl shadow-foreground/5",
+            success ? "border-success/25" : "border-destructive/20",
           )}
           title={<span id="public-location-status-title">{copy.title}</span>}
           description={copy.description}
@@ -446,6 +515,7 @@ function StatusScreen({
           <ContentStatus
             variant={success ? "success" : "destructive"}
             role="status"
+            aria-live="polite"
             icon={
               success ? (
                 <CheckCircle2 aria-hidden="true" />
@@ -460,14 +530,14 @@ function StatusScreen({
             }
             description={
               success
-                ? "The request is complete. This page does not continue accessing your location."
-                : "Open the newest Ozotec EV location link before trying again."
+                ? "This page does not continue accessing or tracking your location after completion."
+                : "Use the newest Ozotec EV location request link before trying again."
             }
           />
 
-          <p className="mt-4 text-center text-caption text-muted-readable">
+          <p className="mt-4 text-center text-caption leading-relaxed text-muted-readable">
             This public page does not expose internal ERP records or diagnostic
-            details.
+            data.
           </p>
         </ContentSection>
       </ContentRoot>
@@ -482,11 +552,22 @@ export function PublicLocationRequestPage({
     () => publicLocationTokenSchema.safeParse(token),
     [token],
   );
+
+  const online = React.useSyncExternalStore(
+    subscribeToOnlineStatus,
+    getOnlineStatus,
+    getServerOnlineStatus,
+  );
+
   const [captureState, setCaptureState] = React.useState<CaptureState>("idle");
   const [error, setError] = React.useState<UserFacingError | null>(null);
+
   const mountedRef = React.useRef(true);
   const actionLockRef = React.useRef(false);
   const idempotencyKeyRef = React.useRef<string | null>(null);
+  const pendingLocationRef = React.useRef<PublicLocationSubmitRequest | null>(
+    null,
+  );
   const abortControllerRef = React.useRef<AbortController | null>(null);
   const statusRef = React.useRef<HTMLDivElement | null>(null);
 
@@ -522,8 +603,16 @@ export function PublicLocationRequestPage({
   const busy = captureState === "locating" || captureState === "submitting";
   const success = captureState === "success";
   const unsupported = captureState === "unsupported-browser";
-  const disabled = parsedToken === null || busy || success || unsupported;
-  const copy = STATE_COPY[captureState];
+
+  const effectiveState: CaptureState =
+    captureState === "invalid-link" || busy || success || online
+      ? captureState
+      : "offline";
+
+  const disabled =
+    parsedToken === null || busy || success || unsupported || !online;
+
+  const copy = STATE_COPY[effectiveState];
 
   async function handleShareLocation(): Promise<void> {
     if (
@@ -531,6 +620,7 @@ export function PublicLocationRequestPage({
       busy ||
       success ||
       unsupported ||
+      !online ||
       actionLockRef.current
     ) {
       return;
@@ -538,46 +628,57 @@ export function PublicLocationRequestPage({
 
     actionLockRef.current = true;
     setError(null);
-    setCaptureState("locating");
 
     try {
-      const position = await getCurrentPosition();
-
-      if (!mountedRef.current) {
-        return;
-      }
-
-      const location = locationFromPosition(position);
+      let location = pendingLocationRef.current;
 
       if (location === null) {
-        setCaptureState("location-unavailable");
-        setError({
-          title: STATE_COPY["location-unavailable"].title,
-          description: STATE_COPY["location-unavailable"].description,
-        });
-        return;
+        setCaptureState("locating");
+
+        const position = await getCurrentPosition();
+
+        if (!mountedRef.current) {
+          return;
+        }
+
+        location = locationFromPosition(position);
+
+        if (location === null) {
+          setCaptureState("location-unavailable");
+          setError({
+            title: STATE_COPY["location-unavailable"].title,
+            description: STATE_COPY["location-unavailable"].description,
+          });
+          return;
+        }
+
+        pendingLocationRef.current = location;
       }
 
-      const idempotencyKey =
+      const requestIdempotencyKey =
         idempotencyKeyRef.current ?? createIdempotencyKey("location");
-      idempotencyKeyRef.current = idempotencyKey;
+
+      idempotencyKeyRef.current = requestIdempotencyKey;
 
       const controller = new AbortController();
+
       abortControllerRef.current?.abort();
       abortControllerRef.current = controller;
+
       setCaptureState("submitting");
 
       await submitPublicLocation({
         token: parsedToken,
-        idempotencyKey,
+        idempotencyKey: requestIdempotencyKey,
         location,
         signal: controller.signal,
       });
 
-      if (controller.signal.aborted) {
+      if (controller.signal.aborted || !mountedRef.current) {
         return;
       }
 
+      pendingLocationRef.current = null;
       setCaptureState("success");
     } catch (caught: unknown) {
       if (!mountedRef.current) {
@@ -590,11 +691,16 @@ export function PublicLocationRequestPage({
 
       if (isGeolocationError(caught)) {
         const nextState = geolocationErrorState(caught);
+
+        pendingLocationRef.current = null;
+        idempotencyKeyRef.current = null;
+
         setCaptureState(nextState);
         setError({
           title: STATE_COPY[nextState].title,
           description: STATE_COPY[nextState].description,
         });
+
         return;
       }
 
@@ -602,22 +708,40 @@ export function PublicLocationRequestPage({
         caught instanceof Error &&
         caught.message === "geolocation_unsupported"
       ) {
+        pendingLocationRef.current = null;
+        idempotencyKeyRef.current = null;
+
         setCaptureState("unsupported-browser");
         setError({
           title: STATE_COPY["unsupported-browser"].title,
           description: STATE_COPY["unsupported-browser"].description,
         });
+
         return;
+      }
+
+      if (isTerminalLinkError(caught)) {
+        pendingLocationRef.current = null;
+        idempotencyKeyRef.current = null;
+
+        setCaptureState("invalid-link");
+        return;
+      }
+
+      if (shouldDiscardCapturedLocation(caught)) {
+        pendingLocationRef.current = null;
+        idempotencyKeyRef.current = null;
       }
 
       setCaptureState("api-error");
       setError(errorFromUnknown(caught));
     } finally {
+      abortControllerRef.current = null;
       actionLockRef.current = false;
     }
   }
 
-  if (!tokenResult.success) {
+  if (!tokenResult.success || captureState === "invalid-link") {
     return <StatusScreen state="invalid-link" />;
   }
 
@@ -626,13 +750,22 @@ export function PublicLocationRequestPage({
   }
 
   const footerActions = (
-    <ContentFormActions className="mx-auto w-full max-w-7xl border-0 bg-transparent p-0 shadow-none supports-[backdrop-filter]:bg-transparent sm:justify-between">
-      <div className="hidden min-w-0 flex-1 sm:block">
+    <ContentFormActions className="mx-auto w-full max-w-3xl border-0 bg-transparent p-0 shadow-none supports-[backdrop-filter]:bg-transparent sm:justify-between">
+      <p
+        id="public-location-action-hint"
+        className="sr-only"
+        aria-live="polite"
+      >
+        {actionHint(effectiveState)}
+      </p>
+
+      <div className="hidden min-w-0 flex-1 sm:block" aria-hidden="true">
         <p className="truncate text-caption text-muted-readable">
-          Secure location request
+          One-time location request
         </p>
-        <p className="truncate text-body-sm font-medium text-foreground">
-          {actionHint(captureState)}
+
+        <p className="truncate text-body-sm text-foreground [font-weight:var(--typography-emphasis-weight)]">
+          {actionHint(effectiveState)}
         </p>
       </div>
 
@@ -640,20 +773,24 @@ export function PublicLocationRequestPage({
         type="button"
         disabled={disabled}
         aria-busy={busy}
+        aria-describedby="public-location-action-hint"
         onClick={() => {
           void handleShareLocation();
         }}
-        className="min-h-11 w-full touch-manipulation sm:w-auto sm:min-w-64"
+        className="min-h-12 w-full touch-manipulation sm:w-auto sm:min-w-64"
       >
         {busy ? (
           <LoaderCircle
             aria-hidden="true"
             className="animate-spin motion-reduce:animate-none"
           />
+        ) : effectiveState === "offline" ? (
+          <WifiOff aria-hidden="true" />
         ) : (
           <LocateFixed aria-hidden="true" />
         )}
-        {actionLabel(captureState)}
+
+        {actionLabel(effectiveState)}
       </Button>
     </ContentFormActions>
   );
@@ -664,161 +801,136 @@ export function PublicLocationRequestPage({
       mainLabelledBy="public-location-title"
     >
       <ContentRoot
-        width="wide"
+        width="narrow"
         density="compact"
-        className="px-3 py-3 sm:px-0 sm:py-0"
+        className="max-w-2xl px-3 py-4 sm:px-0 sm:py-2"
       >
-        <ContentHeader
-          variant="compact"
-          eyebrow={
-            <div className="flex flex-wrap items-center gap-2">
-              <Badge variant="outline">Location request</Badge>
-              <Badge variant="secondary">One secure action</Badge>
-            </div>
-          }
-          title={<span id="public-location-title">{copy.title}</span>}
-          description={copy.description}
-          actions={<MobileLocationGuideSheet />}
-          meta={
-            <div className="grid w-full min-w-0 gap-2 sm:grid-cols-3">
-              <div className="flex min-w-0 items-center gap-2 rounded-xl border border-primary/20 bg-primary/5 px-3 py-2.5">
-                <Clock3
-                  aria-hidden="true"
-                  className="size-4 shrink-0 text-primary"
-                />
-                <span className="text-caption text-foreground">
-                  Usually under 30 seconds
-                </span>
-              </div>
-
-              <div className="flex min-w-0 items-center gap-2 rounded-xl border border-border/70 bg-muted/30 px-3 py-2.5">
-                <Smartphone
-                  aria-hidden="true"
-                  className="size-4 shrink-0 text-muted-readable"
-                />
-                <span className="text-caption text-foreground">
-                  Explicit browser permission
-                </span>
-              </div>
-
-              <div className="hidden min-w-0 items-center gap-2 rounded-xl border border-border/70 bg-muted/30 px-3 py-2.5 sm:flex">
-                <ShieldCheck
-                  aria-hidden="true"
-                  className="size-4 shrink-0 text-success"
-                />
-                <span className="text-caption text-foreground">
-                  No continuous tracking
-                </span>
-              </div>
-            </div>
-          }
-          cardClassName="border-primary/20 bg-card/92 shadow-lg shadow-primary/5"
-        />
-
-        <ContentSplit
-          variant="main-context"
-          className="gap-4 lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start lg:gap-6 2xl:grid-cols-[minmax(0,1fr)_20rem]"
+        <ContentSection
+          aria-busy={busy}
+          className="overflow-hidden border-primary/20 bg-card/96 shadow-xl shadow-primary/5"
         >
-          <div className="grid min-w-0 gap-4">
-            <div ref={statusRef} className="scroll-mt-24">
-              {error === null ? null : <FormErrorStatus error={error} />}
-            </div>
+          <div className="grid gap-6">
+            <div className="grid justify-items-center gap-4 text-center">
+              <span
+                className={cn(
+                  "flex size-20 items-center justify-center rounded-[1.75rem] border shadow-xs transition-colors motion-reduce:transition-none",
+                  busy
+                    ? "border-primary/25 bg-primary/10 text-primary"
+                    : effectiveState === "offline"
+                      ? "border-warning/30 bg-warning/10 text-warning-foreground dark:text-warning"
+                      : "border-primary/20 bg-primary/8 text-primary",
+                )}
+              >
+                {effectiveState === "locating" ? (
+                  <Navigation
+                    aria-hidden="true"
+                    className="size-9 animate-pulse motion-reduce:animate-none"
+                  />
+                ) : effectiveState === "submitting" ? (
+                  <LoaderCircle
+                    aria-hidden="true"
+                    className="size-9 animate-spin motion-reduce:animate-none"
+                  />
+                ) : effectiveState === "offline" ? (
+                  <WifiOff aria-hidden="true" className="size-9" />
+                ) : (
+                  <MapPin aria-hidden="true" className="size-9" />
+                )}
+              </span>
 
-            <ContentSection
-              aria-busy={busy}
-              className="border-primary/15 bg-card/94 shadow-md"
-              title="Share the correct place"
-              description="Stand at the location connected to this request before starting the capture."
-            >
-              <div className="grid gap-5">
-                <div className="flex min-w-0 flex-col items-center gap-4 rounded-3xl border border-primary/20 bg-primary/5 px-4 py-6 text-center sm:px-6 sm:py-8">
-                  <span className="flex size-16 items-center justify-center rounded-3xl border border-primary/20 bg-primary/10 text-primary shadow-xs">
-                    {busy ? (
-                      <Navigation
-                        aria-hidden="true"
-                        className="size-8 animate-pulse motion-reduce:animate-none"
-                      />
-                    ) : (
-                      <MapPin aria-hidden="true" className="size-8" />
-                    )}
-                  </span>
+              <div className="grid max-w-xl gap-2">
+                <h1
+                  id="public-location-title"
+                  className="text-page-title text-balance"
+                >
+                  {copy.title}
+                </h1>
 
-                  <div className="grid max-w-xl gap-2">
-                    <h2 className="text-section-title text-balance">
-                      {busy
-                        ? captureState === "locating"
-                          ? "Confirming the device position"
-                          : "Submitting the confirmed position"
-                        : "Ready when you are at the location"}
-                    </h2>
-                    <p className="text-body-sm leading-relaxed text-muted-readable text-pretty">
-                      {busy
-                        ? actionHint(captureState)
-                        : "Tap Share current location below, approve the browser permission, and keep this page open until confirmation appears."}
-                    </p>
-                  </div>
-                </div>
-
-                <ContentDescriptionList columns="three">
-                  <ContentDescriptionItem term="1. Prepare">
-                    Turn on GPS and a stable network connection.
-                  </ContentDescriptionItem>
-                  <ContentDescriptionItem term="2. Approve">
-                    Allow location access only for this Ozotec EV page.
-                  </ContentDescriptionItem>
-                  <ContentDescriptionItem term="3. Confirm">
-                    Keep the page open until the success message appears.
-                  </ContentDescriptionItem>
-                </ContentDescriptionList>
-
-                <ContentStatus
-                  variant="info"
-                  role="note"
-                  icon={<Info aria-hidden="true" />}
-                  title="Used only for this request"
-                  description="The current coordinates are submitted only after your approval. This page does not continue tracking movement after the request finishes."
-                />
+                <p className="text-body-sm leading-relaxed text-muted-readable text-pretty sm:text-body">
+                  {copy.description}
+                </p>
               </div>
-            </ContentSection>
-
-            <div className="grid gap-3 sm:grid-cols-2 lg:hidden">
-              <ContentSection
-                size="sm"
-                title="High-accuracy capture"
-                description="The browser requests the current coordinates directly from your device."
-              >
-                <LocateFixed
-                  aria-hidden="true"
-                  className="size-5 text-primary"
-                />
-              </ContentSection>
-
-              <ContentSection
-                size="sm"
-                title="Private submission"
-                description="Coordinates are sent through the Ozotec ERP gateway after explicit permission."
-              >
-                <ShieldCheck
-                  aria-hidden="true"
-                  className="size-5 text-success"
-                />
-              </ContentSection>
             </div>
-          </div>
 
-          <aside
-            className="hidden min-w-0 lg:sticky lg:top-20 lg:block"
-            aria-label="Location request guidance"
-          >
-            <ContentSection
-              title="Before sharing"
-              description="Prepare the device for a faster, more accurate request."
-              className="bg-card/90 shadow-md"
+            <div
+              className="sr-only"
+              role="status"
+              aria-live="polite"
+              aria-atomic="true"
             >
-              <LocationGuideContent />
-            </ContentSection>
-          </aside>
-        </ContentSplit>
+              {busy ? `${copy.title}. ${copy.description}` : null}
+            </div>
+
+            <div className="grid grid-cols-3 gap-2">
+              <TrustItem
+                icon={<Clock3 aria-hidden="true" className="size-4" />}
+                label="Usually under 30 sec"
+              />
+
+              <TrustItem
+                icon={<ShieldCheck aria-hidden="true" className="size-4" />}
+                label="Permission required"
+              />
+
+              <TrustItem
+                icon={<Navigation aria-hidden="true" className="size-4" />}
+                label="No background tracking"
+              />
+            </div>
+
+            <div ref={statusRef} className="scroll-mt-24">
+              {effectiveState === "offline" ? (
+                <ContentStatus
+                  variant="warning"
+                  role="status"
+                  aria-live="polite"
+                  icon={<WifiOff aria-hidden="true" />}
+                  title="You are offline"
+                  description="Reconnect to the internet. The action becomes available automatically when the connection returns."
+                />
+              ) : error === null ? null : (
+                <FormErrorStatus error={error} />
+              )}
+            </div>
+
+            <div className="rounded-3xl border border-border/70 bg-muted/30 p-4 sm:p-5">
+              <h2 className="text-card-title">Before you continue</h2>
+
+              <ol className="mt-4 grid gap-4">
+                <RequestStep
+                  number={1}
+                  title="Stand at the requested place"
+                  description="Share the location connected to this Ozotec request."
+                />
+
+                <RequestStep
+                  number={2}
+                  title="Turn on GPS and internet"
+                  description="A clear GPS and network signal improves accuracy and speed."
+                />
+
+                <RequestStep
+                  number={3}
+                  title="Tap the button and allow access"
+                  description="Nothing is sent until you approve the browser permission."
+                />
+              </ol>
+            </div>
+
+            <ContentStatus
+              variant="info"
+              role="note"
+              icon={<ShieldCheck aria-hidden="true" />}
+              title="You remain in control"
+              description="This page requests one current position and submits it only after permission. It does not continuously track movement or access internal ERP data."
+            />
+          </div>
+        </ContentSection>
+
+        <p className="px-3 text-center text-caption leading-relaxed text-muted-readable text-pretty">
+          By continuing, you authorize this one-time location submission for the
+          request associated with this secure link.
+        </p>
       </ContentRoot>
     </PublicLocationShell>
   );

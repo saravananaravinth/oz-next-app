@@ -5,27 +5,28 @@ import type { ReactElement } from "react";
 import { PublicWarrantyApplicationPage } from "@/features/engagement/warranty-applications";
 
 const PAGE_TITLE = "Warranty application";
-const PAGE_DESCRIPTION = "Submit your Ozotec EV warranty application securely.";
+const PAGE_DESCRIPTION =
+  "Submit an Ozotec EV warranty application and supporting invoices securely.";
+
+type WarrantyApplicationRoutePageProps = Readonly<{
+  params: Promise<Readonly<{ token: string }>>;
+}>;
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 export const fetchCache = "force-no-store";
 
-export const viewport = {
-  width: "device-width",
-  initialScale: 1,
-  viewportFit: "cover",
-  colorScheme: "light dark",
-  themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#ffffff" },
-    { media: "(prefers-color-scheme: dark)", color: "#09090b" },
-  ],
-} satisfies Viewport;
-
 export const metadata = {
   title: PAGE_TITLE,
   description: PAGE_DESCRIPTION,
+  applicationName: "Ozotec EV",
+  category: "business",
   referrer: "no-referrer",
+  formatDetection: {
+    telephone: false,
+    email: false,
+    address: false,
+  },
   robots: {
     index: false,
     follow: false,
@@ -44,16 +45,18 @@ export const metadata = {
     title: PAGE_TITLE,
     description: PAGE_DESCRIPTION,
   },
-  formatDetection: {
-    telephone: false,
-    email: false,
-    address: false,
-  },
 } satisfies Metadata;
 
-type WarrantyApplicationRoutePageProps = Readonly<{
-  params: Promise<Readonly<{ token: string }>>;
-}>;
+export const viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+  colorScheme: "light dark",
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#ffffff" },
+    { media: "(prefers-color-scheme: dark)", color: "#09090b" },
+  ],
+} satisfies Viewport;
 
 export default async function WarrantyApplicationRoutePage({
   params,
