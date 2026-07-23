@@ -46,6 +46,16 @@ export const VEHICLE_INVENTORY_SORT_FIELDS = [
   "LAST_UPDATE",
 ] as const;
 export const VEHICLE_INVENTORY_SORT_DIRECTIONS = ["ASC", "DESC"] as const;
+export const VEHICLE_INVENTORY_REMEDIATION_CATEGORIES = [
+  "MISSING_VARIANT",
+  "UNKNOWN_ARRIVAL_DATE",
+  "MISSING_MRP",
+] as const;
+export const VEHICLE_INVENTORY_ARRIVAL_SOURCES = [
+  "SHIPMENT",
+  "MANUAL",
+  "UNKNOWN",
+] as const;
 
 const MAX_SEARCH_LENGTH = 100;
 const MAX_CURSOR_LENGTH = 2_048;
@@ -53,6 +63,10 @@ const MAX_FACET_OPTIONS = 5_000;
 const MAX_TAX_COMPONENTS = 32;
 const MAX_LIST_ITEMS = 100;
 const MAX_DEALER_CONTEXT_ITEMS = 100;
+const MAX_COMPONENT_SUMMARIES = 32;
+const MAX_COMPONENT_SERIALS = 64;
+const MAX_REMEDIATION_ISSUES = 100;
+const MAX_REMEDIATION_UPDATES = 100;
 
 const dateOnlySchema = z.string().trim().pipe(z.iso.date());
 const nullableDateOnlySchema = dateOnlySchema.nullable();
@@ -112,7 +126,7 @@ const optionalDateSearchSchema = z.preprocess(
 );
 const optionalSearchTextSchema = z.preprocess(
   emptyStringToUndefined,
-  z.string().trim().min(1).max(MAX_SEARCH_LENGTH).optional(),
+  z.string().trim().min(3).max(MAX_SEARCH_LENGTH).optional(),
 );
 const optionalCursorSchema = z.preprocess(
   emptyStringToUndefined,
@@ -295,6 +309,10 @@ export type VehicleInventorySortField =
   (typeof VEHICLE_INVENTORY_SORT_FIELDS)[number];
 export type VehicleInventorySortDirection =
   (typeof VEHICLE_INVENTORY_SORT_DIRECTIONS)[number];
+export type VehicleInventoryRemediationCategory =
+  (typeof VEHICLE_INVENTORY_REMEDIATION_CATEGORIES)[number];
+export type VehicleInventoryArrivalSource =
+  (typeof VEHICLE_INVENTORY_ARRIVAL_SOURCES)[number];
 
 export function parseVehicleInventorySearchParams(
   raw: VehicleInventoryRawSearchParams,
@@ -417,6 +435,7 @@ const inventoryPriceSchema = z
         priceBookId: erpUuidSchema,
         name: z.string().trim().min(1).max(256),
         stateId: erpUuidSchema.nullable(),
+        stateName: nullableSafeTextSchema,
         isDefault: z.boolean(),
         effectiveFrom: dateOnlySchema,
         effectiveTo: nullableDateOnlySchema,
@@ -480,6 +499,7 @@ export const vehicleInventoryItemSchema = z
         fallbackCreatedAt: erpIsoDateTimeSchema,
         ageDays: nonNegativeIntegerSchema.nullable(),
         ageBucket: z.enum(VEHICLE_INVENTORY_AGE_BUCKETS),
+        source: z.enum(VEHICLE_INVENTORY_ARRIVAL_SOURCES),
       })
       .strict(),
     model: inventoryModelSchema,
@@ -487,6 +507,20 @@ export const vehicleInventoryItemSchema = z
     variant: inventoryVariantSchema,
     perspective: inventoryPerspectiveSchema,
     mrp: inventoryPriceSchema,
+    components: z
+      .array(
+        z
+          .object({
+            type: z.string().trim().min(1).max(128),
+            serialNumbers: z
+              .array(z.string().trim().min(1).max(256))
+              .max(MAX_COMPONENT_SERIALS)
+              .readonly(),
+          })
+          .strict(),
+      )
+      .max(MAX_COMPONENT_SUMMARIES)
+      .readonly(),
     tax: inventoryTaxSchema,
     dataQualityFlags: z
       .array(z.enum(VEHICLE_INVENTORY_DATA_QUALITY_FLAGS))
@@ -614,6 +648,86 @@ export const vehicleInventoryDealerContextResultSchema = z
   })
   .strict();
 
+export const vehicleInventoryRemediationContextSchema = z
+  .object({
+    tenantId: erpUuidSchema,
+    dealerOrgUnitId: erpUuidSchema,
+  })
+  .strict();
+
+export const vehicleInventoryDataQualityIssueSchema = z
+  .object({
+    unitId: erpUuidSchema,
+    storeId: erpUuidSchema,
+    vin: z.string().trim().min(1).max(64).nullable(),
+    modelName: nullableSafeTextSchema,
+    colorName: nullableSafeTextSchema,
+    variantName: nullableSafeTextSchema,
+    componentTypes: z
+      .array(z.string().trim().min(1).max(128))
+      .max(MAX_COMPONENT_SUMMARIES)
+      .readonly(),
+    componentSerialNumbers: z
+      .array(z.string().trim().min(1).max(256))
+      .max(MAX_COMPONENT_SERIALS)
+      .readonly(),
+  })
+  .strict();
+
+export const vehicleInventoryDataQualityIssuesResultSchema = z
+  .object({
+    category: z.enum(VEHICLE_INVENTORY_REMEDIATION_CATEGORIES),
+    items: z
+      .array(vehicleInventoryDataQualityIssueSchema)
+      .max(MAX_REMEDIATION_ISSUES)
+      .readonly(),
+    total: nonNegativeIntegerSchema,
+    truncated: z.boolean(),
+  })
+  .strict();
+
+export const vehicleInventoryRemediationResultSchema = z
+  .object({
+    category: z.enum(VEHICLE_INVENTORY_REMEDIATION_CATEGORIES),
+    attempted: nonNegativeIntegerSchema,
+    resolved: nonNegativeIntegerSchema,
+    unresolved: nonNegativeIntegerSchema,
+    conflicts: nonNegativeIntegerSchema,
+    hasMore: z.boolean(),
+    emailQueued: z.boolean(),
+    messageId: erpUuidSchema.nullable(),
+  })
+  .strict();
+
+export const vehicleInventoryArrivalUpdateSchema = z
+  .object({
+    unitId: erpUuidSchema,
+    storeId: erpUuidSchema,
+    arrivalDate: dateOnlySchema,
+  })
+  .strict();
+
+export const vehicleInventoryArrivalUpdatesSchema = z
+  .array(vehicleInventoryArrivalUpdateSchema)
+  .min(1)
+  .max(MAX_REMEDIATION_UPDATES)
+  .readonly();
+
+export const vehicleInventoryRemediationActionInputSchema = z
+  .object({
+    context: vehicleInventoryRemediationContextSchema,
+    query: vehicleInventorySearchParamsSchema,
+    category: z.enum(VEHICLE_INVENTORY_REMEDIATION_CATEGORIES),
+    idempotencyKey: z
+      .string()
+      .trim()
+      .min(16)
+      .max(128)
+      .regex(/^[A-Za-z0-9:_./@-]+$/u),
+    arrivals: vehicleInventoryArrivalUpdatesSchema.optional(),
+  })
+  .strict();
+
 export type VehicleInventoryItem = z.output<typeof vehicleInventoryItemSchema>;
 export type VehicleInventoryListResult = z.output<
   typeof vehicleInventoryListResultSchema
@@ -632,6 +746,21 @@ export type VehicleInventoryDealerContextOption = z.output<
 >;
 export type VehicleInventoryDealerContextResult = z.output<
   typeof vehicleInventoryDealerContextResultSchema
+>;
+export type VehicleInventoryDataQualityIssue = z.output<
+  typeof vehicleInventoryDataQualityIssueSchema
+>;
+export type VehicleInventoryDataQualityIssuesResult = z.output<
+  typeof vehicleInventoryDataQualityIssuesResultSchema
+>;
+export type VehicleInventoryRemediationResult = z.output<
+  typeof vehicleInventoryRemediationResultSchema
+>;
+export type VehicleInventoryArrivalUpdate = z.output<
+  typeof vehicleInventoryArrivalUpdateSchema
+>;
+export type VehicleInventoryRemediationActionInput = z.output<
+  typeof vehicleInventoryRemediationActionInputSchema
 >;
 
 export type VehicleInventoryWorkspaceData = Readonly<{

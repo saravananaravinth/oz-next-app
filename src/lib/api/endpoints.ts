@@ -28,6 +28,7 @@ export const INVENTORY_ENDPOINTS = {
 } as const;
 
 export const ENGAGEMENT_ENDPOINTS = {
+  base: `${ERP_PREFIX}/engagement`,
   dealerBase: `${ERP_PREFIX}/engagement/dealer`,
   dealerDashboard: `${ERP_PREFIX}/engagement/dealer/dashboard`,
   happyCustomers: `${ERP_PREFIX}/engagement/dealer/happy-customers`,
@@ -36,6 +37,32 @@ export const ENGAGEMENT_ENDPOINTS = {
   happyCustomerSettings: `${ERP_PREFIX}/engagement/dealer/happy-customer-settings`,
   warrantyDocumentDownload: (fileId: string) =>
     `${ERP_PREFIX}/engagement/dealer/warranty-documents/${encodeURIComponent(fileId)}/download` as const,
+  operationsDashboardBase: `${ERP_PREFIX}/engagement/dashboard`,
+  operationsDashboardSummary: `${ERP_PREFIX}/engagement/dashboard/summary`,
+  operationsDashboardLeadSourceSeries: `${ERP_PREFIX}/engagement/dashboard/lead-sources/timeseries`,
+  operationsDashboardFunnel: `${ERP_PREFIX}/engagement/dashboard/funnel`,
+  operationsDashboardDealers: `${ERP_PREFIX}/engagement/dashboard/dealers`,
+  operationsDashboardIssues: `${ERP_PREFIX}/engagement/dashboard/issues`,
+  operationsDashboardCoverage: `${ERP_PREFIX}/engagement/dashboard/coverage`,
+  operationsDashboardFilterOptions: `${ERP_PREFIX}/engagement/dashboard/filter-options`,
+  operationsDashboardDealer: (dealerOrgUnitId: string) =>
+    `${ERP_PREFIX}/engagement/dashboard/dealers/${encodeURIComponent(dealerOrgUnitId)}` as const,
+  operationsDashboardDealerSettings: (dealerOrgUnitId: string) =>
+    `${ERP_PREFIX}/engagement/dashboard/dealers/${encodeURIComponent(dealerOrgUnitId)}/settings` as const,
+  operationsDashboardDealerLocation: (dealerOrgUnitId: string) =>
+    `${ERP_PREFIX}/engagement/dashboard/dealers/${encodeURIComponent(dealerOrgUnitId)}/location` as const,
+  operationsDashboardLead: (leadId: string) =>
+    `${ERP_PREFIX}/engagement/dashboard/leads/${encodeURIComponent(leadId)}` as const,
+  videoSequencesBase: `${ERP_PREFIX}/engagement/video-sequences`,
+  supportBase: `${ERP_PREFIX}/engagement/support`,
+  supportIssueAction: (issueKey: string) =>
+    `${ERP_PREFIX}/engagement/support/issues/${encodeURIComponent(issueKey)}/action` as const,
+  supportLeadReassign: (leadId: string) =>
+    `${ERP_PREFIX}/engagement/support/leads/${encodeURIComponent(leadId)}/reassign` as const,
+  supportOutboxRetry: (outboxEventId: string) =>
+    `${ERP_PREFIX}/engagement/support/outbox/${encodeURIComponent(outboxEventId)}/retry` as const,
+  supportVideoMessageRetry: (videoMessageId: string) =>
+    `${ERP_PREFIX}/engagement/support/video-messages/${encodeURIComponent(videoMessageId)}/retry` as const,
 } as const;
 
 export type AuthStaticEndpoint = Exclude<

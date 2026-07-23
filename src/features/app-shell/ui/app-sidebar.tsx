@@ -86,7 +86,7 @@ type BrandInput = Readonly<{
 
 const DEFAULT_BRAND = {
   name: "Ozotec EV",
-  tagline: "Enterprise workspace",
+  tagline: "Innovation to Serve Society",
   logoLight: "/icon-light.svg",
   logoDark: "/icon-dark.svg",
 } as const satisfies NormalizedBrand;
@@ -321,7 +321,7 @@ function BrandLogo({
   const initial = brand.name.slice(0, 1).toLocaleUpperCase("en-US") || "O";
 
   return (
-    <span className="flex size-9 shrink-0 items-center justify-center rounded-2xl border border-sidebar-border/70 bg-background/75 text-card-title shadow-xs ring-1 ring-foreground/5">
+    <span className="flex size-9 shrink-0 items-center justify-center rounded-2xl border border-sidebar-border/70 bg-background/75 text-card-title shadow-xs ring-1 ring-foreground/5 group-data-[collapsible=icon]:size-8 group-data-[collapsible=icon]:rounded-xl">
       {lightFailed ? (
         <span className="block dark:hidden">{initial}</span>
       ) : (
@@ -330,7 +330,7 @@ function BrandLogo({
           alt=""
           width={BRAND_ICON_INTRINSIC_WIDTH}
           height={BRAND_ICON_INTRINSIC_HEIGHT}
-          className="block h-8 w-auto dark:hidden"
+          className="block h-8 w-auto dark:hidden group-data-[collapsible=icon]:h-7"
           onError={() => {
             setLightFailed(true);
           }}
@@ -346,7 +346,7 @@ function BrandLogo({
           alt=""
           width={BRAND_ICON_INTRINSIC_WIDTH}
           height={BRAND_ICON_INTRINSIC_HEIGHT}
-          className="hidden h-8 w-auto dark:block"
+          className="hidden h-8 w-auto dark:block group-data-[collapsible=icon]:h-7"
           onError={() => {
             setDarkFailed(true);
           }}
@@ -407,17 +407,17 @@ export function AppSidebar({
   return (
     <Sidebar
       collapsible="icon"
-      className={cn("border-r border-sidebar-border/80 bg-sidebar", className)}
+      className={cn("bg-sidebar", className)}
       {...props}
     >
-      <SidebarHeader className="gap-3 border-b border-sidebar-border/70 px-3 py-3">
+      <SidebarHeader className="h-16 shrink-0 justify-center border-b border-sidebar-border/70 px-2 py-2">
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton
               size="lg"
               asChild
               tooltip={`${brand.name} home`}
-              className="rounded-2xl px-2.5 hover:bg-sidebar-accent/80"
+              className="rounded-2xl px-2.5 hover:bg-sidebar-accent/80 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:rounded-xl"
             >
               <Link
                 href="/dashboard"
@@ -438,8 +438,10 @@ export function AppSidebar({
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
+      </SidebarHeader>
 
-        <div className="relative group-data-[collapsible=icon]:hidden">
+      <div className="shrink-0 border-b border-sidebar-border/70 px-3 py-3 group-data-[collapsible=icon]:hidden">
+        <div className="relative">
           <Search
             aria-hidden="true"
             className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-sidebar-foreground/45"
@@ -454,9 +456,9 @@ export function AppSidebar({
             aria-label="Search navigation"
           />
         </div>
-      </SidebarHeader>
+      </div>
 
-      <SidebarContent className="px-0 py-2">
+      <SidebarContent className="overflow-x-hidden px-0 py-2">
         {isLoadingNav ? (
           <NavigationSkeleton />
         ) : filteredGroups.length === 0 ? (
@@ -492,7 +494,7 @@ export function AppSidebar({
         />
       </SidebarFooter>
 
-      <SidebarRail />
+      <SidebarRail className="group-data-[collapsible=icon]:hidden" />
     </Sidebar>
   );
 }

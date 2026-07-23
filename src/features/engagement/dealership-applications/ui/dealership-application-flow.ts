@@ -1,7 +1,6 @@
 // oz-next-app/src/features/engagement/dealership-applications/ui/dealership-application-flow.ts
 import type {
   DealershipInterestDraftValues,
-  DealershipLocationMode,
   InvestmentBudget,
   InvestmentTimeline,
   RunningEvBusiness,
@@ -17,8 +16,7 @@ export type DealershipApplicationStepId =
   | "investmentTimeline"
   | "investmentBudget"
   | "alreadyRunningEvBusiness"
-  | "contactDetails"
-  | "dealershipLocation";
+  | "contactDetails";
 
 export type DealershipPlanAutoAdvanceStepId = Extract<
   DealershipApplicationStepId,
@@ -26,7 +24,7 @@ export type DealershipPlanAutoAdvanceStepId = Extract<
 >;
 
 export type DealershipApplicationStepMeta = Readonly<{
-  stage: "Your plan" | "Contact details" | "Dealership location";
+  stage: "Your plan" | "Contact details";
   title: string;
   description?: string;
 }>;
@@ -48,26 +46,11 @@ export const RUNNING_EV_BUSINESS_OPTIONS = [
   { value: "NO", label: "No" },
 ] as const satisfies ReadonlyArray<ChoiceOption<RunningEvBusiness>>;
 
-export const LOCATION_MODE_OPTIONS = [
-  {
-    value: "GPS",
-    label: "Use my current location",
-    description:
-      "Best when you are physically at the proposed dealership site.",
-  },
-  {
-    value: "MANUAL",
-    label: "Enter the address",
-    description: "Use this when you are applying from another location.",
-  },
-] as const satisfies ReadonlyArray<ChoiceOption<DealershipLocationMode>>;
-
 export const DEALERSHIP_APPLICATION_STEPS = [
   "investmentTimeline",
   "investmentBudget",
   "alreadyRunningEvBusiness",
   "contactDetails",
-  "dealershipLocation",
 ] as const satisfies readonly DealershipApplicationStepId[];
 
 export const DEALERSHIP_APPLICATION_AUTO_ADVANCE_STEPS = [
@@ -102,12 +85,6 @@ export const DEALERSHIP_APPLICATION_STEP_META = {
     title: "How can our dealership team contact you?",
     description: "Enter your primary contact details. Email is optional.",
   },
-  dealershipLocation: {
-    stage: "Dealership location",
-    title: "Where do you plan to open the dealership?",
-    description:
-      "Use your current location or enter the proposed address manually.",
-  },
 } as const satisfies Record<
   DealershipApplicationStepId,
   DealershipApplicationStepMeta
@@ -121,14 +98,10 @@ export const DEALERSHIP_APPLICATION_FIELD_TO_STEP = {
   businessName: "contactDetails",
   mobileNumber: "contactDetails",
   email: "contactDetails",
-  locationMode: "dealershipLocation",
-  addressLine1: "dealershipLocation",
-  addressLine2: "dealershipLocation",
-  city: "dealershipLocation",
-  district: "dealershipLocation",
-  state: "dealershipLocation",
-  postalCode: "dealershipLocation",
-  notes: "dealershipLocation",
+  locationMode: "contactDetails",
+  postalCode: "contactDetails",
+  district: "contactDetails",
+  state: "contactDetails",
 } as const satisfies Record<
   keyof DealershipInterestDraftValues,
   DealershipApplicationStepId
@@ -143,13 +116,9 @@ export const DEALERSHIP_APPLICATION_SERVER_FIELD_NAMES = [
   "mobileNumber",
   "email",
   "locationMode",
-  "addressLine1",
-  "addressLine2",
-  "city",
+  "postalCode",
   "district",
   "state",
-  "postalCode",
-  "notes",
 ] as const satisfies ReadonlyArray<keyof DealershipInterestDraftValues>;
 
 export const DEFAULT_DEALERSHIP_APPLICATION_VALUES = {
@@ -161,13 +130,9 @@ export const DEFAULT_DEALERSHIP_APPLICATION_VALUES = {
   mobileNumber: "",
   email: "",
   locationMode: "GPS",
-  addressLine1: "",
-  addressLine2: "",
-  city: "",
+  postalCode: "",
   district: "",
   state: "",
-  postalCode: "",
-  notes: "",
 } as const satisfies DealershipInterestDraftValues;
 
 export const CONTACT_DETAIL_FIELDS = [
@@ -177,18 +142,15 @@ export const CONTACT_DETAIL_FIELDS = [
   "email",
 ] as const satisfies ReadonlyArray<keyof DealershipInterestDraftValues>;
 
-export const GPS_LOCATION_FIELDS = [
+export const PINCODE_LOCATION_FIELDS = [
   "locationMode",
+  "postalCode",
 ] as const satisfies ReadonlyArray<keyof DealershipInterestDraftValues>;
 
-export const MANUAL_LOCATION_FIELDS = [
+export const REGION_LOCATION_FIELDS = [
   "locationMode",
-  "addressLine1",
-  "addressLine2",
-  "city",
   "district",
   "state",
-  "postalCode",
 ] as const satisfies ReadonlyArray<keyof DealershipInterestDraftValues>;
 
 export function isDealershipApplicationDraftFieldName(

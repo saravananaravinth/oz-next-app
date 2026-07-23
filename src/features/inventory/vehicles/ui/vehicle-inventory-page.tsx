@@ -14,16 +14,21 @@ import {
 import {
   ContentDataSurface,
   ContentHeader,
+  ContentMetricCard,
+  ContentMetrics,
   ContentRoot,
   ContentSection,
   ContentStatus,
 } from "@/components/common/content-shell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import type { TenantMembership } from "@/lib/api/contracts";
 import type { ApiHttpError } from "@/lib/api/problem";
-import { cn } from "@/lib/utils";
 
 import type {
   ResolvedVehicleInventoryAccess,
@@ -33,6 +38,7 @@ import type {
   VehicleInventorySearchParams,
   VehicleInventoryWorkspaceData,
 } from "@/features/inventory/vehicles/contracts/vehicle-inventory.schema";
+import { VehicleInventoryDataQuality } from "@/features/inventory/vehicles/ui/vehicle-inventory-data-quality";
 import { VehicleInventoryFilters } from "@/features/inventory/vehicles/ui/vehicle-inventory-filters";
 import { VehicleInventoryContextSelector } from "@/features/inventory/vehicles/ui/vehicle-inventory-context-selector";
 import {
@@ -43,16 +49,6 @@ import {
   vehicleInventoryExportHref,
   vehicleInventoryPageHref,
 } from "@/features/inventory/vehicles/utils/vehicle-inventory-url";
-
-const QUALITY_COUNT_LABELS = [
-  ["Missing variant", "missingVariant"],
-  ["Unknown arrival", "unknownArrivalDate"],
-  ["Status mismatch", "statusMismatch"],
-  ["Model mismatch", "metadataVariantModelMismatch"],
-  ["Missing MRP", "missingMrp"],
-  ["Missing tax", "missingTaxConfiguration"],
-  ["Inactive store", "inactiveStore"],
-] as const;
 
 function kpiHref(
   query: VehicleInventorySearchParams,
@@ -65,99 +61,20 @@ function kpiHref(
   });
 }
 
-function KpiLink({
-  href,
-  label,
-  value,
-  description,
-  active,
-  icon,
+function KpiTooltip({
+  children,
+  content,
 }: Readonly<{
-  href: string;
-  label: string;
-  value: number;
-  description: string;
-  active: boolean;
-  icon: ReactElement;
+  children: ReactElement;
+  content: string;
 }>): ReactElement {
   return (
-    <a
-      href={href}
-      aria-current={active ? "page" : undefined}
-      aria-label={`${label}: ${value.toLocaleString("en-IN")}. ${description}`}
-      className="group min-w-0 rounded-3xl outline-none focus-visible:ring-3 focus-visible:ring-ring/45"
-    >
-      <Card
-        className={cn(
-          "relative h-full overflow-hidden border-border/75 bg-card/90 py-0 shadow-sm shadow-foreground/5 transition-[border-color,background-color,box-shadow,transform] duration-200 group-hover:-translate-y-0.5 group-hover:border-primary/30 group-hover:shadow-md motion-reduce:transform-none motion-reduce:transition-none",
-          active && "border-primary/40 bg-primary/[0.055] shadow-primary/10",
-        )}
-      >
-        <span
-          aria-hidden="true"
-          className={cn(
-            "absolute inset-x-0 top-0 h-0.5 bg-transparent",
-            active && "bg-primary",
-          )}
-        />
-        <CardContent className="grid gap-3 p-4">
-          <div className="flex items-center justify-between gap-2">
-            <span className="truncate text-caption font-medium uppercase tracking-[0.08em] text-muted-readable">
-              {label}
-            </span>
-            <span
-              className={cn(
-                "grid size-8 shrink-0 place-items-center rounded-xl bg-muted/70 text-muted-readable transition-colors group-hover:bg-primary/10 group-hover:text-primary motion-reduce:transition-none [&_svg]:size-4",
-                active && "bg-primary/12 text-primary",
-              )}
-            >
-              {icon}
-            </span>
-          </div>
-          <div className="grid gap-0.5">
-            <strong className="text-tabular text-2xl leading-none font-semibold tracking-tight text-foreground">
-              {value.toLocaleString("en-IN")}
-            </strong>
-            <span className="truncate text-caption text-muted-readable">
-              {description}
-            </span>
-          </div>
-        </CardContent>
-      </Card>
-    </a>
-  );
-}
-
-function DataQualitySummary({
-  data,
-}: Readonly<{ data: VehicleInventoryWorkspaceData }>): ReactElement | null {
-  const counts = data.list.dataQuality;
-  const total = QUALITY_COUNT_LABELS.reduce(
-    (sum, [, key]) => sum + counts[key],
-    0,
-  );
-
-  if (total === 0) {
-    return null;
-  }
-
-  return (
-    <ContentStatus
-      variant="warning"
-      icon={<AlertTriangle aria-hidden="true" />}
-      title={`${total.toLocaleString("en-IN")} data-quality warning${total === 1 ? "" : "s"}`}
-      description={
-        <span className="flex flex-wrap gap-2">
-          {QUALITY_COUNT_LABELS.filter(([, key]) => counts[key] > 0).map(
-            ([label, key]) => (
-              <Badge key={key} variant="outline">
-                {label}: {counts[key].toLocaleString("en-IN")}
-              </Badge>
-            ),
-          )}
-        </span>
-      }
-    />
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <div className="min-w-0">{children}</div>
+      </TooltipTrigger>
+      <TooltipContent>{content}</TooltipContent>
+    </Tooltip>
   );
 }
 
@@ -175,20 +92,38 @@ export function VehicleInventoryPage({
   return (
     <ContentRoot width="full" aria-labelledby="vehicle-inventory-title">
       <ContentHeader
+        variant="compact"
         title={<span id="vehicle-inventory-title">Vehicle inventory</span>}
+        description="Monitor authorized dealer stock, transfer history, commercial readiness, aging, and data quality operational view."
         actions={
           access.capabilities.canExport ? (
-            <Button asChild>
-              <a href={vehicleInventoryExportHref(query)}>
-                <Download aria-hidden="true" className="size-4" />
-                Export CSV
-              </a>
-            </Button>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button asChild>
+                  <a href={vehicleInventoryExportHref(query)}>
+                    <Download aria-hidden="true" className="size-4" />
+                    Export CSV
+                  </a>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                Export the current authorized scope and active filters.
+              </TooltipContent>
+            </Tooltip>
           ) : (
-            <Button type="button" disabled>
-              <Download aria-hidden="true" className="size-4" />
-              Export unavailable
-            </Button>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span>
+                  <Button type="button" disabled>
+                    <Download aria-hidden="true" className="size-4" />
+                    Export unavailable
+                  </Button>
+                </span>
+              </TooltipTrigger>
+              <TooltipContent>
+                Requires report:export permission.
+              </TooltipContent>
+            </Tooltip>
           )
         }
       />
@@ -210,70 +145,100 @@ export function VehicleInventoryPage({
         />
       ) : null}
 
-      <section
+      <ContentMetrics
         aria-label="Inventory KPIs"
-        className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6"
+        className="grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6"
       >
-        <KpiLink
-          href={vehicleInventoryPageHref(query, {
-            kpi: undefined,
-            status: [],
-            cursor: undefined,
-          })}
-          label="Total"
-          value={kpis.total}
-          description="Authorized rows"
-          active={query.kpi === undefined}
-          icon={<CarFront aria-hidden="true" />}
-        />
-        <KpiLink
-          href={kpiHref(query, "AVAILABLE")}
-          label="Available"
-          value={kpis.available}
-          description="On-hand stock"
-          active={query.kpi === "AVAILABLE"}
-          icon={<PackageOpen aria-hidden="true" />}
-        />
-        <KpiLink
-          href={kpiHref(query, "RESERVED")}
-          label="Reserved"
-          value={kpis.reserved}
-          description="Reserved units"
-          active={query.kpi === "RESERVED"}
-          icon={<PackageCheck aria-hidden="true" />}
-        />
-        <KpiLink
-          href={kpiHref(query, "TRANSFERRED")}
-          label="Transferred"
-          value={kpis.transferred}
-          description="Transfer history"
-          active={query.kpi === "TRANSFERRED"}
-          icon={<Truck aria-hidden="true" />}
-        />
-        <KpiLink
-          href={kpiHref(query, "SOLD")}
-          label="Sold"
-          value={kpis.sold}
-          description="Completed sales"
-          active={query.kpi === "SOLD"}
-          icon={<PackageCheck aria-hidden="true" />}
-        />
-        <KpiLink
-          href={kpiHref(query, "AGING")}
-          label="Aging"
-          value={kpis.aging}
-          description="Over 30 days"
-          active={query.kpi === "AGING"}
-          icon={<AlertTriangle aria-hidden="true" />}
-        />
-      </section>
+        <KpiTooltip content="All authorized current-stock and transfer-history rows in this filtered snapshot.">
+          <ContentMetricCard
+            href={vehicleInventoryPageHref(query, {
+              kpi: undefined,
+              status: [],
+              cursor: undefined,
+            })}
+            label="Total"
+            value={kpis.total.toLocaleString("en-IN")}
+            description="Authorized rows"
+            active={query.kpi === undefined}
+            ariaLabel={`Total: ${kpis.total.toLocaleString("en-IN")}. Authorized inventory rows.`}
+            icon={<CarFront aria-hidden="true" />}
+            tone="primary"
+          />
+        </KpiTooltip>
+        <KpiTooltip content="Current unit_stock rows whose authoritative inventory status is ON_HAND.">
+          <ContentMetricCard
+            href={kpiHref(query, "AVAILABLE")}
+            label="Available"
+            value={kpis.available.toLocaleString("en-IN")}
+            description="On-hand stock"
+            active={query.kpi === "AVAILABLE"}
+            ariaLabel={`Available: ${kpis.available.toLocaleString("en-IN")}. On-hand stock.`}
+            icon={<PackageOpen aria-hidden="true" />}
+            tone="success"
+          />
+        </KpiTooltip>
+        <KpiTooltip content="Current unit_stock rows whose authoritative inventory status is RESERVED.">
+          <ContentMetricCard
+            href={kpiHref(query, "RESERVED")}
+            label="Reserved"
+            value={kpis.reserved.toLocaleString("en-IN")}
+            description="Reserved units"
+            active={query.kpi === "RESERVED"}
+            ariaLabel={`Reserved: ${kpis.reserved.toLocaleString("en-IN")}. Reserved units.`}
+            icon={<PackageCheck aria-hidden="true" />}
+            tone="info"
+          />
+        </KpiTooltip>
+        <KpiTooltip content="Latest completed outbound transfer row per unit and sender dealer in the authorized scope.">
+          <ContentMetricCard
+            href={kpiHref(query, "TRANSFERRED")}
+            label="Transferred"
+            value={kpis.transferred.toLocaleString("en-IN")}
+            description="Transfer history"
+            active={query.kpi === "TRANSFERRED"}
+            ariaLabel={`Transferred: ${kpis.transferred.toLocaleString("en-IN")}. Transfer history rows.`}
+            icon={<Truck aria-hidden="true" />}
+            tone="default"
+          />
+        </KpiTooltip>
+        <KpiTooltip content="Current unit_stock rows whose authoritative inventory status is SOLD.">
+          <ContentMetricCard
+            href={kpiHref(query, "SOLD")}
+            label="Sold"
+            value={kpis.sold.toLocaleString("en-IN")}
+            description="Completed sales"
+            active={query.kpi === "SOLD"}
+            ariaLabel={`Sold: ${kpis.sold.toLocaleString("en-IN")}. Completed sales.`}
+            icon={<PackageCheck aria-hidden="true" />}
+            tone="default"
+          />
+        </KpiTooltip>
+        <KpiTooltip content="Current ON_HAND units whose verified arrival age exceeds 30 days.">
+          <ContentMetricCard
+            href={kpiHref(query, "AGING")}
+            label="Aging"
+            value={kpis.aging.toLocaleString("en-IN")}
+            description="Over 30 days"
+            active={query.kpi === "AGING"}
+            ariaLabel={`Aging: ${kpis.aging.toLocaleString("en-IN")}. On-hand units over 30 days.`}
+            icon={<AlertTriangle aria-hidden="true" />}
+            tone="warning"
+          />
+        </KpiTooltip>
+      </ContentMetrics>
 
       <VehicleInventoryFilters query={query} facets={data.facets} />
 
-      <DataQualitySummary data={data} />
+      <VehicleInventoryDataQuality
+        counts={data.list.dataQuality}
+        context={access.context}
+        query={query}
+        canRemediate={access.capabilities.canRemediateDataQuality}
+      />
 
       <ContentDataSurface
         title="Authorized vehicle stock"
+        description="Actor-scoped vehicle rows with resolved catalog, installed-component, location, arrival, and effective price-book context."
         toolbar={<VehicleInventoryTableLegend />}
         padded
       >

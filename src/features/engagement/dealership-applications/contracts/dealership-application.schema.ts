@@ -21,7 +21,11 @@ export const INVESTMENT_BUDGET_VALUES = [
 ] as const;
 
 export const RUNNING_EV_BUSINESS_VALUES = ["YES", "NO"] as const;
-export const DEALERSHIP_LOCATION_MODE_VALUES = ["GPS", "MANUAL"] as const;
+export const DEALERSHIP_LOCATION_MODE_VALUES = [
+  "GPS",
+  "PINCODE",
+  "REGION",
+] as const;
 
 export const investmentTimelineSchema = z.enum(INVESTMENT_TIMELINE_VALUES);
 export const investmentBudgetSchema = z.enum(INVESTMENT_BUDGET_VALUES);
@@ -84,13 +88,6 @@ const draftRunningEvBusinessSchema = z
     "Choose whether you currently run an automobile or EV business.",
   );
 
-const draftLocationModeSchema = z
-  .union([z.literal(""), dealershipLocationModeSchema])
-  .refine(
-    (value): boolean => value !== "",
-    "Choose how to provide the location.",
-  );
-
 const dealershipContactShape = {
   applicantName: requiredText(256, "Full name"),
   businessName: optionalText(256, "Business name"),
@@ -101,46 +98,48 @@ const dealershipContactShape = {
   email: optionalEmailInputSchema,
 } as const;
 
-const dealershipAddressDraftShape = {
-  addressLine1: optionalText(512, "Address"),
-  addressLine2: optionalText(512, "Landmark"),
-  city: optionalText(128, "City"),
+const dealershipFallbackLocationShape = {
+  locationMode: dealershipLocationModeSchema,
+  postalCode: optionalPostalCodeSchema,
   district: optionalText(128, "District"),
   state: optionalText(128, "State"),
-  postalCode: optionalPostalCodeSchema,
 } as const;
 
-function addManualAddressIssues(
+function addFallbackLocationIssues(
   values: Readonly<{
-    locationMode: "" | DealershipLocationMode;
-    addressLine1: string;
-    city: string;
+    locationMode: DealershipLocationMode;
+    postalCode: string;
     district: string;
     state: string;
-    postalCode: string;
   }>,
   context: z.RefinementCtx,
 ): void {
-  if (values.locationMode !== "MANUAL") {
+  if (values.locationMode === "PINCODE" && values.postalCode.length === 0) {
+    context.addIssue({
+      code: "custom",
+      path: ["postalCode"],
+      message: "PIN code is required.",
+    });
+  }
+
+  if (values.locationMode !== "REGION") {
     return;
   }
 
-  const requiredManualFields = [
-    ["addressLine1", values.addressLine1, "Address"],
-    ["city", values.city, "City"],
-    ["district", values.district, "District"],
-    ["state", values.state, "State"],
-    ["postalCode", values.postalCode, "PIN code"],
-  ] as const;
+  if (values.district.length === 0) {
+    context.addIssue({
+      code: "custom",
+      path: ["district"],
+      message: "District is required.",
+    });
+  }
 
-  for (const [field, value, label] of requiredManualFields) {
-    if (value.trim().length === 0) {
-      context.addIssue({
-        code: "custom",
-        path: [field],
-        message: `${label} is required.`,
-      });
-    }
+  if (values.state.length === 0) {
+    context.addIssue({
+      code: "custom",
+      path: ["state"],
+      message: "State is required.",
+    });
   }
 }
 
@@ -159,48 +158,36 @@ export const dealershipSubmissionIdempotencyKeySchema = z
   .regex(SAFE_IDEMPOTENCY_KEY_PATTERN, "The submission key is invalid.");
 
 /**
- * Browser-only draft contract. Empty qualification values are intentional so
- * the UI never manufactures lead data before the applicant makes a choice.
+ * Browser draft contract. Qualification answers remain intentionally empty
+ * until the applicant selects them. GPS is the default submission method;
+ * PIN-code and district/state fields are activated only after a browser-level
+ * geolocation failure.
  */
 export const dealershipInterestDraftSchema = z
   .object({
     investmentTimeline: draftInvestmentTimelineSchema,
     investmentBudget: draftInvestmentBudgetSchema,
     alreadyRunningEvBusiness: draftRunningEvBusinessSchema,
-
     ...dealershipContactShape,
-
-    locationMode: draftLocationModeSchema,
-    ...dealershipAddressDraftShape,
-
-    notes: optionalText(1_200, "Notes"),
+    ...dealershipFallbackLocationShape,
   })
   .strict()
-  .superRefine(addManualAddressIssues);
+  .superRefine(addFallbackLocationIssues);
 
 export type DealershipInterestDraftValues = z.infer<
   typeof dealershipInterestDraftSchema
 >;
 
-/**
- * Fully qualified form contract used immediately before adapting the browser
- * form to the approved backend request body.
- */
 export const dealershipInterestFormSchema = z
   .object({
     investmentTimeline: investmentTimelineSchema,
     investmentBudget: investmentBudgetSchema,
     alreadyRunningEvBusiness: runningEvBusinessSchema,
-
     ...dealershipContactShape,
-
-    locationMode: dealershipLocationModeSchema,
-    ...dealershipAddressDraftShape,
-
-    notes: optionalText(1_200, "Notes"),
+    ...dealershipFallbackLocationShape,
   })
   .strict()
-  .superRefine(addManualAddressIssues);
+  .superRefine(addFallbackLocationIssues);
 
 export type DealershipInterestFormValues = z.infer<
   typeof dealershipInterestFormSchema
@@ -224,16 +211,20 @@ const dealershipGpsSubmitRequestSchema = z
   })
   .strict();
 
-const dealershipManualAddressSubmitRequestSchema = z
+const dealershipPincodeSubmitRequestSchema = z
   .object({
     ...dealershipApplicationCommonRequestShape,
-    locationMode: z.literal("MANUAL"),
-    addressLine1: z.string().trim().min(1).max(512),
-    addressLine2: z.string().trim().max(512).optional(),
-    city: z.string().trim().min(1).max(128),
+    locationMode: z.literal("PINCODE"),
+    postalCode: z.string().trim().regex(PINCODE_PATTERN),
+  })
+  .strict();
+
+const dealershipRegionSubmitRequestSchema = z
+  .object({
+    ...dealershipApplicationCommonRequestShape,
+    locationMode: z.literal("REGION"),
     district: z.string().trim().min(1).max(128),
     state: z.string().trim().min(1).max(128),
-    postalCode: z.string().trim().regex(PINCODE_PATTERN),
   })
   .strict();
 
@@ -241,7 +232,8 @@ export const dealershipApplicationSubmitRequestSchema = z.discriminatedUnion(
   "locationMode",
   [
     dealershipGpsSubmitRequestSchema,
-    dealershipManualAddressSubmitRequestSchema,
+    dealershipPincodeSubmitRequestSchema,
+    dealershipRegionSubmitRequestSchema,
   ],
 );
 

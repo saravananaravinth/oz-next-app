@@ -1,5 +1,12 @@
 // oz-next-app/src/features/engagement/dealership-applications/index.ts
 export {
+  DealershipMetaPixel,
+  trackDealershipApplicationLead,
+  type DealershipMetaPixelProps,
+} from "@/features/engagement/dealership-applications/analytics/dealership-meta-pixel";
+export { isDealershipMetaPixelTokenAllowed } from "@/features/engagement/dealership-applications/analytics/dealership-meta-pixel.policy";
+
+export {
   PublicDealershipApplicationPage,
   type PublicDealershipApplicationPageProps,
 } from "@/features/engagement/dealership-applications/ui/dealership-application-page";

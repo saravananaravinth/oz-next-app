@@ -1,9 +1,12 @@
 // oz-next-app/src/features/inventory/vehicles/utils/vehicle-inventory-url.ts
+import type { Route } from "next";
+
 import {
   vehicleInventorySearchParamsSchema,
   type VehicleInventorySearchParams,
 } from "@/features/inventory/vehicles/contracts/vehicle-inventory.schema";
-const INVENTORY_PAGE_PATH = "/inventory/vehicles";
+
+const INVENTORY_PAGE_PATH = "/inventory/vehicles" satisfies Route;
 const INVENTORY_EXPORT_PATH = "/api/inventory/vehicles/export";
 
 export type VehicleInventorySearchParamOverrides =
@@ -122,14 +125,14 @@ function mergeQuery(
 export function vehicleInventoryPageHref(
   query: VehicleInventorySearchParams,
   overrides: VehicleInventorySearchParamOverrides = {},
-): string {
+): Route {
   const serialized = serializeVehicleInventoryQuery(
     mergeQuery(query, overrides),
     true,
   );
 
   return serialized.length > 0
-    ? `${INVENTORY_PAGE_PATH}?${serialized}`
+    ? `/inventory/vehicles?${serialized}`
     : INVENTORY_PAGE_PATH;
 }
 
@@ -145,7 +148,7 @@ export function vehicleInventoryExportHref(
 
 export function vehicleInventoryResetHref(
   query: VehicleInventorySearchParams,
-): string {
+): Route {
   const search = new URLSearchParams();
 
   if (query.tenantId !== undefined) {
@@ -159,6 +162,6 @@ export function vehicleInventoryResetHref(
   const serialized = search.toString();
 
   return serialized.length > 0
-    ? `${INVENTORY_PAGE_PATH}?${serialized}`
+    ? `/inventory/vehicles?${serialized}`
     : INVENTORY_PAGE_PATH;
 }

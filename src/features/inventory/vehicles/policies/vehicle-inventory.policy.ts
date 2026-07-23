@@ -9,6 +9,7 @@ import type { VehicleInventorySearchParams } from "@/features/inventory/vehicles
 
 const PERMISSION = {
   INVENTORY_READ: "inventory:stock:read",
+  INVENTORY_UPDATE: "inventory:item:update",
   REPORT_EXPORT: "report:export",
 } as const;
 
@@ -21,6 +22,7 @@ const ROLE = {
 export type VehicleInventoryCapabilities = Readonly<{
   canRead: boolean;
   canExport: boolean;
+  canRemediateDataQuality: boolean;
 }>;
 
 export type VehicleInventoryContext = Readonly<{
@@ -68,6 +70,7 @@ export type VehicleInventoryAccess =
 const NO_CAPABILITIES = {
   canRead: false,
   canExport: false,
+  canRemediateDataQuality: false,
 } as const satisfies VehicleInventoryCapabilities;
 
 function normalizeValues(values: readonly string[]): ReadonlySet<string> {
@@ -137,6 +140,10 @@ export function resolveVehicleInventoryAccess(
   const capabilities = {
     canRead: true,
     canExport: hasPermission(permissions, PERMISSION.REPORT_EXPORT),
+    canRemediateDataQuality: hasPermission(
+      permissions,
+      PERMISSION.INVENTORY_UPDATE,
+    ),
   } as const satisfies VehicleInventoryCapabilities;
 
   if (actorKind === "DEALER") {

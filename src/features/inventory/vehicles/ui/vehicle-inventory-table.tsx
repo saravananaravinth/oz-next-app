@@ -7,6 +7,7 @@ import {
   CircleDollarSign,
   Eye,
   MapPin,
+  PackageSearch,
 } from "lucide-react";
 
 import {
@@ -27,6 +28,11 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 import type {
   VehicleInventoryItem,
@@ -48,18 +54,10 @@ const DATE_TIME_FORMATTER = new Intl.DateTimeFormat("en-IN", {
 });
 const MONEY_FORMATTERS = new Map<string, Intl.NumberFormat>();
 const MODEL_VERSION_PATTERN = /\bV\d+(?:\.\d+)?\b/giu;
-const DAY_MS = 86_400_000;
 
 type ModelPresentation = Readonly<{
   name: string;
   versions: readonly string[];
-}>;
-
-type ArrivalPresentation = Readonly<{
-  date: string;
-  ageDays: number;
-  ageBucket: string;
-  usesCreatedFallback: boolean;
 }>;
 
 function formatDate(value: string): string {
@@ -72,7 +70,6 @@ function formatDateTime(value: string): string {
 
 function moneyFormatter(currency: string): Intl.NumberFormat {
   const existing = MONEY_FORMATTERS.get(currency);
-
   if (existing !== undefined) {
     return existing;
   }
@@ -83,7 +80,6 @@ function moneyFormatter(currency: string): Intl.NumberFormat {
     maximumFractionDigits: 2,
   });
   MONEY_FORMATTERS.set(currency, formatter);
-
   return formatter;
 }
 
@@ -151,41 +147,6 @@ function statusVariant(status: string): BadgeProps["variant"] {
   }
 }
 
-function ageBucket(ageDays: number): string {
-  if (ageDays <= 30) return "0-30";
-  if (ageDays <= 60) return "31-60";
-  if (ageDays <= 90) return "61-90";
-  return "91+";
-}
-
-function arrivalPresentation(
-  item: VehicleInventoryItem,
-  asOf: string,
-): ArrivalPresentation {
-  if (item.arrival.deliveredAt !== null && item.arrival.ageDays !== null) {
-    return {
-      date: item.arrival.deliveredAt,
-      ageDays: item.arrival.ageDays,
-      ageBucket: item.arrival.ageBucket,
-      usesCreatedFallback: false,
-    };
-  }
-
-  const asOfTime = new Date(asOf).getTime();
-  const createdTime = new Date(item.arrival.fallbackCreatedAt).getTime();
-  const calculatedAge = Math.max(
-    0,
-    Math.floor((asOfTime - createdTime) / DAY_MS),
-  );
-
-  return {
-    date: item.arrival.fallbackCreatedAt,
-    ageDays: calculatedAge,
-    ageBucket: ageBucket(calculatedAge),
-    usesCreatedFallback: true,
-  };
-}
-
 function locationLabel(item: VehicleInventoryItem): string {
   const { district, state } = item.perspective.location;
 
@@ -217,7 +178,6 @@ function ModelIdentity({
           {item.color.name ?? "Color not configured"}
         </span>
       </div>
-      <VehicleVin vin={item.vin} />
     </div>
   );
 }
@@ -230,24 +190,28 @@ function VehicleColorDot({
   const finishLabel = metallic ? "Metallic finish" : "Matt finish";
 
   return (
-    <span
-      className="relative size-4 shrink-0 overflow-hidden rounded-full border border-foreground/15 shadow-sm ring-1 ring-background"
-      title={finishLabel}
-      aria-label={finishLabel}
-      role="img"
-    >
-      <span
-        className="absolute inset-0"
-        style={{ backgroundColor: colorHex }}
-      />
-      <span
-        className={
-          metallic
-            ? "absolute inset-0 bg-[linear-gradient(135deg,rgba(255,255,255,0.9)_0%,rgba(255,255,255,0.12)_35%,rgba(0,0,0,0.22)_68%,rgba(255,255,255,0.55)_100%)]"
-            : "absolute inset-0 bg-black/8 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.16)]"
-        }
-      />
-    </span>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span
+          className="relative size-4 shrink-0 overflow-hidden rounded-full border border-foreground/15 shadow-sm ring-1 ring-background"
+          aria-label={finishLabel}
+          role="img"
+        >
+          <span
+            className="absolute inset-0"
+            style={{ backgroundColor: colorHex }}
+          />
+          <span
+            className={
+              metallic
+                ? "absolute inset-0 bg-[linear-gradient(135deg,rgba(255,255,255,0.9)_0%,rgba(255,255,255,0.12)_35%,rgba(0,0,0,0.22)_68%,rgba(255,255,255,0.55)_100%)]"
+                : "absolute inset-0 bg-black/8 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.16)]"
+            }
+          />
+        </span>
+      </TooltipTrigger>
+      <TooltipContent>{finishLabel}</TooltipContent>
+    </Tooltip>
   );
 }
 
@@ -264,25 +228,76 @@ function VariantIdentity({
   );
 }
 
+function componentTypeLabel(item: VehicleInventoryItem): string {
+  const types = item.components.map((component) => component.type);
+  return types.length === 0 ? "No installed component type" : types.join(" · ");
+}
+
+function VinAndComponents({
+  item,
+}: Readonly<{ item: VehicleInventoryItem }>): ReactElement {
+  return (
+    <div className="grid gap-1.5">
+      <VehicleVin vin={item.vin} />
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span className="inline-flex min-w-0 cursor-help items-center gap-1.5 text-caption text-muted-readable">
+            <PackageSearch aria-hidden="true" className="size-3.5 shrink-0" />
+            <span className="truncate">{componentTypeLabel(item)}</span>
+          </span>
+        </TooltipTrigger>
+        <TooltipContent className="max-w-sm">
+          {item.components.length === 0 ? (
+            "No active installed component records were resolved."
+          ) : (
+            <span className="grid gap-2">
+              {item.components.map((component) => (
+                <span key={component.type} className="grid gap-0.5">
+                  <strong>{component.type}</strong>
+                  <span className="font-mono text-[0.6875rem] text-muted-readable">
+                    {component.serialNumbers.length === 0
+                      ? "Serial number unavailable"
+                      : component.serialNumbers.join(", ")}
+                  </span>
+                </span>
+              ))}
+            </span>
+          )}
+        </TooltipContent>
+      </Tooltip>
+    </div>
+  );
+}
+
 function ArrivalAge({
   item,
-  asOf,
-}: Readonly<{ item: VehicleInventoryItem; asOf: string }>): ReactElement {
-  const arrival = arrivalPresentation(item, asOf);
+}: Readonly<{ item: VehicleInventoryItem }>): ReactElement {
+  if (item.arrival.deliveredAt === null || item.arrival.ageDays === null) {
+    return (
+      <div className="grid gap-1">
+        <span className="flex items-center gap-1.5 text-warning-foreground">
+          <CalendarDays aria-hidden="true" className="size-3.5" />
+          Unknown arrival
+        </span>
+        <span className="text-caption text-muted-readable">
+          Verification required
+        </span>
+      </div>
+    );
+  }
 
   return (
     <div className="grid gap-1">
       <span className="flex items-center gap-1.5 text-foreground">
         <CalendarDays aria-hidden="true" className="size-3.5" />
-        {formatDate(arrival.date)}
+        {formatDate(item.arrival.deliveredAt)}
       </span>
       <span className="flex flex-wrap items-center gap-1.5 text-caption text-muted-readable">
-        {String(arrival.ageDays)} days · {arrival.ageBucket}
-        {arrival.usesCreatedFallback ? (
-          <Badge variant="outline" className="px-1.5 py-0 text-[0.625rem]">
-            Created date
-          </Badge>
-        ) : null}
+        {item.arrival.ageDays.toLocaleString("en-IN")} days ·{" "}
+        {item.arrival.ageBucket}
+        <Badge variant="outline" className="px-1.5 py-0 text-[0.625rem]">
+          {item.arrival.source === "MANUAL" ? "Verified manual" : "Shipment"}
+        </Badge>
       </span>
     </div>
   );
@@ -291,32 +306,49 @@ function ArrivalAge({
 function PriceValue({
   item,
 }: Readonly<{ item: VehicleInventoryItem }>): ReactElement {
-  const priceBookName = item.mrp.priceBook?.name ?? "No effective price book";
-  const priceKind =
-    item.mrp.kind === "EX_SHOWROOM"
-      ? "Ex-showroom fallback"
-      : item.mrp.kind === "MRP"
-        ? "MRP"
-        : "Price unavailable";
+  const priceBook = item.mrp.priceBook;
+  const stateLabel =
+    priceBook === null
+      ? "Price state unavailable"
+      : (priceBook.stateName ??
+        (priceBook.stateId === null
+          ? "All-India / default"
+          : "State-specific"));
+  const effectiveLabel =
+    priceBook === null
+      ? "No effective price book"
+      : `Effective ${formatDate(priceBook.effectiveFrom)}`;
 
   return (
-    <div className="grid justify-items-end gap-1">
-      <span className="font-medium text-foreground">
-        {formatMoney(item.mrp.amount, item.mrp.currency)}
-      </span>
-      <span className="max-w-48 text-right text-caption text-muted-readable">
-        {priceKind} · {priceBookName}
-      </span>
-    </div>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <div className="grid justify-items-end gap-1 text-right">
+          <span className="flex flex-wrap items-center justify-end gap-1.5 font-medium text-foreground text-tabular">
+            {formatMoney(item.mrp.amount, item.mrp.currency)}
+            {item.mrp.kind === "EX_SHOWROOM" ? (
+              <Badge variant="warning" className="px-1.5 py-0 text-[0.625rem]">
+                Ex-showroom
+              </Badge>
+            ) : null}
+          </span>
+          <span className="max-w-48 text-caption text-muted-readable">
+            {stateLabel} · {effectiveLabel}
+          </span>
+        </div>
+      </TooltipTrigger>
+      <TooltipContent>
+        {priceBook === null
+          ? "No effective state-specific or default price book was resolved."
+          : `${item.mrp.kind === "EX_SHOWROOM" ? "Ex-showroom fallback from" : "MRP from"} ${priceBook.name}; ${stateLabel}; effective from ${formatDate(priceBook.effectiveFrom)}.`}
+      </TooltipContent>
+    </Tooltip>
   );
 }
 
 function InventoryMobileCards({
   items,
-  asOf,
 }: Readonly<{
   items: readonly VehicleInventoryItem[];
-  asOf: string;
 }>): ReactElement {
   return (
     <ContentList className="lg:hidden">
@@ -332,6 +364,9 @@ function InventoryMobileCards({
           title={<ModelIdentity item={item} />}
         >
           <ContentDescriptionList columns="one" className="mt-3">
+            <ContentDescriptionItem term="VIN">
+              <VinAndComponents item={item} />
+            </ContentDescriptionItem>
             <ContentDescriptionItem term="Variant">
               <VariantIdentity item={item} />
             </ContentDescriptionItem>
@@ -344,13 +379,10 @@ function InventoryMobileCards({
               </span>
             </ContentDescriptionItem>
             <ContentDescriptionItem term="Arrival / age">
-              <ArrivalAge item={item} asOf={asOf} />
+              <ArrivalAge item={item} />
             </ContentDescriptionItem>
             <ContentDescriptionItem term="MRP" numeric>
               <PriceValue item={item} />
-            </ContentDescriptionItem>
-            <ContentDescriptionItem term="Last updated">
-              {formatDateTime(item.lastUpdatedAt)}
             </ContentDescriptionItem>
           </ContentDescriptionList>
         </ContentListItem>
@@ -361,35 +393,36 @@ function InventoryMobileCards({
 
 function InventoryDesktopTable({
   items,
-  asOf,
 }: Readonly<{
   items: readonly VehicleInventoryItem[];
-  asOf: string;
 }>): ReactElement {
   return (
     <ContentScrollArea className="hidden lg:block">
-      <Table>
+      <Table className="min-w-[78rem]">
         <TableHeader>
-          <TableRow>
-            <TableHead>Vehicle</TableHead>
-            <TableHead>Variant</TableHead>
-            <TableHead>Status</TableHead>
-            <TableHead>Stock location</TableHead>
-            <TableHead>Arrival / age</TableHead>
-            <TableHead className="text-right">MRP</TableHead>
-            <TableHead>Last updated</TableHead>
+          <TableRow className="hover:bg-transparent">
+            <TableHead className="w-[16%]">Vehicle</TableHead>
+            <TableHead className="w-[17%]">VIN</TableHead>
+            <TableHead className="w-[15%]">Variant</TableHead>
+            <TableHead className="w-[10%]">Status</TableHead>
+            <TableHead className="w-[18%]">Stock location</TableHead>
+            <TableHead className="w-[13%]">Arrival / age</TableHead>
+            <TableHead className="w-[11%] text-right">MRP</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
           {items.map((item) => (
-            <TableRow key={item.entryKey}>
-              <TableCell className="min-w-72 whitespace-normal align-top">
+            <TableRow key={item.entryKey} className="align-top">
+              <TableCell className="whitespace-normal py-4">
                 <ModelIdentity item={item} />
               </TableCell>
-              <TableCell className="min-w-52 whitespace-normal align-top">
+              <TableCell className="whitespace-normal py-4">
+                <VinAndComponents item={item} />
+              </TableCell>
+              <TableCell className="whitespace-normal py-4">
                 <VariantIdentity item={item} />
               </TableCell>
-              <TableCell className="align-top">
+              <TableCell className="py-4">
                 <div className="grid justify-items-start gap-1.5">
                   <Badge variant={statusVariant(item.inventoryStatus)}>
                     {item.inventoryStatus.replaceAll("_", " ")}
@@ -397,11 +430,11 @@ function InventoryDesktopTable({
                   <span className="text-caption text-muted-readable">
                     {item.entryType === "CURRENT"
                       ? "Current stock"
-                      : "Transferred stock"}
+                      : "Transfer history"}
                   </span>
                 </div>
               </TableCell>
-              <TableCell className="min-w-56 whitespace-normal align-top">
+              <TableCell className="whitespace-normal py-4">
                 <div className="grid gap-1">
                   <span className="font-medium text-foreground">
                     {item.perspective.orgUnit.name}
@@ -412,16 +445,11 @@ function InventoryDesktopTable({
                   </span>
                 </div>
               </TableCell>
-              <TableCell className="min-w-48 align-top">
-                <ArrivalAge item={item} asOf={asOf} />
+              <TableCell className="py-4">
+                <ArrivalAge item={item} />
               </TableCell>
-              <TableCell className="min-w-52 text-right align-top">
+              <TableCell className="py-4 text-right">
                 <PriceValue item={item} />
-              </TableCell>
-              <TableCell className="align-top">
-                <span className="text-caption text-muted-readable">
-                  {formatDateTime(item.lastUpdatedAt)}
-                </span>
               </TableCell>
             </TableRow>
           ))}
@@ -457,23 +485,19 @@ export function VehicleInventoryTable({
 
   return (
     <div className="grid gap-4">
-      <InventoryMobileCards items={items} asOf={data.list.asOf} />
-      <InventoryDesktopTable items={items} asOf={data.list.asOf} />
+      <InventoryMobileCards items={items} />
+      <InventoryDesktopTable items={items} />
 
       <div className="flex flex-col gap-3 border-t border-border/70 pt-4 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-caption text-muted-readable">
-          Showing {String(items.length)} authorized rows as of{" "}
+          Showing {items.length.toLocaleString("en-IN")} authorized rows as of{" "}
           {formatDateTime(data.list.asOf)}.
         </p>
 
         <div className="flex flex-wrap items-center gap-2">
           {query.cursor === undefined ? null : (
             <Button variant="outline" asChild>
-              <a
-                href={vehicleInventoryPageHref(query, {
-                  cursor: undefined,
-                })}
-              >
+              <a href={vehicleInventoryPageHref(query, { cursor: undefined })}>
                 First page
               </a>
             </Button>
@@ -505,8 +529,11 @@ export function VehicleInventoryTableLegend(): ReactElement {
     <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-caption text-muted-readable">
       <span className="flex items-center gap-1.5">
         <CircleDollarSign aria-hidden="true" className="size-4" />
-        MRP uses the effective price book; ex-showroom is shown only as a
-        labeled fallback.
+        Price context shows the resolved state and price-book effective date.
+      </span>
+      <span className="flex items-center gap-1.5">
+        <PackageSearch aria-hidden="true" className="size-4" />
+        Component types come from active installed manufacturing components.
       </span>
       <span className="flex items-center gap-1.5">
         <Eye aria-hidden="true" className="size-4" />

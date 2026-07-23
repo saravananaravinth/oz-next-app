@@ -9,10 +9,16 @@ import { isApiHttpError } from "@/lib/api/problem";
 import { serverApiClient } from "@/server/api/edge-api-client";
 
 import {
+  vehicleInventoryDataQualityIssuesResultSchema,
   vehicleInventoryFacetsResultSchema,
   vehicleInventoryDealerContextResultSchema,
   vehicleInventoryListResultSchema,
+  vehicleInventoryRemediationResultSchema,
+  type VehicleInventoryArrivalUpdate,
+  type VehicleInventoryDataQualityIssuesResult,
   type VehicleInventoryListResult,
+  type VehicleInventoryRemediationCategory,
+  type VehicleInventoryRemediationResult,
   type VehicleInventoryDealerContextQuery,
   type VehicleInventoryDealerContextResult,
   type VehicleInventorySearchParams,
@@ -217,6 +223,86 @@ export async function readVehicleInventoryExportResponse(
     cache: "no-store",
     timeoutMs: EXPORT_TIMEOUT_MS,
     accept: "text/csv",
+    ...(input.access.kind === "contextual"
+      ? { actorContext: input.access.actorContext }
+      : {}),
+  });
+}
+
+export async function readVehicleInventoryDataQualityIssues(
+  input: Readonly<{
+    query: VehicleInventorySearchParams;
+    access: ResolvedVehicleInventoryAccess;
+    category: VehicleInventoryRemediationCategory;
+  }>,
+): Promise<VehicleInventoryDataQualityIssuesResult> {
+  return await inventoryClient.request({
+    path: "/vehicles/data-quality/issues",
+    query: compactQuery({
+      ...commonApiQuery(input.query),
+      category: input.category,
+      kpi: undefined,
+    }),
+    schema: vehicleInventoryDataQualityIssuesResultSchema,
+    refreshOnUnauthorized: false,
+    ...(input.access.kind === "contextual"
+      ? { actorContext: input.access.actorContext }
+      : {}),
+  });
+}
+
+export async function runVehicleInventoryRemediation(
+  input: Readonly<{
+    query: VehicleInventorySearchParams;
+    access: ResolvedVehicleInventoryAccess;
+    category: VehicleInventoryRemediationCategory;
+    idempotencyKey: string;
+    arrivals?: readonly VehicleInventoryArrivalUpdate[];
+  }>,
+): Promise<VehicleInventoryRemediationResult> {
+  return await inventoryClient.request({
+    method: HTTP_METHODS.POST,
+    path: "/vehicles/data-quality/remediations",
+    query: compactQuery({
+      ...commonApiQuery(input.query),
+      kpi: undefined,
+    }),
+    body: {
+      category: input.category,
+      idempotencyKey: input.idempotencyKey,
+      ...(input.arrivals === undefined ? {} : { arrivals: input.arrivals }),
+    },
+    schema: vehicleInventoryRemediationResultSchema,
+    idempotencyKey: input.idempotencyKey,
+    refreshOnUnauthorized: false,
+    ...(input.access.kind === "contextual"
+      ? { actorContext: input.access.actorContext }
+      : {}),
+  });
+}
+
+export async function emailVehicleInventoryDataQualityReport(
+  input: Readonly<{
+    query: VehicleInventorySearchParams;
+    access: ResolvedVehicleInventoryAccess;
+    category: VehicleInventoryRemediationCategory;
+    idempotencyKey: string;
+  }>,
+): Promise<VehicleInventoryRemediationResult> {
+  return await inventoryClient.request({
+    method: HTTP_METHODS.POST,
+    path: "/vehicles/data-quality/reports",
+    query: compactQuery({
+      ...commonApiQuery(input.query),
+      kpi: undefined,
+    }),
+    body: {
+      category: input.category,
+      idempotencyKey: input.idempotencyKey,
+    },
+    schema: vehicleInventoryRemediationResultSchema,
+    idempotencyKey: input.idempotencyKey,
+    refreshOnUnauthorized: false,
     ...(input.access.kind === "contextual"
       ? { actorContext: input.access.actorContext }
       : {}),

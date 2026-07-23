@@ -5,6 +5,11 @@ import * as React from "react";
 import { Eye, EyeOff } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 function maskVin(vin: string): string {
   const suffixLength = Math.min(6, vin.length);
@@ -26,32 +31,38 @@ export function VehicleVin({
     );
   }
 
+  const actionLabel = revealed ? "Hide full VIN" : "Reveal full VIN";
+
   return (
     <span className="flex min-w-0 items-center gap-1.5">
       <span
         className="min-w-0 truncate font-mono text-caption text-muted-readable"
         aria-live="polite"
       >
-        VIN {revealed ? vin : maskVin(vin)}
+        {revealed ? vin : maskVin(vin)}
       </span>
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon-xs"
-        className="shrink-0"
-        aria-pressed={revealed}
-        aria-label={revealed ? "Hide full VIN" : "Show full VIN"}
-        title={revealed ? "Hide full VIN" : "Show full VIN"}
-        onClick={() => {
-          setRevealed((current) => !current);
-        }}
-      >
-        {revealed ? (
-          <EyeOff aria-hidden="true" className="size-3.5" />
-        ) : (
-          <Eye aria-hidden="true" className="size-3.5" />
-        )}
-      </Button>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-xs"
+            className="shrink-0"
+            aria-pressed={revealed}
+            aria-label={actionLabel}
+            onClick={() => {
+              setRevealed((current) => !current);
+            }}
+          >
+            {revealed ? (
+              <EyeOff aria-hidden="true" className="size-3.5" />
+            ) : (
+              <Eye aria-hidden="true" className="size-3.5" />
+            )}
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>{actionLabel}</TooltipContent>
+      </Tooltip>
     </span>
   );
 }

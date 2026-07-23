@@ -2,7 +2,11 @@
 import type { Metadata, Viewport } from "next";
 import type { ReactElement } from "react";
 
-import { PublicDealershipApplicationPage } from "@/features/engagement/dealership-applications";
+import {
+  DealershipMetaPixel,
+  isDealershipMetaPixelTokenAllowed,
+  PublicDealershipApplicationPage,
+} from "@/features/engagement/dealership-applications";
 
 const PAGE_TITLE = "Dealership application";
 const PAGE_DESCRIPTION =
@@ -63,6 +67,12 @@ export default async function PublicDealershipFormRoute({
   params,
 }: PublicDealershipFormRouteProps): Promise<ReactElement> {
   const { token } = await params;
+  const metaPixelAllowed = isDealershipMetaPixelTokenAllowed(token);
 
-  return <PublicDealershipApplicationPage token={token} />;
+  return (
+    <>
+      {metaPixelAllowed ? <DealershipMetaPixel token={token} /> : null}
+      <PublicDealershipApplicationPage token={token} />
+    </>
+  );
 }

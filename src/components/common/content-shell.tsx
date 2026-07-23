@@ -124,6 +124,9 @@ export type ContentMetricCardProps = Omit<
     icon?: React.ReactNode;
     trend?: React.ReactNode;
     tone?: ContentTone;
+    href?: string;
+    active?: boolean;
+    ariaLabel?: string;
   }>;
 
 export type ContentStatusProps = Omit<
@@ -610,28 +613,48 @@ export function ContentMetricCard({
   icon,
   trend,
   tone = "default",
+  href,
+  active = false,
+  ariaLabel,
   size = "sm",
   className,
   ...props
 }: ContentMetricCardProps): React.ReactElement {
-  return (
+  const card = (
     <Card
       data-slot="content-metric-card"
       data-tone={tone}
+      data-active={active ? "true" : "false"}
       size={size}
-      className={cn("min-w-0", className)}
+      className={cn(
+        "group/metric relative h-full min-w-0 overflow-hidden border-border/75 bg-card/90 py-0 shadow-sm shadow-foreground/5 transition-[border-color,background-color,box-shadow,transform] duration-200 ease-out motion-reduce:transform-none motion-reduce:transition-none",
+        href !== undefined &&
+          "hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-md",
+        active && "border-primary/45 bg-primary/[0.055] shadow-primary/10",
+        className,
+      )}
       {...props}
     >
-      <CardContent className="grid min-w-0 gap-3">
+      <span
+        aria-hidden="true"
+        className={cn(
+          "absolute inset-x-0 top-0 h-0.5 bg-transparent transition-colors motion-reduce:transition-none",
+          active && "bg-primary",
+        )}
+      />
+      <CardContent className="grid min-w-0 gap-3 p-4">
         <div className="flex min-w-0 items-start justify-between gap-3">
-          <div className="min-w-0 text-overline text-muted-readable">
+          <div className="min-w-0 truncate text-overline text-muted-readable">
             {label}
           </div>
           {icon !== undefined ? (
             <div
               className={cn(
-                "flex size-9 shrink-0 items-center justify-center rounded-2xl border",
+                "flex size-9 shrink-0 items-center justify-center rounded-2xl border transition-[background-color,border-color,color] duration-200 motion-reduce:transition-none [&_svg]:size-4",
                 CONTENT_TONE_ICON_CLASSES[tone],
+                href !== undefined &&
+                  "group-hover/metric:border-primary/25 group-hover/metric:bg-primary/10 group-hover/metric:text-primary",
+                active && "border-primary/25 bg-primary/12 text-primary",
               )}
             >
               {icon}
@@ -644,7 +667,7 @@ export function ContentMetricCard({
         {description !== undefined || trend !== undefined ? (
           <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-caption text-muted-readable">
             {description !== undefined ? (
-              <span className="min-w-0">{description}</span>
+              <span className="min-w-0 truncate">{description}</span>
             ) : null}
             {trend !== undefined ? (
               <span className="text-tabular">{trend}</span>
@@ -653,6 +676,21 @@ export function ContentMetricCard({
         ) : null}
       </CardContent>
     </Card>
+  );
+
+  if (href === undefined) {
+    return card;
+  }
+
+  return (
+    <a
+      href={href}
+      aria-current={active ? "page" : undefined}
+      aria-label={ariaLabel}
+      className="min-w-0 rounded-3xl outline-none focus-visible:ring-3 focus-visible:ring-ring/45"
+    >
+      {card}
+    </a>
   );
 }
 
