@@ -29,6 +29,7 @@ const IMPORT_PATTERN =
 const requiredPaths = [
   "middleware.ts",
   "src/app/layout.tsx",
+  "src/app/(protected)/engagement/dashboard/coverage/page.tsx",
   "src/app/_providers/app-providers.tsx",
   "src/components/ui",
   "src/components/common",
@@ -94,6 +95,19 @@ function exists(relativePath) {
 
 function fail(message) {
   errors.push(message);
+}
+
+const gitignoreLines = fs
+  .readFileSync(path.join(ROOT, ".gitignore"), "utf8")
+  .split(/\r?\n/u)
+  .map((line) => line.trim());
+if (gitignoreLines.includes("coverage/")) {
+  fail(
+    "The coverage artifact ignore rule must be root-anchored as /coverage/ so application routes named coverage remain trackable.",
+  );
+}
+if (!gitignoreLines.includes("/coverage/")) {
+  fail("Missing root-anchored /coverage/ artifact rule in .gitignore.");
 }
 
 for (const requiredPath of requiredPaths) {

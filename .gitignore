@@ -24,7 +24,7 @@ node_modules/
 dist/
 build/
 out/
-coverage/
+/coverage/
 test-results/
 playwright-report/
 bundles/
