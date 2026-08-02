@@ -58,15 +58,21 @@ const DEFAULT_ICONS = {
 
 const DEFAULT_TOAST_CLASSNAMES = {
   toast:
-    "cn-toast rounded-2xl border border-border/70 bg-popover/95 text-popover-foreground shadow-lg shadow-foreground/5 backdrop-blur-xl",
+    "cn-toast rounded-2xl border border-border/70 bg-popover text-popover-foreground shadow-lg shadow-foreground/5",
   title: "text-card-title text-foreground",
-  description: "text-body-sm text-muted-readable",
+  description: "text-body-sm !text-muted-readable",
+  success: "!border-success/25 [&_[data-icon]]:!text-success",
+  error: "!border-destructive/25 [&_[data-icon]]:!text-destructive",
+  info: "!border-info/25 [&_[data-icon]]:!text-info",
+  warning:
+    "!border-warning/30 [&_[data-icon]]:!text-warning-foreground dark:[&_[data-icon]]:!text-warning",
+  loading: "[&_[data-icon]]:!text-muted-readable",
   actionButton:
-    "rounded-xl bg-primary px-3 py-1.5 text-body-sm text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none",
+    "rounded-xl bg-primary px-3 py-1.5 text-body-sm text-primary-foreground transition-colors duration-[var(--motion-duration-fast)] ease-enterprise hover:bg-primary/90 focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none",
   cancelButton:
-    "rounded-xl border border-border/70 bg-background px-3 py-1.5 text-body-sm text-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none",
+    "rounded-xl border border-border/70 bg-background px-3 py-1.5 text-body-sm text-foreground transition-colors duration-[var(--motion-duration-fast)] ease-enterprise hover:bg-accent hover:text-accent-foreground focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none",
   closeButton:
-    "rounded-full border border-border/70 bg-background text-muted-readable transition-colors hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none",
+    "rounded-full border border-border/70 bg-background text-muted-readable transition-colors duration-[var(--motion-duration-fast)] ease-enterprise hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none",
   icon: "text-current",
   loader: "text-current",
 } satisfies NonNullable<

@@ -53,7 +53,7 @@ import {
 function kpiHref(
   query: VehicleInventorySearchParams,
   kpi: VehicleInventorySearchParams["kpi"],
-): string {
+): ReturnType<typeof vehicleInventoryPageHref> {
   return vehicleInventoryPageHref(query, {
     kpi: query.kpi === kpi ? undefined : kpi,
     status: [],

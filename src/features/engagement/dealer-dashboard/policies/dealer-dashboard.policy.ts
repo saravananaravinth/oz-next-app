@@ -27,6 +27,7 @@ export type DealerDashboardCapabilities = Readonly<{
   canSendOwnerGuideAppLink: boolean;
   canReadOwnerGuideSettings: boolean;
   canUpdateOwnerGuideSettings: boolean;
+  canManageDealerStaff: boolean;
 }>;
 
 export type ResolvedDealerDashboardAccess = Readonly<{
@@ -65,6 +66,7 @@ const NO_CAPABILITIES = {
   canSendOwnerGuideAppLink: false,
   canReadOwnerGuideSettings: false,
   canUpdateOwnerGuideSettings: false,
+  canManageDealerStaff: false,
 } as const satisfies DealerDashboardCapabilities;
 
 const DEALER_STAFF_CAPABILITIES = {
@@ -79,6 +81,7 @@ const DEALER_ADMIN_CAPABILITIES = {
   canUpdateOwnerGuide: true,
   canDisableOwnerGuide: true,
   canSendOwnerGuideAppLink: true,
+  canManageDealerStaff: true,
 } as const satisfies DealerDashboardCapabilities;
 
 const SUPER_ADMIN_CAPABILITIES = {
@@ -90,6 +93,7 @@ const SUPER_ADMIN_CAPABILITIES = {
   canSendOwnerGuideAppLink: true,
   canReadOwnerGuideSettings: true,
   canUpdateOwnerGuideSettings: true,
+  canManageDealerStaff: false,
 } as const satisfies DealerDashboardCapabilities;
 
 function normalizedRoles(me: MeResponse): ReadonlySet<string> {
@@ -153,6 +157,7 @@ function permissionCapabilities(
       PERMISSION.HAPPY_CUSTOMER_READ,
     ),
     canUpdateOwnerGuideSettings: canUpdateOwnerGuide,
+    canManageDealerStaff: false,
   };
 }
 

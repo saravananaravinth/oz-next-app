@@ -69,6 +69,10 @@ const MAX_SEGMENTS = 8;
 const MAX_SEGMENT_LABEL_LENGTH = 48;
 const MAX_RAW_SEGMENT_LENGTH = 160;
 
+const EMPTY_SEARCH_RESULTS: readonly SearchResult[] = [];
+const EMPTY_NOTIFICATIONS: readonly NotificationItem[] = [];
+const EMPTY_TENANTS: readonly TenantMembership[] = [];
+
 const ASCII_CONTROL_MAX_CODE_POINT = 0x1f;
 const ASCII_DELETE_CODE_POINT = 0x7f;
 const UNSAFE_ENCODED_PATH_RE = /%(?:00|2e|2f|5c)/iu;
@@ -163,23 +167,29 @@ export function HeaderBar({
   currentTenantId,
 }: HeaderBarProps): React.ReactElement {
   const pathname = usePathname();
-  const breadcrumbs = React.useMemo(
-    () => breadcrumbsFromPath(pathname),
-    [pathname],
-  );
+  const breadcrumbs = breadcrumbsFromPath(pathname);
 
   return (
-    <header className="sticky top-0 z-30 flex h-16 shrink-0 items-center gap-4 border-b border-border/70 bg-background/90 px-4 supports-[backdrop-filter]:backdrop-blur-xl">
-      <SidebarTrigger className="size-10 rounded-2xl border border-border/60 bg-background/70 text-muted-readable shadow-xs hover:bg-accent hover:text-accent-foreground focus-visible:ring-3 focus-visible:ring-ring/35" />
+    <header
+      data-slot="app-header"
+      className="sticky top-0 z-30 isolate flex h-16 shrink-0 items-center gap-2 border-b border-border/70 bg-background px-3 sm:gap-3 sm:px-4"
+    >
+      <SidebarTrigger className="size-10 shrink-0 rounded-xl border border-border/70 bg-card text-muted-readable shadow-xs hover:bg-accent hover:text-accent-foreground focus-visible:ring-3 focus-visible:ring-ring/35" />
 
-      <Breadcrumb className="min-w-0 flex-1">
-        <BreadcrumbList>
+      <Breadcrumb className="min-w-0 flex-1 overflow-hidden">
+        <BreadcrumbList className="min-w-0 flex-nowrap overflow-hidden">
           {breadcrumbs.map((crumb, index) => (
             <React.Fragment key={crumb.href}>
-              {index > 0 ? <BreadcrumbSeparator /> : null}
-              <BreadcrumbItem>
+              {index > 0 ? (
+                <BreadcrumbSeparator className="hidden shrink-0 sm:block" />
+              ) : null}
+              <BreadcrumbItem
+                className={
+                  crumb.isLast ? "min-w-0" : "hidden shrink-0 sm:inline-flex"
+                }
+              >
                 {crumb.isLast ? (
-                  <BreadcrumbPage className="max-w-64 truncate text-body-lg text-foreground [font-weight:var(--typography-emphasis-weight)]">
+                  <BreadcrumbPage className="max-w-64 truncate text-body text-foreground [font-weight:var(--typography-emphasis-weight)]">
                     {crumb.label}
                   </BreadcrumbPage>
                 ) : (
@@ -195,15 +205,17 @@ export function HeaderBar({
         </BreadcrumbList>
       </Breadcrumb>
 
-      <div className="ml-auto flex items-center gap-2">
-        <div className="hidden md:block">
+      <div className="ms-auto flex shrink-0 items-center gap-2">
+        <div className="hidden lg:block">
           <TenantSelection
-            tenants={tenants ?? []}
+            tenants={tenants ?? EMPTY_TENANTS}
             currentTenantId={currentTenantId ?? null}
           />
         </div>
-        <GlobalSearch results={searchResults ?? []} />
-        <NotificationsSheet initialNotifications={notifications ?? []} />
+        <GlobalSearch results={searchResults ?? EMPTY_SEARCH_RESULTS} />
+        <NotificationsSheet
+          initialNotifications={notifications ?? EMPTY_NOTIFICATIONS}
+        />
         <ThemeMenu />
       </div>
     </header>

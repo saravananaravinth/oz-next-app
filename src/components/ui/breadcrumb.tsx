@@ -54,7 +54,7 @@ function BreadcrumbLink({
     <Component
       data-slot="breadcrumb-link"
       className={cn(
-        "min-w-0 truncate rounded-md text-muted-readable transition-colors duration-200 ease-out hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40",
+        "min-w-0 truncate rounded-md text-muted-readable transition-colors duration-[var(--motion-duration-fast)] ease-enterprise hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 motion-reduce:transition-none",
         className,
       )}
       {...props}
@@ -91,7 +91,9 @@ function BreadcrumbSeparator({
       )}
       {...props}
     >
-      {children ?? <ChevronRightIcon aria-hidden="true" />}
+      {children ?? (
+        <ChevronRightIcon aria-hidden="true" className="rtl:rotate-180" />
+      )}
     </li>
   );
 }

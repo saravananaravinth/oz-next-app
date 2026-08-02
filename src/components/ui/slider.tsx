@@ -23,17 +23,12 @@ function Slider({
   max = 100,
   ...props
 }: SliderProps): React.ReactElement {
-  const values = React.useMemo(() => {
-    if (Array.isArray(value) && value.length > 0) {
-      return value;
-    }
-
-    if (Array.isArray(defaultValue) && defaultValue.length > 0) {
-      return defaultValue;
-    }
-
-    return [min, max];
-  }, [defaultValue, max, min, value]);
+  const values =
+    Array.isArray(value) && value.length > 0
+      ? value
+      : Array.isArray(defaultValue) && defaultValue.length > 0
+        ? defaultValue
+        : [min];
 
   return (
     <SliderPrimitive.Root
@@ -61,7 +56,7 @@ function Slider({
         <SliderPrimitive.Thumb
           data-slot="slider-thumb"
           key={index}
-          className="relative block size-4 shrink-0 rounded-full border border-primary/70 bg-background shadow-sm ring-ring/40 transition-[background-color,border-color,box-shadow,transform] duration-200 select-none after:absolute after:-inset-2 hover:ring-[3px] focus-visible:ring-[3px] focus-visible:outline-none active:scale-95 active:ring-[3px] disabled:pointer-events-none disabled:opacity-50 motion-reduce:transition-none motion-reduce:active:scale-100"
+          className="relative block size-4 shrink-0 rounded-full border border-primary/70 bg-background shadow-sm ring-ring/40 transition-[background-color,border-color,box-shadow,transform] duration-[var(--motion-duration-fast)] ease-enterprise select-none after:absolute after:-inset-2 hover:ring-[3px] focus-visible:ring-[3px] focus-visible:outline-none active:scale-95 active:ring-[3px] disabled:pointer-events-none disabled:opacity-50 motion-reduce:transition-none motion-reduce:active:scale-100"
         />
       ))}
     </SliderPrimitive.Root>

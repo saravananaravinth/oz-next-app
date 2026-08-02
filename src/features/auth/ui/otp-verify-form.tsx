@@ -5,10 +5,11 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import {
   useEffect,
   useId,
-  useMemo,
   useRef,
   useState,
+  type ReactElement,
   type ReactNode,
+  type SyntheticEvent,
 } from "react";
 import { Controller, useForm, useWatch } from "react-hook-form";
 
@@ -18,6 +19,7 @@ import {
   FieldDescription,
   FieldError,
   FieldGroup,
+  FieldLabel,
 } from "@/components/ui/field";
 import {
   InputOTP,
@@ -88,10 +90,14 @@ function normalizeAttemptsRemaining(value: number): number {
     return 0;
   }
 
-  return Math.max(0, Math.trunc(value));
+  return Math.max(0, Math.min(99, Math.trunc(value)));
 }
 
 function secondsUntil(timestampMs: number): number {
+  if (!Number.isFinite(timestampMs)) {
+    return 0;
+  }
+
   return Math.max(0, Math.ceil((timestampMs - Date.now()) / 1_000));
 }
 
@@ -107,12 +113,25 @@ function formatCountdown(seconds: number): string {
   return `${String(minutes)}:${String(remainder).padStart(2, "0")}`;
 }
 
-function redirectToNextPath(nextPath: string): void {
-  window.location.assign(nextPath);
+function otpSlotClassName(length: number): string | undefined {
+  if (length >= 7) {
+    return "h-11 w-7 min-[360px]:w-8 min-[400px]:w-9 sm:size-12";
+  }
+
+  if (length === 6) {
+    return "h-11 w-9 min-[360px]:w-10 sm:size-12";
+  }
+
+  return undefined;
 }
 
-function renderOtpSlots(length: number): ReactNode {
+function redirectToNextPath(nextPath: string): void {
+  window.location.replace(nextPath);
+}
+
+function renderOtpSlots(length: number, invalid: boolean): ReactNode {
   const midpoint = length > 4 ? Math.ceil(length / 2) : length;
+  const slotClassName = otpSlotClassName(length);
   const slots: ReactNode[] = [];
 
   for (let index = 0; index < length; index += 1) {
@@ -120,7 +139,14 @@ function renderOtpSlots(length: number): ReactNode {
       slots.push(<InputOTPSeparator key="separator" />);
     }
 
-    slots.push(<InputOTPSlot key={index} index={index} />);
+    slots.push(
+      <InputOTPSlot
+        key={index}
+        index={index}
+        aria-invalid={invalid ? true : undefined}
+        className={slotClassName}
+      />,
+    );
   }
 
   return <InputOTPGroup>{slots}</InputOTPGroup>;
@@ -132,11 +158,39 @@ function describedBy(
   return input.hasError ? `${input.helpId} ${input.errorId}` : input.helpId;
 }
 
-export function OtpVerifyForm(props: OtpVerifyFormProps) {
-  return <OtpVerifyFormInner key={props.challengeId} {...props} />;
+export function OtpVerifyForm({
+  challengeId,
+  expectedLength,
+  attemptsRemaining,
+  expiresAtMs,
+  resendAvailableAtMs,
+  ...props
+}: OtpVerifyFormProps): ReactElement {
+  return (
+    <OtpVerifyFormInner
+      key={`${challengeId}:${String(expectedLength)}:${String(attemptsRemaining)}:${String(expiresAtMs)}:${String(resendAvailableAtMs)}`}
+      challengeId={challengeId}
+      expectedLength={expectedLength}
+      attemptsRemaining={attemptsRemaining}
+      expiresAtMs={expiresAtMs}
+      resendAvailableAtMs={resendAvailableAtMs}
+      {...props}
+    />
+  );
 }
 
-function OtpVerifyFormInner(props: OtpVerifyFormProps) {
+function OtpVerifyFormInner({
+  identifier,
+  challengeId,
+  expectedLength: expectedLengthProp,
+  attemptsRemaining: attemptsRemainingProp,
+  expiresAtMs,
+  resendAvailableAtMs,
+  nextPath,
+  disabled = false,
+  onBack,
+  onResendSuccess,
+}: OtpVerifyFormProps): ReactElement {
   const otpFieldId = useId();
   const otpHelpId = useId();
   const otpErrorId = useId();
@@ -144,14 +198,17 @@ function OtpVerifyFormInner(props: OtpVerifyFormProps) {
   const verifyMutation = useLoginVerify();
   const resendMutation = useLoginStart();
   const resendIntentRef = useRef<LoginResendIntent | null>(null);
-  const expectedLength = clampOtpLength(props.expectedLength);
-  const attemptsRemaining = normalizeAttemptsRemaining(props.attemptsRemaining);
+  const operationRef = useRef<"verify" | "resend" | null>(null);
+  const expectedLength = clampOtpLength(expectedLengthProp);
   const [formError, setFormError] = useState<UserFacingAuthError | null>(null);
+  const [attemptsRemaining, setAttemptsRemaining] = useState(() =>
+    normalizeAttemptsRemaining(attemptsRemainingProp),
+  );
   const [expirySeconds, setExpirySeconds] = useState(() =>
-    secondsUntil(props.expiresAtMs),
+    secondsUntil(expiresAtMs),
   );
   const [resendSeconds, setResendSeconds] = useState(() =>
-    secondsUntil(props.resendAvailableAtMs),
+    secondsUntil(resendAvailableAtMs),
   );
 
   const form = useForm<OtpVerifyFormValues>({
@@ -173,37 +230,63 @@ function OtpVerifyFormInner(props: OtpVerifyFormProps) {
   const otpError = form.formState.errors.code?.message;
   const otpHasError = otpError !== undefined;
   const expired = expirySeconds <= 0;
-  const canResend = resendSeconds <= 0 && !resendMutation.isPending;
-  const isBusy = form.formState.isSubmitting || verifyMutation.isPending;
-  const formDisabled = props.disabled === true || isBusy || expired;
+  const attemptsExhausted = attemptsRemaining <= 0;
+  const verifyBusy = form.formState.isSubmitting || verifyMutation.isPending;
+  const resendBusy = resendMutation.isPending;
+  const interactionBusy = verifyBusy || resendBusy;
+  const canResend = resendSeconds <= 0 && !interactionBusy && !disabled;
+  const formDisabled =
+    disabled || interactionBusy || expired || attemptsExhausted;
   const submitDisabled = formDisabled || watchedCode.length !== expectedLength;
+  const backDisabled = disabled || interactionBusy;
 
-  const helpText = useMemo(() => {
+  const helpText = (() => {
     if (expired) {
       return "This code has expired. Request a new code to continue.";
     }
 
-    const attemptText =
-      attemptsRemaining > 0
-        ? ` ${String(attemptsRemaining)} attempt${attemptsRemaining === 1 ? "" : "s"} remaining.`
-        : "";
+    if (attemptsExhausted) {
+      return "No verification attempts remain. Request a new code to continue.";
+    }
 
-    return `Code expires in ${formatCountdown(expirySeconds)}.${attemptText}`;
-  }, [attemptsRemaining, expired, expirySeconds]);
+    return `Code expires in ${formatCountdown(expirySeconds)}. ${String(attemptsRemaining)} attempt${attemptsRemaining === 1 ? "" : "s"} remaining.`;
+  })();
 
   useEffect(() => {
-    const interval = window.setInterval(() => {
-      setExpirySeconds(secondsUntil(props.expiresAtMs));
-      setResendSeconds(secondsUntil(props.resendAvailableAtMs));
-    }, 1_000);
+    let timeoutId: number | null = null;
+
+    function updateCountdowns(): void {
+      const nextExpirySeconds = secondsUntil(expiresAtMs);
+      const nextResendSeconds = secondsUntil(resendAvailableAtMs);
+
+      setExpirySeconds((current) =>
+        current === nextExpirySeconds ? current : nextExpirySeconds,
+      );
+      setResendSeconds((current) =>
+        current === nextResendSeconds ? current : nextResendSeconds,
+      );
+
+      if (nextExpirySeconds > 0 || nextResendSeconds > 0) {
+        timeoutId = window.setTimeout(updateCountdowns, 1_000);
+      }
+    }
+
+    const initialExpirySeconds = secondsUntil(expiresAtMs);
+    const initialResendSeconds = secondsUntil(resendAvailableAtMs);
+
+    if (initialExpirySeconds > 0 || initialResendSeconds > 0) {
+      timeoutId = window.setTimeout(updateCountdowns, 1_000);
+    }
 
     return () => {
-      window.clearInterval(interval);
+      if (timeoutId !== null) {
+        window.clearTimeout(timeoutId);
+      }
     };
-  }, [props.expiresAtMs, props.resendAvailableAtMs]);
+  }, [expiresAtMs, resendAvailableAtMs]);
 
   async function onSubmit(values: OtpVerifyFormValues): Promise<void> {
-    if (formDisabled) {
+    if (formDisabled || operationRef.current !== null) {
       return;
     }
 
@@ -217,72 +300,82 @@ function OtpVerifyFormInner(props: OtpVerifyFormProps) {
       return;
     }
 
+    operationRef.current = "verify";
     setFormError(null);
 
     try {
       await verifyMutation.mutateAsync({
-        identifier: props.identifier,
-        challengeId: props.challengeId,
+        identifier,
+        challengeId,
         code,
       });
 
-      toast.success({
-        title: "Signed in",
-        description: "Opening your workspace.",
-        replace: true,
-      });
-
-      redirectToNextPath(props.nextPath);
+      redirectToNextPath(nextPath);
     } catch (error) {
       const failure = toLoginVerifyFailure(error);
-      const userFacingError = toUserFacingAuthError(error);
 
       if (failure.kind === "invalid_code") {
+        const nextAttemptsRemaining =
+          failure.attemptsRemaining === null
+            ? null
+            : normalizeAttemptsRemaining(failure.attemptsRemaining);
+
+        if (nextAttemptsRemaining !== null) {
+          setAttemptsRemaining(nextAttemptsRemaining);
+        }
+
         form.setError("code", {
           type: "server",
           message:
-            failure.attemptsRemaining !== null
-              ? `Incorrect code. ${String(failure.attemptsRemaining)} attempt${failure.attemptsRemaining === 1 ? "" : "s"} remaining.`
-              : "Incorrect code. Try again.",
+            nextAttemptsRemaining === 0
+              ? "Incorrect code. No attempts remain; request a new code."
+              : nextAttemptsRemaining !== null
+                ? `Incorrect code. ${String(nextAttemptsRemaining)} attempt${nextAttemptsRemaining === 1 ? "" : "s"} remaining.`
+                : "Incorrect code. Try again.",
         });
+        form.setValue("code", "", {
+          shouldDirty: true,
+          shouldTouch: true,
+          shouldValidate: false,
+        });
+        setFormError(null);
+        return;
       }
 
-      setFormError(userFacingError);
-      toast.error({
-        title: userFacingError.title,
-        description: userFacingError.description,
-        replace: true,
-      });
+      setFormError(toUserFacingAuthError(error));
+    } finally {
+      operationRef.current = null;
     }
   }
 
   async function onResend(): Promise<void> {
-    if (!canResend || props.disabled === true) {
+    if (!canResend || operationRef.current !== null) {
       return;
     }
 
+    operationRef.current = "resend";
     setFormError(null);
 
     try {
       const existingIntent = resendIntentRef.current;
       const resendIntent =
-        existingIntent?.identifier === props.identifier
+        existingIntent?.identifier === identifier
           ? existingIntent
           : {
-              identifier: props.identifier,
+              identifier,
               idempotencyKey: createIdempotencyKey("auth-login-resend"),
             };
 
       resendIntentRef.current = resendIntent;
 
       const response = await resendMutation.mutateAsync({
-        identifier: props.identifier,
+        identifier,
         idempotencyKey: resendIntent.idempotencyKey,
       });
 
       resendIntentRef.current = null;
       form.reset({ code: "" });
-      props.onResendSuccess(response);
+      onResendSuccess(response);
 
       toast.success({
         title: "New code sent",
@@ -293,26 +386,32 @@ function OtpVerifyFormInner(props: OtpVerifyFormProps) {
       const userFacingError = toUserFacingAuthError(error);
 
       setFormError(userFacingError);
-      toast.error({
-        title: userFacingError.title,
-        description: userFacingError.description,
-        replace: true,
-      });
+    } finally {
+      operationRef.current = null;
     }
   }
 
+  function handleFormSubmit(event: SyntheticEvent<HTMLFormElement>): void {
+    event.preventDefault();
+    void form.handleSubmit(onSubmit)(event);
+  }
+
   return (
-    <form onSubmit={form.handleSubmit(onSubmit)} noValidate>
+    <form onSubmit={handleFormSubmit} noValidate aria-busy={interactionBusy}>
       <FieldGroup>
         {formError !== null ? <AuthErrorAlert error={formError} /> : null}
 
         <Field data-invalid={otpHasError ? true : undefined}>
+          <FieldLabel htmlFor={otpFieldId}>Verification code</FieldLabel>
+
           <Controller
             control={form.control}
             name="code"
             render={({ field }) => (
               <InputOTP
                 id={otpFieldId}
+                name={field.name}
+                ref={field.ref}
                 maxLength={expectedLength}
                 value={field.value}
                 onChange={(value) => {
@@ -330,14 +429,23 @@ function OtpVerifyFormInner(props: OtpVerifyFormProps) {
                   errorId: otpErrorId,
                   hasError: otpHasError,
                 })}
+                containerClassName="min-w-0 max-w-full"
+                autoComplete="one-time-code"
+                inputMode="numeric"
                 autoFocus
               >
-                {renderOtpSlots(expectedLength)}
+                {renderOtpSlots(expectedLength, otpHasError)}
               </InputOTP>
             )}
           />
 
           <FieldDescription id={otpHelpId}>{helpText}</FieldDescription>
+
+          <span className="sr-only" role="status" aria-atomic="true">
+            {expired
+              ? "The verification code has expired. Request a new code to continue."
+              : ""}
+          </span>
 
           {otpHasError ? (
             <FieldError id={otpErrorId}>{otpError}</FieldError>
@@ -345,10 +453,10 @@ function OtpVerifyFormInner(props: OtpVerifyFormProps) {
         </Field>
 
         <Button type="submit" disabled={submitDisabled} className="w-full">
-          {isBusy ? (
+          {verifyBusy ? (
             <>
               <Spinner aria-hidden="true" className="size-4" />
-              Verifying
+              Verifying…
             </>
           ) : (
             "Verify and sign in"
@@ -360,12 +468,12 @@ function OtpVerifyFormInner(props: OtpVerifyFormProps) {
             type="button"
             variant="outline"
             onClick={onResend}
-            disabled={!canResend || resendMutation.isPending}
+            disabled={!canResend}
           >
-            {resendMutation.isPending ? (
+            {resendBusy ? (
               <>
                 <Spinner aria-hidden="true" className="size-4" />
-                Sending
+                Sending…
               </>
             ) : canResend ? (
               "Resend code"
@@ -377,8 +485,8 @@ function OtpVerifyFormInner(props: OtpVerifyFormProps) {
           <Button
             type="button"
             variant="link"
-            onClick={props.onBack}
-            disabled={formDisabled}
+            onClick={onBack}
+            disabled={backDisabled}
             className="justify-self-center"
           >
             Change account

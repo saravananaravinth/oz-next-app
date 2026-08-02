@@ -6,20 +6,20 @@ import { Settings2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
-} from "@/components/ui/sheet";
+  Dialog,
+  DialogBody,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 
 import type { EngagementDealerDetail } from "@/features/engagement/operations-dashboard/contracts/engagement-dashboard.schema";
 import { DealerConfigurationForms } from "@/features/engagement/operations-dashboard/ui/dealer-configuration-forms";
 
 export type DealerConfigurationSheetProps = Readonly<{
   dealer: EngagementDealerDetail;
-  tenantId: string | undefined;
   canUpdateSettings: boolean;
   canUpdateLocation: boolean;
   triggerLabel?: string;
@@ -27,7 +27,6 @@ export type DealerConfigurationSheetProps = Readonly<{
 
 export function DealerConfigurationSheet({
   dealer,
-  tenantId,
   canUpdateSettings,
   canUpdateLocation,
   triggerLabel = "Configure dealer",
@@ -35,34 +34,30 @@ export function DealerConfigurationSheet({
   const canUpdate = canUpdateSettings || canUpdateLocation;
 
   return (
-    <Sheet>
-      <SheetTrigger asChild>
+    <Dialog>
+      <DialogTrigger asChild>
         <Button type="button" disabled={!canUpdate}>
           <Settings2 aria-hidden="true" className="size-4" />
           {triggerLabel}
         </Button>
-      </SheetTrigger>
-      <SheetContent
-        side="right"
-        className="w-full overflow-y-auto sm:max-w-3xl"
-      >
-        <SheetHeader>
-          <SheetTitle>Configure {dealer.dealerName}</SheetTitle>
-          <SheetDescription>
+      </DialogTrigger>
+      <DialogContent height="viewport" className="sm:max-w-5xl">
+        <DialogHeader>
+          <DialogTitle>Configure {dealer.dealerName}</DialogTitle>
+          <DialogDescription>
             Dedicated permission-gated forms use strict validation, stable
             idempotency keys, row-version concurrency, and mandatory audit
             reasons.
-          </SheetDescription>
-        </SheetHeader>
-        <div className="px-4 pb-6">
+          </DialogDescription>
+        </DialogHeader>
+        <DialogBody>
           <DealerConfigurationForms
             dealer={dealer}
-            tenantId={tenantId}
             canUpdateSettings={canUpdateSettings}
             canUpdateLocation={canUpdateLocation}
           />
-        </div>
-      </SheetContent>
-    </Sheet>
+        </DialogBody>
+      </DialogContent>
+    </Dialog>
   );
 }

@@ -3,11 +3,18 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { LoaderCircle, MapPin, Settings2 } from "lucide-react";
+import { ExternalLink, LoaderCircle, MapPin, Settings2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupButton,
+  InputGroupInput,
+  InputGroupText,
+} from "@/components/ui/input-group";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/shared/hooks/use-toast";
@@ -18,10 +25,15 @@ import {
   type EngagementDashboardActionResult,
 } from "@/features/engagement/operations-dashboard/actions/engagement-dashboard.actions";
 import type { EngagementDealerDetail } from "@/features/engagement/operations-dashboard/contracts/engagement-dashboard.schema";
+import {
+  createDealerConfigurationMutationCoordinator,
+  extractGoogleMapsShortCode,
+  GOOGLE_MAPS_SHORT_URL_PREFIX,
+  normalizeIndianMobileE164,
+} from "@/features/engagement/operations-dashboard/utils/dealer-configuration";
 
 export type DealerConfigurationFormsProps = Readonly<{
   dealer: EngagementDealerDetail;
-  tenantId: string | undefined;
   canUpdateSettings: boolean;
   canUpdateLocation: boolean;
 }>;
@@ -45,10 +57,12 @@ function resultToast(
     toast.success({ title: result.message });
     return true;
   }
+  const conflict = result.code.toLowerCase().includes("conflict");
   toast.error({
     title: "Dealer configuration failed",
-    description:
-      result.requestId === undefined
+    description: conflict
+      ? `This configuration changed. Close and reopen the dialog to load the latest values before trying again. Your entries have been kept.${result.requestId === undefined ? "" : ` Reference: ${result.requestId}`}`
+      : result.requestId === undefined
         ? result.message
         : `${result.message} Reference: ${result.requestId}`,
   });
@@ -57,20 +71,21 @@ function resultToast(
 
 function DealerSettingsForm({
   dealer,
-  tenantId,
+  rowVersion,
   disabled,
+  acquireMutation,
+  finishMutation,
 }: Readonly<{
   dealer: EngagementDealerDetail;
-  tenantId: string | undefined;
+  rowVersion: number;
   disabled: boolean;
+  acquireMutation: () => boolean;
+  finishMutation: (rowVersion?: number) => void;
 }>) {
   const router = useRouter();
   const toast = useToast();
   const [pending, startTransition] = React.useTransition();
   const [intentKey, setIntentKey] = React.useState("");
-  const [orgUnitActive, setOrgUnitActive] = React.useState(
-    dealer.orgUnitActive,
-  );
   const [engagementActive, setEngagementActive] = React.useState(
     dealer.engagementActive,
   );
@@ -129,47 +144,53 @@ function DealerSettingsForm({
         return;
       }
 
+      if (!acquireMutation()) return;
+
       startTransition(async () => {
-        const result = await updateEngagementDealerSettingsAction({
-          ...(tenantId !== undefined ? { tenantId } : {}),
-          values: {
-            dealerOrgUnitId: dealer.dealerOrgUnitId,
-            rowVersion: dealer.rowVersion,
-            orgUnitActive,
-            engagementActive,
-            supportsVehicleEnquiries: vehicle,
-            supportsServiceEnquiries: service,
-            supportsWarranty: warranty,
-            priority: normalizedPriority,
-            assignmentWeight: normalizedWeight,
-            maxOpenLeads: normalizedMaxOpen,
-            maxAssignmentDistanceKm: normalizedMaxDistance,
-            reason,
-            idempotencyKey: key,
-          },
-        });
-        if (resultToast(result, toast)) {
-          setIntentKey("");
-          setReason("");
-          router.refresh();
+        let nextRowVersion: number | undefined;
+        try {
+          const result = await updateEngagementDealerSettingsAction({
+            values: {
+              dealerOrgUnitId: dealer.dealerOrgUnitId,
+              rowVersion,
+              engagementActive,
+              supportsVehicleEnquiries: vehicle,
+              supportsServiceEnquiries: service,
+              supportsWarranty: warranty,
+              priority: normalizedPriority,
+              assignmentWeight: normalizedWeight,
+              maxOpenLeads: normalizedMaxOpen,
+              maxAssignmentDistanceKm: normalizedMaxDistance,
+              reason,
+              idempotencyKey: key,
+            },
+          });
+          if (resultToast(result, toast)) {
+            nextRowVersion = result.ok ? result.rowVersion : undefined;
+            setIntentKey("");
+            setReason("");
+            router.refresh();
+          }
+        } finally {
+          finishMutation(nextRowVersion);
         }
       });
     },
     [
+      acquireMutation,
       dealer.dealerOrgUnitId,
-      dealer.rowVersion,
       engagementActive,
+      finishMutation,
       intentKey,
       markIntent,
       maxDistance,
       maxOpenLeads,
-      orgUnitActive,
       priority,
       reason,
+      rowVersion,
       router,
       service,
       startTransition,
-      tenantId,
       toast,
       vehicle,
       warranty,
@@ -180,65 +201,69 @@ function DealerSettingsForm({
   return (
     <form onSubmit={submit} onChange={markIntent} className="grid gap-5">
       <div className="grid gap-3 sm:grid-cols-2">
-        <div className="flex items-center justify-between rounded-2xl border p-3">
-          <div>
-            <p className="font-medium">Organization active</p>
-            <p className="text-caption text-muted-readable">
-              Controls the dealer organization unit state.
-            </p>
-          </div>
-          <Switch
-            checked={orgUnitActive}
-            onCheckedChange={setOrgUnitActive}
-            disabled={disabled || pending}
-          />
-        </div>
-        <div className="flex items-center justify-between rounded-2xl border p-3">
-          <div>
+        <div className="flex items-center justify-between gap-4 rounded-2xl border bg-muted/20 p-4">
+          <div className="min-w-0">
             <p className="font-medium">Engagement active</p>
             <p className="text-caption text-muted-readable">
-              Allows engagement lead assignment.
+              Enable or pause lead assignment without changing the dealer
+              organization.
             </p>
           </div>
           <Switch
             checked={engagementActive}
-            onCheckedChange={setEngagementActive}
+            onCheckedChange={(checked) => {
+              setEngagementActive(checked);
+              setVehicle(checked);
+              setService(checked);
+              setWarranty(checked);
+            }}
             disabled={disabled || pending}
+            aria-label="Engagement active"
+          />
+        </div>
+        <div className="flex items-center justify-between gap-4 rounded-2xl border bg-muted/20 p-4">
+          <div className="min-w-0">
+            <p className="font-medium">Accept vehicle enquiries</p>
+            <p className="text-caption text-muted-readable">
+              Include this dealer in vehicle-sales assignment eligibility.
+            </p>
+          </div>
+          <Switch
+            checked={vehicle}
+            onCheckedChange={setVehicle}
+            disabled={disabled || pending}
+            aria-label="Accept vehicle enquiries"
+          />
+        </div>
+        <div className="flex items-center justify-between gap-4 rounded-2xl border bg-muted/20 p-4">
+          <div className="min-w-0">
+            <p className="font-medium">Accept service enquiries</p>
+            <p className="text-caption text-muted-readable">
+              Include this dealer in service enquiry workflows.
+            </p>
+          </div>
+          <Switch
+            checked={service}
+            onCheckedChange={setService}
+            disabled={disabled || pending}
+            aria-label="Accept service enquiries"
+          />
+        </div>
+        <div className="flex items-center justify-between gap-4 rounded-2xl border bg-muted/20 p-4">
+          <div className="min-w-0">
+            <p className="font-medium">Support warranty</p>
+            <p className="text-caption text-muted-readable">
+              Include this dealer in warranty enquiry workflows.
+            </p>
+          </div>
+          <Switch
+            checked={warranty}
+            onCheckedChange={setWarranty}
+            disabled={disabled || pending}
+            aria-label="Support warranty enquiries"
           />
         </div>
       </div>
-
-      <fieldset className="grid gap-3 rounded-2xl border p-4">
-        <legend className="px-1 text-caption text-muted-readable">
-          Supported enquiry flows
-        </legend>
-        <div className="grid gap-3 sm:grid-cols-3">
-          <div className="flex items-center justify-between rounded-xl bg-muted/40 p-3">
-            <span className="text-body-sm">Vehicle</span>
-            <Switch
-              checked={vehicle}
-              onCheckedChange={setVehicle}
-              disabled={disabled || pending}
-            />
-          </div>
-          <div className="flex items-center justify-between rounded-xl bg-muted/40 p-3">
-            <span className="text-body-sm">Service</span>
-            <Switch
-              checked={service}
-              onCheckedChange={setService}
-              disabled={disabled || pending}
-            />
-          </div>
-          <div className="flex items-center justify-between rounded-xl bg-muted/40 p-3">
-            <span className="text-body-sm">Warranty</span>
-            <Switch
-              checked={warranty}
-              onCheckedChange={setWarranty}
-              disabled={disabled || pending}
-            />
-          </div>
-        </div>
-      </fieldset>
 
       <div className="grid gap-4 sm:grid-cols-2">
         <Field>
@@ -246,6 +271,7 @@ function DealerSettingsForm({
           <Input
             id="dealer-priority"
             type="number"
+            placeholder="Enter assignment priority"
             min={1}
             max={10000}
             value={priority}
@@ -260,6 +286,7 @@ function DealerSettingsForm({
           <Input
             id="dealer-weight"
             type="number"
+            placeholder="Enter assignment weight"
             min="0.01"
             max="1000"
             step="0.01"
@@ -341,12 +368,16 @@ function DealerSettingsForm({
 
 function DealerLocationForm({
   dealer,
-  tenantId,
+  rowVersion,
   disabled,
+  acquireMutation,
+  finishMutation,
 }: Readonly<{
   dealer: EngagementDealerDetail;
-  tenantId: string | undefined;
+  rowVersion: number;
   disabled: boolean;
+  acquireMutation: () => boolean;
+  finishMutation: (rowVersion?: number) => void;
 }>) {
   const router = useRouter();
   const toast = useToast();
@@ -358,14 +389,11 @@ function DealerLocationForm({
   const [longitude, setLongitude] = React.useState(
     dealer.longitude === null ? "" : String(dealer.longitude),
   );
-  const [mapsUrl, setMapsUrl] = React.useState(dealer.googleMapsUrl ?? "");
-  const [line1, setLine1] = React.useState(dealer.address.line1 ?? "");
-  const [line2, setLine2] = React.useState(dealer.address.line2 ?? "");
-  const [city, setCity] = React.useState(dealer.city ?? "");
-  const [district, setDistrict] = React.useState(dealer.district ?? "");
-  const [state, setState] = React.useState(dealer.address.state ?? "");
-  const [postalCode, setPostalCode] = React.useState(
-    dealer.address.postalCode ?? "",
+  const [mapsShortCode, setMapsShortCode] = React.useState(
+    dealer.googleMapsShortCode ?? "",
+  );
+  const [whatsappNumber, setWhatsappNumber] = React.useState(
+    dealer.engagementWhatsappNumber ?? "",
   );
   const [reason, setReason] = React.useState("");
 
@@ -380,77 +408,91 @@ function DealerLocationForm({
       event.preventDefault();
       const parsedLatitude = Number(latitude);
       const parsedLongitude = Number(longitude);
+      const normalizedMapsCode =
+        mapsShortCode.trim().length === 0
+          ? null
+          : extractGoogleMapsShortCode(mapsShortCode);
+      const normalizedWhatsapp =
+        whatsappNumber.trim().length === 0
+          ? null
+          : normalizeIndianMobileE164(whatsappNumber);
       const key = intentKey.length >= 16 ? intentKey : createIntentKey();
       setIntentKey(key);
       if (
+        latitude.trim().length === 0 ||
         !Number.isFinite(parsedLatitude) ||
         parsedLatitude < -90 ||
         parsedLatitude > 90 ||
+        longitude.trim().length === 0 ||
         !Number.isFinite(parsedLongitude) ||
         parsedLongitude < -180 ||
         parsedLongitude > 180 ||
+        (mapsShortCode.trim().length > 0 && normalizedMapsCode === null) ||
+        (whatsappNumber.trim().length > 0 && normalizedWhatsapp === null) ||
         reason.trim().length < 5
       ) {
         toast.error({
           title: "Review dealer location",
           description:
-            "Valid coordinates and a five-character audit reason are required.",
+            "Enter valid coordinates, Maps code, Indian WhatsApp number, and a five-character audit reason.",
         });
         return;
       }
 
+      if (!acquireMutation()) return;
+
       startTransition(async () => {
-        const result = await updateEngagementDealerLocationAction({
-          ...(tenantId !== undefined ? { tenantId } : {}),
-          values: {
-            dealerOrgUnitId: dealer.dealerOrgUnitId,
-            rowVersion: dealer.rowVersion,
-            latitude: parsedLatitude,
-            longitude: parsedLongitude,
-            googleMapsUrl: mapsUrl.trim().length === 0 ? null : mapsUrl.trim(),
-            ...(line1.trim().length > 0 ? { addressLine1: line1.trim() } : {}),
-            ...(line2.trim().length > 0
-              ? { addressLine2: line2.trim() }
-              : { addressLine2: null }),
-            ...(city.trim().length > 0 ? { city: city.trim() } : {}),
-            ...(district.trim().length > 0
-              ? { district: district.trim() }
-              : {}),
-            ...(state.trim().length > 0 ? { state: state.trim() } : {}),
-            ...(postalCode.trim().length > 0
-              ? { postalCode: postalCode.trim() }
-              : {}),
-            reason,
-            idempotencyKey: key,
-          },
-        });
-        if (resultToast(result, toast)) {
-          setIntentKey("");
-          setReason("");
-          router.refresh();
+        let nextRowVersion: number | undefined;
+        try {
+          const result = await updateEngagementDealerLocationAction({
+            values: {
+              dealerOrgUnitId: dealer.dealerOrgUnitId,
+              rowVersion,
+              latitude: parsedLatitude,
+              longitude: parsedLongitude,
+              googleMapsShortCode: normalizedMapsCode,
+              engagementWhatsappNumber: normalizedWhatsapp,
+              reason,
+              idempotencyKey: key,
+            },
+          });
+          if (resultToast(result, toast)) {
+            nextRowVersion = result.ok ? result.rowVersion : undefined;
+            setIntentKey("");
+            setReason("");
+            router.refresh();
+          }
+        } finally {
+          finishMutation(nextRowVersion);
         }
       });
     },
     [
-      city,
+      acquireMutation,
       dealer.dealerOrgUnitId,
-      dealer.rowVersion,
-      district,
+      finishMutation,
       intentKey,
       latitude,
-      line1,
-      line2,
       longitude,
-      mapsUrl,
-      postalCode,
+      mapsShortCode,
       reason,
+      rowVersion,
       router,
       startTransition,
-      state,
-      tenantId,
       toast,
+      whatsappNumber,
     ],
   );
+
+  const checkedMapsCode =
+    mapsShortCode.trim().length === 0
+      ? null
+      : extractGoogleMapsShortCode(mapsShortCode);
+  const mapsCodeInvalid =
+    mapsShortCode.trim().length > 0 && checkedMapsCode === null;
+  const whatsappInvalid =
+    whatsappNumber.trim().length > 0 &&
+    normalizeIndianMobileE164(whatsappNumber) === null;
 
   return (
     <form onSubmit={submit} onChange={markIntent} className="grid gap-5">
@@ -460,9 +502,11 @@ function DealerLocationForm({
           <Input
             id="dealer-latitude"
             type="number"
+            placeholder="Enter latitude"
             min="-90"
             max="90"
             step="any"
+            required
             value={latitude}
             onChange={(event) => {
               setLatitude(event.currentTarget.value);
@@ -475,9 +519,11 @@ function DealerLocationForm({
           <Input
             id="dealer-longitude"
             type="number"
+            placeholder="Enter longitude"
             min="-180"
             max="180"
             step="any"
+            required
             value={longitude}
             onChange={(event) => {
               setLongitude(event.currentTarget.value);
@@ -487,102 +533,90 @@ function DealerLocationForm({
         </Field>
       </div>
       <Field>
-        <FieldLabel htmlFor="dealer-maps-url">Google Maps URL</FieldLabel>
-        <Input
-          id="dealer-maps-url"
-          type="url"
-          value={mapsUrl}
-          onChange={(event) => {
-            setMapsUrl(event.currentTarget.value);
-          }}
-          disabled={disabled || pending}
-          placeholder="https://maps.app.goo.gl/..."
-        />
-        <FieldDescription>
-          Only approved HTTPS Google Maps hosts are accepted by the API.
-        </FieldDescription>
-      </Field>
-      <div className="grid gap-4 sm:grid-cols-2">
-        <Field className="sm:col-span-2">
-          <FieldLabel htmlFor="dealer-address-line-1">
-            Address line 1
-          </FieldLabel>
-          <Input
-            id="dealer-address-line-1"
-            value={line1}
-            maxLength={512}
+        <FieldLabel htmlFor="dealer-maps-short-code">
+          Google Maps URL
+        </FieldLabel>
+        <InputGroup>
+          <InputGroupAddon align="inline-start">
+            <InputGroupText>{GOOGLE_MAPS_SHORT_URL_PREFIX}</InputGroupText>
+          </InputGroupAddon>
+          <InputGroupInput
+            id="dealer-maps-short-code"
+            value={mapsShortCode}
+            maxLength={2048}
+            aria-invalid={mapsCodeInvalid || undefined}
             onChange={(event) => {
-              setLine1(event.currentTarget.value);
-            }}
-            disabled={disabled || pending}
-          />
-        </Field>
-        <Field className="sm:col-span-2">
-          <FieldLabel htmlFor="dealer-address-line-2">
-            Address line 2
-          </FieldLabel>
-          <Input
-            id="dealer-address-line-2"
-            value={line2}
-            maxLength={512}
-            onChange={(event) => {
-              setLine2(event.currentTarget.value);
-            }}
-            disabled={disabled || pending}
-          />
-        </Field>
-        <Field>
-          <FieldLabel htmlFor="dealer-city">City</FieldLabel>
-          <Input
-            id="dealer-city"
-            value={city}
-            maxLength={128}
-            onChange={(event) => {
-              setCity(event.currentTarget.value);
-            }}
-            disabled={disabled || pending}
-          />
-        </Field>
-        <Field>
-          <FieldLabel htmlFor="dealer-district">District</FieldLabel>
-          <Input
-            id="dealer-district"
-            value={district}
-            maxLength={128}
-            onChange={(event) => {
-              setDistrict(event.currentTarget.value);
-            }}
-            disabled={disabled || pending}
-          />
-        </Field>
-        <Field>
-          <FieldLabel htmlFor="dealer-state">State</FieldLabel>
-          <Input
-            id="dealer-state"
-            value={state}
-            maxLength={128}
-            onChange={(event) => {
-              setState(event.currentTarget.value);
-            }}
-            disabled={disabled || pending}
-          />
-        </Field>
-        <Field>
-          <FieldLabel htmlFor="dealer-postal-code">Postal code</FieldLabel>
-          <Input
-            id="dealer-postal-code"
-            inputMode="numeric"
-            value={postalCode}
-            maxLength={6}
-            onChange={(event) => {
-              setPostalCode(
-                event.currentTarget.value.replace(/\D/gu, "").slice(0, 6),
+              const nextValue = event.currentTarget.value;
+              const pastedCode = extractGoogleMapsShortCode(nextValue);
+              setMapsShortCode(
+                pastedCode !== null && /^https?:/iu.test(nextValue.trim())
+                  ? pastedCode
+                  : nextValue,
               );
             }}
+            onPaste={(event) => {
+              const pastedCode = extractGoogleMapsShortCode(
+                event.clipboardData.getData("text"),
+              );
+              if (pastedCode === null) return;
+              event.preventDefault();
+              setMapsShortCode(pastedCode);
+            }}
             disabled={disabled || pending}
+            placeholder="HCBabMf7nZrHUhNn9"
           />
-        </Field>
-      </div>
+          <InputGroupAddon align="inline-end">
+            <InputGroupButton
+              type="button"
+              variant="ghost"
+              disabled={disabled || pending || checkedMapsCode === null}
+              onClick={() => {
+                if (checkedMapsCode === null) return;
+                const openedWindow = window.open(
+                  `${GOOGLE_MAPS_SHORT_URL_PREFIX}${checkedMapsCode}`,
+                  "_blank",
+                  "noopener,noreferrer",
+                );
+                if (openedWindow !== null) openedWindow.opener = null;
+              }}
+              aria-label="Check Google Maps URL"
+            >
+              <ExternalLink aria-hidden="true" />
+              Check URL
+            </InputGroupButton>
+          </InputGroupAddon>
+        </InputGroup>
+        <FieldDescription>
+          Paste a maps.app.goo.gl link or enter its short code. Only the code is
+          stored.
+        </FieldDescription>
+      </Field>
+      <Field>
+        <FieldLabel htmlFor="dealer-engagement-whatsapp">
+          Engagement WhatsApp number
+        </FieldLabel>
+        <Input
+          id="dealer-engagement-whatsapp"
+          type="tel"
+          inputMode="tel"
+          autoComplete="tel"
+          value={whatsappNumber}
+          maxLength={13}
+          aria-invalid={whatsappInvalid || undefined}
+          onChange={(event) => {
+            setWhatsappNumber(event.currentTarget.value);
+          }}
+          onBlur={() => {
+            const normalized = normalizeIndianMobileE164(whatsappNumber);
+            if (normalized !== null) setWhatsappNumber(normalized);
+          }}
+          disabled={disabled || pending}
+          placeholder="+919876543210"
+        />
+        <FieldDescription>
+          Optional Indian mobile number. It is stored in canonical +91 format.
+        </FieldDescription>
+      </Field>
       <Field>
         <FieldLabel htmlFor="dealer-location-reason">Audit reason</FieldLabel>
         <Textarea
@@ -614,10 +648,34 @@ function DealerLocationForm({
 
 export function DealerConfigurationForms({
   dealer,
-  tenantId,
   canUpdateSettings,
   canUpdateLocation,
 }: DealerConfigurationFormsProps): React.ReactElement {
+  const [coordinator] = React.useState(() =>
+    createDealerConfigurationMutationCoordinator(dealer.rowVersion),
+  );
+  const [rowVersion, setRowVersion] = React.useState(dealer.rowVersion);
+  const [mutationPending, setMutationPending] = React.useState(false);
+
+  const acquireMutation = React.useCallback((): boolean => {
+    const acquired = coordinator.acquire();
+    if (acquired) setMutationPending(true);
+    return acquired;
+  }, [coordinator]);
+
+  const finishMutation = React.useCallback(
+    (nextRowVersion?: number): void => {
+      if (nextRowVersion === undefined) {
+        coordinator.release();
+      } else {
+        coordinator.succeed(nextRowVersion);
+        setRowVersion(nextRowVersion);
+      }
+      setMutationPending(false);
+    },
+    [coordinator],
+  );
+
   return (
     <div className="grid gap-6 xl:grid-cols-2">
       <section className="grid content-start gap-4 rounded-3xl border p-5">
@@ -629,21 +687,25 @@ export function DealerConfigurationForms({
         </div>
         <DealerSettingsForm
           dealer={dealer}
-          tenantId={tenantId}
-          disabled={!canUpdateSettings}
+          rowVersion={rowVersion}
+          disabled={!canUpdateSettings || mutationPending}
+          acquireMutation={acquireMutation}
+          finishMutation={finishMutation}
         />
       </section>
       <section className="grid content-start gap-4 rounded-3xl border p-5">
         <div>
           <h2 className="text-section-title">Location configuration</h2>
           <p className="mt-1 text-body-sm text-muted-readable">
-            Coordinates, approved maps URL, and classified address.
+            Coordinates, Google Maps short link, and engagement WhatsApp.
           </p>
         </div>
         <DealerLocationForm
           dealer={dealer}
-          tenantId={tenantId}
-          disabled={!canUpdateLocation}
+          rowVersion={rowVersion}
+          disabled={!canUpdateLocation || mutationPending}
+          acquireMutation={acquireMutation}
+          finishMutation={finishMutation}
         />
       </section>
     </div>

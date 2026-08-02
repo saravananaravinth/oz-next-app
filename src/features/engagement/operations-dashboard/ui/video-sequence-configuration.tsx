@@ -4,14 +4,13 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import {
-  CalendarClock,
-  ChevronDown,
-  ChevronUp,
-  CirclePlus,
+  CalendarDays,
+  CheckCircle2,
   ExternalLink,
-  Film,
-  Pencil,
-  ShieldAlert,
+  LoaderCircle,
+  MessageCircleMore,
+  Save,
+  Video,
 } from "lucide-react";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -24,922 +23,397 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
+import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
+import { useToast } from "@/shared/hooks/use-toast";
 
 import {
-  createEngagementVideoSequenceAction,
-  createEngagementVideoSequenceItemAction,
-  updateEngagementVideoSequenceAction,
   updateEngagementVideoSequenceItemAction,
   type EngagementDashboardActionResult,
 } from "@/features/engagement/operations-dashboard/actions/engagement-dashboard.actions";
 import type {
   EngagementVideoSequence,
   EngagementVideoSequenceItem,
-  EngagementVideoSequenceListResult,
 } from "@/features/engagement/operations-dashboard/contracts/engagement-dashboard.schema";
 import {
   formatDashboardDateTime,
   formatDashboardInteger,
 } from "@/features/engagement/operations-dashboard/utils/engagement-dashboard-format";
-import { cn } from "@/lib/utils";
 
-const DEFAULT_TEMPLATE_CODE = "oz_engagement_video_ta_v1";
-
-type VideoSequenceConfigurationProps = Readonly<{
-  data: EngagementVideoSequenceListResult;
-  tenantId: string | undefined;
+export type VideoSequenceConfigurationProps = Readonly<{
+  sequences: readonly EngagementVideoSequence[];
   canUpdate: boolean;
 }>;
 
-type MutationFeedbackProps = Readonly<{
-  result: EngagementDashboardActionResult | null;
-}>;
-
-function MutationFeedback({
-  result,
-}: MutationFeedbackProps): React.ReactElement | null {
-  if (result === null) return null;
-
-  return (
-    <Alert variant={result.ok ? "default" : "destructive"} role="status">
-      <AlertTitle>
-        {result.ok ? "Operation completed" : "Operation failed"}
-      </AlertTitle>
-      <AlertDescription>
-        {result.message}
-        {!result.ok && result.requestId !== undefined ? (
-          <span className="mt-1 block text-caption">
-            Request reference: <code>{result.requestId}</code>
-          </span>
-        ) : null}
-      </AlertDescription>
-    </Alert>
-  );
+function createIntentKey(): string {
+  return `engagement:${crypto.randomUUID()}`;
 }
 
-function valueFromForm(form: FormData, name: string): string {
-  const value = form.get(name);
-  return typeof value === "string" ? value.trim() : "";
-}
-
-function optionalText(value: string): string | null {
-  return value.length === 0 ? null : value;
-}
-
-function numberFromForm(form: FormData, name: string): number {
-  return Number(valueFromForm(form, name));
-}
-
-function idempotencyKey(intent: string): string {
-  return `engagement:${intent}:${crypto.randomUUID()}`;
-}
-
-function DialogFormActions({
-  pending,
-}: Readonly<{ pending: boolean }>): React.ReactElement {
-  return (
-    <DialogFooter>
-      <Button type="submit" disabled={pending}>
-        {pending ? "Saving…" : "Save changes"}
-      </Button>
-    </DialogFooter>
-  );
-}
-
-function CreateSequenceDialog({
-  tenantId,
-  disabled,
-}: Readonly<{
-  tenantId: string | undefined;
-  disabled: boolean;
-}>): React.ReactElement {
-  const router = useRouter();
-  const [open, setOpen] = React.useState(false);
-  const [active, setActive] = React.useState(true);
-  const [pending, startTransition] = React.useTransition();
-  const [result, setResult] =
-    React.useState<EngagementDashboardActionResult | null>(null);
-  const keyRef = React.useRef<string | null>(null);
-
-  function submit(event: React.SyntheticEvent<HTMLFormElement>): void {
-    event.preventDefault();
-    const form = new FormData(event.currentTarget);
-    keyRef.current ??= idempotencyKey("video-sequence-create");
-
-    startTransition(() => {
-      void createEngagementVideoSequenceAction({
-        ...(tenantId !== undefined ? { tenantId } : {}),
-        values: {
-          sequenceCode: valueFromForm(form, "sequenceCode"),
-          name: valueFromForm(form, "name"),
-          description: optionalText(valueFromForm(form, "description")),
-          active,
-          reason: valueFromForm(form, "reason"),
-          idempotencyKey:
-            keyRef.current ?? idempotencyKey("video-sequence-create"),
-        },
-      }).then((nextResult) => {
-        setResult(nextResult);
-        if (nextResult.ok) {
-          keyRef.current = null;
-          setOpen(false);
-          setActive(true);
-          router.refresh();
-        }
-      });
-    });
+function showResult(
+  result: EngagementDashboardActionResult,
+  toast: ReturnType<typeof useToast>,
+): boolean {
+  if (result.ok) {
+    toast.success({ title: result.message });
+    return true;
   }
 
-  return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button disabled={disabled}>
-          <CirclePlus aria-hidden="true" className="size-4" />
-          New sequence
-        </Button>
-      </DialogTrigger>
-      <DialogContent className="sm:max-w-2xl">
-        <form className="grid gap-5" onSubmit={submit}>
-          <DialogHeader>
-            <DialogTitle>Create video sequence</DialogTitle>
-            <DialogDescription>
-              Define a tenant-level master schedule. Existing materialized lead
-              video messages are not rewritten by this operation.
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="grid gap-2">
-              <Label htmlFor="video-sequence-code">Sequence code</Label>
-              <Input
-                id="video-sequence-code"
-                name="sequenceCode"
-                autoComplete="off"
-                placeholder="vehicle_enquiry_default"
-                pattern="[a-z][a-z0-9_]{2,63}"
-                maxLength={64}
-                required
-              />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="video-sequence-name">Display name</Label>
-              <Input
-                id="video-sequence-name"
-                name="name"
-                autoComplete="off"
-                maxLength={256}
-                required
-              />
-            </div>
-          </div>
-
-          <div className="grid gap-2">
-            <Label htmlFor="video-sequence-description">Description</Label>
-            <Textarea
-              id="video-sequence-description"
-              name="description"
-              maxLength={2000}
-              rows={3}
-            />
-          </div>
-
-          <div className="flex items-center justify-between gap-4 rounded-2xl border p-4">
-            <div>
-              <Label htmlFor="video-sequence-active">Active</Label>
-              <p className="text-caption text-muted-readable">
-                Active sequences can be selected by configured IVR flows.
-              </p>
-            </div>
-            <Switch
-              id="video-sequence-active"
-              checked={active}
-              onCheckedChange={setActive}
-            />
-          </div>
-
-          <div className="grid gap-2">
-            <Label htmlFor="video-sequence-create-reason">Audit reason</Label>
-            <Textarea
-              id="video-sequence-create-reason"
-              name="reason"
-              minLength={5}
-              maxLength={500}
-              rows={2}
-              required
-            />
-          </div>
-
-          <MutationFeedback result={result} />
-          <DialogFormActions pending={pending} />
-        </form>
-      </DialogContent>
-    </Dialog>
-  );
+  toast.error({
+    title: "Video update failed",
+    description:
+      result.requestId === undefined
+        ? result.message
+        : `${result.message} Reference: ${result.requestId}`,
+  });
+  return false;
 }
 
-function EditSequenceDialog({
-  sequence,
-  tenantId,
-  open,
-  onOpenChange,
-}: Readonly<{
-  sequence: EngagementVideoSequence | null;
-  tenantId: string | undefined;
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-}>): React.ReactElement {
-  const router = useRouter();
-  const [active, setActive] = React.useState(sequence?.active ?? false);
-  const [pending, startTransition] = React.useTransition();
-  const [result, setResult] =
-    React.useState<EngagementDashboardActionResult | null>(null);
-  const keyRef = React.useRef<string | null>(null);
-
-  if (sequence === null) {
-    return <Dialog open={false} onOpenChange={onOpenChange} />;
-  }
-  const selectedSequence = sequence;
-
-  function submit(event: React.SyntheticEvent<HTMLFormElement>): void {
-    event.preventDefault();
-    const form = new FormData(event.currentTarget);
-    keyRef.current ??= idempotencyKey("video-sequence-update");
-
-    startTransition(() => {
-      void updateEngagementVideoSequenceAction({
-        ...(tenantId !== undefined ? { tenantId } : {}),
-        values: {
-          videoSequenceId: selectedSequence.videoSequenceId,
-          rowVersion: selectedSequence.rowVersion,
-          name: valueFromForm(form, "name"),
-          description: optionalText(valueFromForm(form, "description")),
-          active,
-          reason: valueFromForm(form, "reason"),
-          idempotencyKey:
-            keyRef.current ?? idempotencyKey("video-sequence-update"),
-        },
-      }).then((nextResult) => {
-        setResult(nextResult);
-        if (nextResult.ok) {
-          keyRef.current = null;
-          onOpenChange(false);
-          router.refresh();
-        }
-      });
-    });
-  }
-
-  const deactivationHasImpact =
-    sequence.active && !active && sequence.activeLeadSequenceCount > 0;
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-2xl">
-        <form className="grid gap-5" onSubmit={submit}>
-          <DialogHeader>
-            <DialogTitle>Edit {sequence.name}</DialogTitle>
-            <DialogDescription>
-              Sequence code <code>{sequence.sequenceCode}</code> is immutable.
-              Row version {sequence.rowVersion} protects this update from lost
-              writes.
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="grid gap-2">
-            <Label htmlFor="video-sequence-edit-name">Display name</Label>
-            <Input
-              id="video-sequence-edit-name"
-              name="name"
-              defaultValue={sequence.name}
-              maxLength={256}
-              required
-            />
-          </div>
-          <div className="grid gap-2">
-            <Label htmlFor="video-sequence-edit-description">Description</Label>
-            <Textarea
-              id="video-sequence-edit-description"
-              name="description"
-              defaultValue={sequence.description ?? ""}
-              maxLength={2000}
-              rows={3}
-            />
-          </div>
-
-          <div className="flex items-center justify-between gap-4 rounded-2xl border p-4">
-            <div>
-              <Label htmlFor="video-sequence-edit-active">Active</Label>
-              <p className="text-caption text-muted-readable">
-                {formatDashboardInteger(sequence.activeLeadSequenceCount)}{" "}
-                active lead schedules and{" "}
-                {formatDashboardInteger(sequence.pendingVideoMessageCount)}{" "}
-                pending messages currently reference this master sequence.
-              </p>
-            </div>
-            <Switch
-              id="video-sequence-edit-active"
-              checked={active}
-              onCheckedChange={setActive}
-            />
-          </div>
-
-          {deactivationHasImpact ? (
-            <Alert variant="destructive">
-              <ShieldAlert aria-hidden="true" />
-              <AlertTitle>Active lead schedules are impacted</AlertTitle>
-              <AlertDescription>
-                The backend will reject deactivation while active lead schedules
-                depend on this sequence. Existing materialized messages are
-                never silently rewritten.
-              </AlertDescription>
-            </Alert>
-          ) : null}
-
-          <div className="grid gap-2">
-            <Label htmlFor="video-sequence-edit-reason">Audit reason</Label>
-            <Textarea
-              id="video-sequence-edit-reason"
-              name="reason"
-              minLength={5}
-              maxLength={500}
-              rows={2}
-              required
-            />
-          </div>
-
-          <MutationFeedback result={result} />
-          <DialogFormActions pending={pending} />
-        </form>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-function CreateItemDialog({
-  sequence,
-  tenantId,
-  open,
-  onOpenChange,
-}: Readonly<{
-  sequence: EngagementVideoSequence | null;
-  tenantId: string | undefined;
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-}>): React.ReactElement {
-  const router = useRouter();
-  const [active, setActive] = React.useState(true);
-  const [pending, startTransition] = React.useTransition();
-  const [result, setResult] =
-    React.useState<EngagementDashboardActionResult | null>(null);
-  const keyRef = React.useRef<string | null>(null);
-
-  if (sequence === null) {
-    return <Dialog open={false} onOpenChange={onOpenChange} />;
-  }
-  const selectedSequence = sequence;
-
-  function submit(event: React.SyntheticEvent<HTMLFormElement>): void {
-    event.preventDefault();
-    const form = new FormData(event.currentTarget);
-    keyRef.current ??= idempotencyKey("video-sequence-item-create");
-
-    startTransition(() => {
-      void createEngagementVideoSequenceItemAction({
-        ...(tenantId !== undefined ? { tenantId } : {}),
-        values: {
-          videoSequenceId: selectedSequence.videoSequenceId,
-          dayNo: numberFromForm(form, "dayNo"),
-          videoTitle: valueFromForm(form, "videoTitle"),
-          videoUrl: valueFromForm(form, "videoUrl"),
-          templateCode: valueFromForm(form, "templateCode"),
-          active,
-          reason: valueFromForm(form, "reason"),
-          idempotencyKey:
-            keyRef.current ?? idempotencyKey("video-sequence-item-create"),
-        },
-      }).then((nextResult) => {
-        setResult(nextResult);
-        if (nextResult.ok) {
-          keyRef.current = null;
-          onOpenChange(false);
-          router.refresh();
-        }
-      });
-    });
-  }
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-2xl">
-        <form className="grid gap-5" onSubmit={submit}>
-          <DialogHeader>
-            <DialogTitle>Add schedule item</DialogTitle>
-            <DialogDescription>
-              Add a new effective day to {sequence.name}. Day numbers must
-              remain unique inside the sequence.
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="grid gap-4 sm:grid-cols-[8rem_1fr]">
-            <div className="grid gap-2">
-              <Label htmlFor="video-item-create-day">Day number</Label>
-              <Input
-                id="video-item-create-day"
-                name="dayNo"
-                type="number"
-                min={1}
-                max={365}
-                required
-              />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="video-item-create-title">Title</Label>
-              <Input
-                id="video-item-create-title"
-                name="videoTitle"
-                maxLength={256}
-                required
-              />
-            </div>
-          </div>
-
-          <div className="grid gap-2">
-            <Label htmlFor="video-item-create-url">HTTPS video URL</Label>
-            <Input
-              id="video-item-create-url"
-              name="videoUrl"
-              type="url"
-              inputMode="url"
-              placeholder="https://..."
-              maxLength={2048}
-              required
-            />
-          </div>
-          <div className="grid gap-2">
-            <Label htmlFor="video-item-create-template">Template code</Label>
-            <Input
-              id="video-item-create-template"
-              name="templateCode"
-              defaultValue={DEFAULT_TEMPLATE_CODE}
-              pattern="[A-Za-z0-9._:-]{3,128}"
-              maxLength={128}
-              required
-            />
-          </div>
-
-          <div className="flex items-center justify-between gap-4 rounded-2xl border p-4">
-            <div>
-              <Label htmlFor="video-item-create-active">Active item</Label>
-              <p className="text-caption text-muted-readable">
-                Inactive items remain in the master schedule but are not
-                effective for new schedules.
-              </p>
-            </div>
-            <Switch
-              id="video-item-create-active"
-              checked={active}
-              onCheckedChange={setActive}
-            />
-          </div>
-
-          <div className="grid gap-2">
-            <Label htmlFor="video-item-create-reason">Audit reason</Label>
-            <Textarea
-              id="video-item-create-reason"
-              name="reason"
-              minLength={5}
-              maxLength={500}
-              rows={2}
-              required
-            />
-          </div>
-
-          <MutationFeedback result={result} />
-          <DialogFormActions pending={pending} />
-        </form>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-function EditItemDialog({
+function VideoItemEditor({
   item,
-  tenantId,
-  open,
-  onOpenChange,
+  pendingMessageCount,
+  canUpdate,
 }: Readonly<{
-  item: EngagementVideoSequenceItem | null;
-  tenantId: string | undefined;
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
+  item: EngagementVideoSequenceItem;
+  pendingMessageCount: number;
+  canUpdate: boolean;
 }>): React.ReactElement {
   const router = useRouter();
-  const [active, setActive] = React.useState(item?.active ?? false);
+  const toast = useToast();
   const [pending, startTransition] = React.useTransition();
-  const [result, setResult] =
-    React.useState<EngagementDashboardActionResult | null>(null);
-  const keyRef = React.useRef<string | null>(null);
+  const [title, setTitle] = React.useState(item.videoTitle);
+  const [url, setUrl] = React.useState(item.videoUrl);
+  const [active, setActive] = React.useState(item.active);
+  const [reason, setReason] = React.useState("");
+  const [intentKey, setIntentKey] = React.useState("");
 
-  if (item === null) {
-    return <Dialog open={false} onOpenChange={onOpenChange} />;
-  }
-  const selectedItem = item;
+  const titleChanged = title.trim() !== item.videoTitle;
+  const urlChanged = url.trim() !== item.videoUrl;
+  const activeChanged = active !== item.active;
+  const hasChanges = titleChanged || urlChanged || activeChanged;
 
-  function submit(event: React.SyntheticEvent<HTMLFormElement>): void {
-    event.preventDefault();
-    const form = new FormData(event.currentTarget);
-    keyRef.current ??= idempotencyKey("video-sequence-item-update");
+  const markIntent = React.useCallback((): void => {
+    setIntentKey((current) =>
+      current.length >= 16 ? current : createIntentKey(),
+    );
+  }, []);
 
-    startTransition(() => {
-      void updateEngagementVideoSequenceItemAction({
-        ...(tenantId !== undefined ? { tenantId } : {}),
-        values: {
-          videoSequenceItemId: selectedItem.videoSequenceItemId,
-          rowVersion: selectedItem.rowVersion,
-          dayNo: numberFromForm(form, "dayNo"),
-          videoTitle: valueFromForm(form, "videoTitle"),
-          videoUrl: valueFromForm(form, "videoUrl"),
-          templateCode: valueFromForm(form, "templateCode"),
-          active,
-          reason: valueFromForm(form, "reason"),
-          idempotencyKey:
-            keyRef.current ?? idempotencyKey("video-sequence-item-update"),
-        },
-      }).then((nextResult) => {
-        setResult(nextResult);
-        if (nextResult.ok) {
-          keyRef.current = null;
-          onOpenChange(false);
+  const submit = React.useCallback(
+    (event: React.SyntheticEvent<HTMLFormElement>): void => {
+      event.preventDefault();
+      const normalizedTitle = title.trim();
+      const normalizedUrl = url.trim();
+      const normalizedReason = reason.trim();
+      const key = intentKey.length >= 16 ? intentKey : createIntentKey();
+
+      if (!hasChanges) {
+        toast.info({ title: "No video changes to save" });
+        return;
+      }
+
+      if (
+        normalizedTitle.length === 0 ||
+        normalizedTitle.length > 1000 ||
+        normalizedUrl.length === 0 ||
+        normalizedReason.length < 5
+      ) {
+        toast.error({
+          title: "Review the video details",
+          description:
+            "A title, HTTPS video link, and five-character audit reason are required.",
+        });
+        return;
+      }
+
+      setIntentKey(key);
+      startTransition(async () => {
+        const result = await updateEngagementVideoSequenceItemAction({
+          values: {
+            videoSequenceItemId: item.videoSequenceItemId,
+            rowVersion: item.rowVersion,
+            ...(titleChanged ? { videoTitle: normalizedTitle } : {}),
+            ...(urlChanged ? { videoUrl: normalizedUrl } : {}),
+            ...(activeChanged ? { active } : {}),
+            reason: normalizedReason,
+            idempotencyKey: key,
+          },
+        });
+
+        if (showResult(result, toast)) {
+          setReason("");
+          setIntentKey("");
           router.refresh();
         }
       });
-    });
-  }
+    },
+    [
+      active,
+      activeChanged,
+      hasChanges,
+      intentKey,
+      item.rowVersion,
+      item.videoSequenceItemId,
+      reason,
+      router,
+      startTransition,
+      title,
+      titleChanged,
+      toast,
+      url,
+      urlChanged,
+    ],
+  );
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-2xl">
-        <form className="grid gap-5" onSubmit={submit}>
-          <DialogHeader>
-            <DialogTitle>Edit schedule item</DialogTitle>
-            <DialogDescription>
-              Row version {item.rowVersion} protects this change. Updating the
-              master item affects newly materialized schedules by default, not
-              existing lead messages.
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="grid gap-4 sm:grid-cols-[8rem_1fr]">
-            <div className="grid gap-2">
-              <Label htmlFor="video-item-edit-day">Day number</Label>
-              <Input
-                id="video-item-edit-day"
-                name="dayNo"
-                type="number"
-                min={1}
-                max={365}
-                defaultValue={item.dayNo}
-                required
-              />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="video-item-edit-title">Title</Label>
-              <Input
-                id="video-item-edit-title"
-                name="videoTitle"
-                defaultValue={item.videoTitle}
-                maxLength={256}
-                required
-              />
-            </div>
+    <form
+      onSubmit={submit}
+      onChange={markIntent}
+      className="grid gap-5 rounded-3xl border bg-background/60 p-4 shadow-xs sm:p-5"
+    >
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex min-w-0 items-start gap-3">
+          <div className="flex size-10 shrink-0 items-center justify-center rounded-2xl border bg-muted/50">
+            <CalendarDays aria-hidden="true" className="size-5" />
           </div>
-
-          <div className="grid gap-2">
-            <Label htmlFor="video-item-edit-url">HTTPS video URL</Label>
-            <Input
-              id="video-item-edit-url"
-              name="videoUrl"
-              type="url"
-              inputMode="url"
-              defaultValue={item.videoUrl}
-              maxLength={2048}
-              required
-            />
+          <div className="min-w-0">
+            <p className="text-card-title">Day {item.dayNo}</p>
+            <p className="mt-1 text-caption text-muted-readable">
+              Template {item.templateCode} · Last updated{" "}
+              {formatDashboardDateTime(item.updatedAt)}
+            </p>
           </div>
-          <div className="grid gap-2">
-            <Label htmlFor="video-item-edit-template">Template code</Label>
-            <Input
-              id="video-item-edit-template"
-              name="templateCode"
-              defaultValue={item.templateCode}
-              pattern="[A-Za-z0-9._:-]{3,128}"
-              maxLength={128}
-              required
-            />
-          </div>
+        </div>
 
-          <div className="flex items-center justify-between gap-4 rounded-2xl border p-4">
-            <div>
-              <Label htmlFor="video-item-edit-active">Active item</Label>
-              <p className="text-caption text-muted-readable">
-                Deactivation preserves the item for audit history and future
-                reactivation.
-              </p>
-            </div>
-            <Switch
-              id="video-item-edit-active"
-              checked={active}
-              onCheckedChange={setActive}
-            />
+        <div className="flex items-center gap-3 rounded-2xl border bg-muted/30 px-3 py-2">
+          <div>
+            <p className="text-body-sm font-medium">Available</p>
+            <p className="text-caption text-muted-readable">
+              Controls future delivery attempts
+            </p>
           </div>
+          <Switch
+            checked={active}
+            onCheckedChange={(nextActive) => {
+              markIntent();
+              setActive(nextActive);
+            }}
+            disabled={!canUpdate || pending}
+            aria-label={`Day ${String(item.dayNo)} video active`}
+          />
+        </div>
+      </div>
 
-          <div className="grid gap-2">
-            <Label htmlFor="video-item-edit-reason">Audit reason</Label>
-            <Textarea
-              id="video-item-edit-reason"
-              name="reason"
-              minLength={5}
-              maxLength={500}
-              rows={2}
-              required
-            />
-          </div>
+      <Field>
+        <FieldLabel htmlFor={`video-title-${item.videoSequenceItemId}`}>
+          Customer-facing video title
+        </FieldLabel>
+        <Textarea
+          id={`video-title-${item.videoSequenceItemId}`}
+          value={title}
+          minLength={1}
+          maxLength={1000}
+          rows={4}
+          onChange={(event) => {
+            setTitle(event.currentTarget.value);
+          }}
+          disabled={!canUpdate || pending}
+          placeholder="Write the title shown with this scheduled video"
+        />
+        <FieldDescription>
+          Use clear, customer-friendly language. Updating this title also
+          updates every pending message for this schedule item.
+        </FieldDescription>
+      </Field>
 
-          <MutationFeedback result={result} />
-          <DialogFormActions pending={pending} />
-        </form>
-      </DialogContent>
-    </Dialog>
+      <Field>
+        <FieldLabel htmlFor={`video-url-${item.videoSequenceItemId}`}>
+          Video link
+        </FieldLabel>
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <Input
+            id={`video-url-${item.videoSequenceItemId}`}
+            type="url"
+            value={url}
+            maxLength={2048}
+            onChange={(event) => {
+              setUrl(event.currentTarget.value);
+            }}
+            disabled={!canUpdate || pending}
+            placeholder="https://..."
+          />
+          <Button variant="outline" asChild>
+            <a href={item.videoUrl} target="_blank" rel="noreferrer noopener">
+              Preview
+              <ExternalLink aria-hidden="true" className="size-4" />
+            </a>
+          </Button>
+        </div>
+        <FieldDescription>
+          Only HTTPS links are accepted. A changed link is propagated to all
+          pending messages, while sent and failed history remains unchanged.
+        </FieldDescription>
+      </Field>
+
+      <Field>
+        <FieldLabel htmlFor={`video-reason-${item.videoSequenceItemId}`}>
+          Audit reason
+        </FieldLabel>
+        <Textarea
+          id={`video-reason-${item.videoSequenceItemId}`}
+          value={reason}
+          minLength={5}
+          maxLength={500}
+          rows={3}
+          onChange={(event) => {
+            setReason(event.currentTarget.value);
+          }}
+          disabled={!canUpdate || pending}
+          placeholder="Explain why the customer-facing video is changing"
+        />
+      </Field>
+
+      <div className="flex flex-col gap-3 border-t pt-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-2 text-caption text-muted-readable">
+          <MessageCircleMore aria-hidden="true" className="size-4" />
+          Up to {formatDashboardInteger(pendingMessageCount)} pending messages
+          in this sequence may be affected by content changes.
+        </div>
+        <Button
+          type="submit"
+          disabled={
+            !canUpdate || pending || !hasChanges || reason.trim().length < 5
+          }
+        >
+          {pending ? (
+            <LoaderCircle aria-hidden="true" className="size-4 animate-spin" />
+          ) : (
+            <Save aria-hidden="true" className="size-4" />
+          )}
+          Save video details
+        </Button>
+      </div>
+    </form>
   );
 }
 
-function SequenceSchedule({
+function VideoSequenceCard({
   sequence,
   canUpdate,
-  onEditItem,
 }: Readonly<{
   sequence: EngagementVideoSequence;
   canUpdate: boolean;
-  onEditItem: (item: EngagementVideoSequenceItem) => void;
 }>): React.ReactElement {
-  if (sequence.items.length === 0) {
-    return (
-      <div className="rounded-2xl border border-dashed p-5 text-center text-body-sm text-muted-readable">
-        No schedule items have been configured.
-      </div>
-    );
-  }
-
   return (
-    <div className="grid gap-2">
-      {sequence.items.map((item) => (
-        <div
-          key={item.videoSequenceItemId}
-          className={cn(
-            "grid gap-3 rounded-2xl border p-3 md:grid-cols-[5rem_minmax(0,1fr)_auto] md:items-center",
-            !item.active && "opacity-65",
-          )}
-        >
-          <div className="flex items-center gap-2">
-            <CalendarClock
-              aria-hidden="true"
-              className="size-4 text-muted-readable"
-            />
-            <span className="font-medium text-tabular">Day {item.dayNo}</span>
-          </div>
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
-              <p className="truncate font-medium">{item.videoTitle}</p>
-              <Badge variant={item.active ? "secondary" : "outline"}>
-                {item.active ? "Active" : "Inactive"}
-              </Badge>
+    <Card>
+      <CardHeader className="gap-4 border-b">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div className="flex min-w-0 items-start gap-3">
+            <div className="flex size-12 shrink-0 items-center justify-center rounded-2xl border bg-muted/40">
+              <Video aria-hidden="true" className="size-6" />
             </div>
-            <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-caption text-muted-readable">
-              <code>{item.templateCode}</code>
-              <span>Version {item.rowVersion}</span>
-              <span>{formatDashboardDateTime(item.updatedAt)}</span>
-              <a
-                href={item.videoUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1 underline underline-offset-4"
-              >
-                Preview video
-                <ExternalLink aria-hidden="true" className="size-3" />
-              </a>
+            <div className="min-w-0">
+              <CardTitle>{sequence.name}</CardTitle>
+              <CardDescription className="mt-1">
+                {sequence.description ??
+                  "Customer video schedule for vehicle-sales engagement."}
+              </CardDescription>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <Badge variant={sequence.active ? "secondary" : "outline"}>
+                  {sequence.active ? "Schedule active" : "Schedule inactive"}
+                </Badge>
+                <Badge variant="outline">{sequence.sequenceCode}</Badge>
+                <Badge variant="outline">
+                  {sequence.items.length} scheduled videos
+                </Badge>
+              </div>
             </div>
           </div>
-          {canUpdate ? (
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                onEditItem(item);
-              }}
-            >
-              <Pencil aria-hidden="true" className="size-4" />
-              Edit
-            </Button>
-          ) : null}
+
+          <div className="grid min-w-64 grid-cols-2 gap-2">
+            <div className="rounded-2xl border bg-muted/20 p-3">
+              <p className="text-caption text-muted-readable">Active leads</p>
+              <p className="mt-1 text-card-title text-tabular">
+                {formatDashboardInteger(sequence.activeLeadSequenceCount)}
+              </p>
+            </div>
+            <div className="rounded-2xl border bg-muted/20 p-3">
+              <p className="text-caption text-muted-readable">
+                Pending messages
+              </p>
+              <p className="mt-1 text-card-title text-tabular">
+                {formatDashboardInteger(sequence.pendingVideoMessageCount)}
+              </p>
+            </div>
+          </div>
         </div>
-      ))}
-    </div>
+      </CardHeader>
+
+      <CardContent className="grid gap-4 pt-5">
+        {!canUpdate ? (
+          <Alert>
+            <CheckCircle2 aria-hidden="true" />
+            <AlertTitle>Read-only schedule</AlertTitle>
+            <AlertDescription>
+              The active actor can review the effective schedule but cannot edit
+              customer-facing video details.
+            </AlertDescription>
+          </Alert>
+        ) : null}
+
+        <Alert>
+          <MessageCircleMore aria-hidden="true" />
+          <AlertTitle>Safe pending-message propagation</AlertTitle>
+          <AlertDescription>
+            Editing a title or video link updates every pending materialized
+            message for the matching day. Messages already sent, cancelled, or
+            failed are not rewritten, preserving delivery history and audit
+            integrity.
+          </AlertDescription>
+        </Alert>
+
+        <div className="grid gap-4">
+          {sequence.items.map((item) => (
+            <VideoItemEditor
+              key={item.videoSequenceItemId}
+              item={item}
+              pendingMessageCount={sequence.pendingVideoMessageCount}
+              canUpdate={canUpdate}
+            />
+          ))}
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
 export function VideoSequenceConfiguration({
-  data,
-  tenantId,
+  sequences,
   canUpdate,
 }: VideoSequenceConfigurationProps): React.ReactElement {
-  const [expandedSequenceId, setExpandedSequenceId] = React.useState<
-    string | null
-  >(null);
-  const [editSequence, setEditSequence] =
-    React.useState<EngagementVideoSequence | null>(null);
-  const [createItemFor, setCreateItemFor] =
-    React.useState<EngagementVideoSequence | null>(null);
-  const [editItem, setEditItem] =
-    React.useState<EngagementVideoSequenceItem | null>(null);
+  if (sequences.length === 0) {
+    return (
+      <Alert>
+        <Video aria-hidden="true" />
+        <AlertTitle>No vehicle-sales video schedule is configured</AlertTitle>
+        <AlertDescription>
+          Sequence creation is intentionally not exposed in this daily
+          operations workspace. Configure master sequences through the
+          controlled backend administration process.
+        </AlertDescription>
+      </Alert>
+    );
+  }
 
   return (
-    <div className="grid gap-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h3 className="text-card-title">Video sequences</h3>
-          <p className="mt-1 max-w-3xl text-body-sm text-muted-readable">
-            Tenant-level master schedules with explicit active-lead impact,
-            row-version concurrency, and audited reasons. Existing materialized
-            lead messages are not silently changed.
-          </p>
-        </div>
-        {canUpdate ? (
-          <CreateSequenceDialog tenantId={tenantId} disabled={false} />
-        ) : null}
-      </div>
-
-      {data.items.length === 0 ? (
-        <div className="rounded-3xl border border-dashed p-8 text-center">
-          <Film
-            aria-hidden="true"
-            className="mx-auto size-8 text-muted-readable"
-          />
-          <p className="mt-3 text-card-title">No video sequences</p>
-          <p className="mt-1 text-body-sm text-muted-readable">
-            Create the first tenant-level sequence when the configuration
-            permission is available.
-          </p>
-        </div>
-      ) : (
-        <div className="grid gap-4">
-          {data.items.map((sequence) => {
-            const expanded = expandedSequenceId === sequence.videoSequenceId;
-            return (
-              <Card key={sequence.videoSequenceId}>
-                <CardHeader className="gap-4 md:flex-row md:items-start md:justify-between">
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <CardTitle>{sequence.name}</CardTitle>
-                      <Badge
-                        variant={sequence.active ? "secondary" : "outline"}
-                      >
-                        {sequence.active ? "Active" : "Inactive"}
-                      </Badge>
-                      <Badge variant="outline">{sequence.sequenceCode}</Badge>
-                    </div>
-                    <CardDescription className="mt-2">
-                      {sequence.description ?? "No description configured."}
-                    </CardDescription>
-                    <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-caption text-muted-readable">
-                      <span>
-                        {formatDashboardInteger(
-                          sequence.activeLeadSequenceCount,
-                        )}{" "}
-                        active lead schedules
-                      </span>
-                      <span>
-                        {formatDashboardInteger(
-                          sequence.pendingVideoMessageCount,
-                        )}{" "}
-                        pending messages
-                      </span>
-                      <span>
-                        {formatDashboardInteger(sequence.items.length)} schedule
-                        items
-                      </span>
-                      <span>Version {sequence.rowVersion}</span>
-                      <span>
-                        Updated {formatDashboardDateTime(sequence.updatedAt)}
-                      </span>
-                    </div>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    {canUpdate ? (
-                      <>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={() => {
-                            setCreateItemFor(sequence);
-                          }}
-                        >
-                          <CirclePlus aria-hidden="true" className="size-4" />
-                          Add item
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={() => {
-                            setEditSequence(sequence);
-                          }}
-                        >
-                          <Pencil aria-hidden="true" className="size-4" />
-                          Edit sequence
-                        </Button>
-                      </>
-                    ) : null}
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      aria-expanded={expanded}
-                      onClick={() => {
-                        setExpandedSequenceId(
-                          expanded ? null : sequence.videoSequenceId,
-                        );
-                      }}
-                    >
-                      {expanded ? (
-                        <ChevronUp aria-hidden="true" className="size-4" />
-                      ) : (
-                        <ChevronDown aria-hidden="true" className="size-4" />
-                      )}
-                      {expanded ? "Hide schedule" : "Preview schedule"}
-                    </Button>
-                  </div>
-                </CardHeader>
-                {expanded ? (
-                  <>
-                    <Separator />
-                    <CardContent className="pt-5">
-                      <SequenceSchedule
-                        sequence={sequence}
-                        canUpdate={canUpdate}
-                        onEditItem={setEditItem}
-                      />
-                    </CardContent>
-                  </>
-                ) : null}
-              </Card>
-            );
-          })}
-        </div>
-      )}
-
-      <EditSequenceDialog
-        key={editSequence?.videoSequenceId ?? "no-sequence"}
-        sequence={editSequence}
-        tenantId={tenantId}
-        open={editSequence !== null}
-        onOpenChange={(nextOpen) => {
-          if (!nextOpen) setEditSequence(null);
-        }}
-      />
-      <CreateItemDialog
-        key={createItemFor?.videoSequenceId ?? "no-item-sequence"}
-        sequence={createItemFor}
-        tenantId={tenantId}
-        open={createItemFor !== null}
-        onOpenChange={(nextOpen) => {
-          if (!nextOpen) setCreateItemFor(null);
-        }}
-      />
-      <EditItemDialog
-        key={editItem?.videoSequenceItemId ?? "no-sequence-item"}
-        item={editItem}
-        tenantId={tenantId}
-        open={editItem !== null}
-        onOpenChange={(nextOpen) => {
-          if (!nextOpen) setEditItem(null);
-        }}
-      />
+    <div className="grid gap-5">
+      {sequences.map((sequence) => (
+        <VideoSequenceCard
+          key={sequence.videoSequenceId}
+          sequence={sequence}
+          canUpdate={canUpdate}
+        />
+      ))}
     </div>
   );
 }

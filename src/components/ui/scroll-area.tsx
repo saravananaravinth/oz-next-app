@@ -19,7 +19,7 @@ function ScrollArea({
     >
       <ScrollAreaPrimitive.Viewport
         data-slot="scroll-area-viewport"
-        className="size-full rounded-[inherit] outline-none transition-[color,box-shadow] focus-visible:ring-3 focus-visible:ring-ring/40 focus-visible:outline-none"
+        className="size-full rounded-[inherit] outline-none transition-[color,box-shadow] duration-[var(--motion-duration-fast)] ease-enterprise focus-visible:ring-3 focus-visible:ring-ring/40 focus-visible:outline-none motion-reduce:transition-none"
       >
         {children}
       </ScrollAreaPrimitive.Viewport>
@@ -41,9 +41,9 @@ function ScrollBar({
       orientation={orientation}
       className={cn(
         [
-          "flex touch-none p-px select-none transition-colors duration-200 ease-out",
+          "flex touch-none p-px select-none transition-colors duration-[var(--motion-duration-fast)] ease-enterprise motion-reduce:transition-none",
           "data-[orientation=horizontal]:h-2.5 data-[orientation=horizontal]:flex-col data-[orientation=horizontal]:border-t data-[orientation=horizontal]:border-t-transparent",
-          "data-[orientation=vertical]:h-full data-[orientation=vertical]:w-2.5 data-[orientation=vertical]:border-l data-[orientation=vertical]:border-l-transparent",
+          "data-[orientation=vertical]:h-full data-[orientation=vertical]:w-2.5 data-[orientation=vertical]:border-s data-[orientation=vertical]:border-s-transparent",
         ].join(" "),
         className,
       )}
@@ -51,7 +51,7 @@ function ScrollBar({
     >
       <ScrollAreaPrimitive.ScrollAreaThumb
         data-slot="scroll-area-thumb"
-        className="relative flex-1 rounded-full bg-border transition-colors hover:bg-muted-foreground/40"
+        className="relative flex-1 rounded-full bg-muted-foreground/35 transition-colors duration-[var(--motion-duration-fast)] ease-enterprise hover:bg-muted-foreground/55 motion-reduce:transition-none"
       />
     </ScrollAreaPrimitive.ScrollAreaScrollbar>
   );

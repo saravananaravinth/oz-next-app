@@ -38,6 +38,39 @@ export type BrowserApiOptions<T> = Readonly<{
   retryOnUnauthorized?: boolean;
 }>;
 
+export async function putPresignedUpload(
+  url: string,
+  method: string,
+  headers: Headers,
+  body: File,
+): Promise<void> {
+  const parsedUrl = new URL(url);
+  if (parsedUrl.protocol !== "https:" || method !== HTTP_METHODS.PUT) {
+    throw new ApiHttpError({
+      message: "Invalid presigned upload target.",
+      status: HTTP_STATUS.BAD_REQUEST,
+      code: "invalid_presigned_upload_target",
+    });
+  }
+
+  const response = await fetch(parsedUrl, {
+    method: HTTP_METHODS.PUT,
+    headers,
+    body,
+    cache: "no-store",
+    credentials: "omit",
+    redirect: "error",
+    referrerPolicy: "no-referrer",
+  });
+
+  if (!response.ok) {
+    throw new NetworkError(
+      "Presigned storage upload failed.",
+      "presigned_upload_failed",
+    );
+  }
+}
+
 type RefreshHandler = () => Promise<boolean>;
 
 const IDEMPOTENT_METHODS = new Set<HttpMethod>(SAFE_HTTP_METHODS);

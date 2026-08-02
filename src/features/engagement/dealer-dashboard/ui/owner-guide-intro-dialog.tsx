@@ -24,13 +24,13 @@ import {
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/shared/hooks/use-toast";
 import { UI_STORAGE_KEYS } from "@/lib/ui-preferences";
 
@@ -222,13 +222,7 @@ export function OwnerGuideIntroDialog(): React.ReactElement {
           }
         }}
       >
-        <DialogContent
-          showCloseButton={false}
-          className={[
-            "max-h-[min(92dvh,46rem)] overflow-hidden sm:max-w-3xl",
-            "grid-rows-[auto_minmax(0,1fr)_auto]",
-          ].join(" ")}
-        >
+        <DialogContent showCloseButton={false} className="sm:max-w-3xl">
           <DialogHeader>
             <div
               className={[
@@ -245,8 +239,8 @@ export function OwnerGuideIntroDialog(): React.ReactElement {
             </DialogDescription>
           </DialogHeader>
 
-          <ScrollArea className="h-full min-h-0">
-            <ol className="grid gap-3 pr-4 md:grid-cols-2">
+          <DialogBody>
+            <ol className="grid gap-3 md:grid-cols-2">
               {GUIDE_STEPS.map((step, index) => (
                 <li
                   key={step.title}
@@ -279,7 +273,7 @@ export function OwnerGuideIntroDialog(): React.ReactElement {
                 </li>
               ))}
             </ol>
-          </ScrollArea>
+          </DialogBody>
 
           <DialogFooter className="gap-3 sm:items-center sm:justify-between">
             <p className="text-caption text-muted-readable text-pretty sm:max-w-md">

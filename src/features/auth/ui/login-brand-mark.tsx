@@ -1,32 +1,20 @@
 // oz-next-app/src/features/auth/ui/login-brand-mark.tsx
-import Image from "next/image";
+import type { ReactElement } from "react";
 
-import {
-  BRAND_LOGO_INTRINSIC_HEIGHT,
-  BRAND_LOGO_INTRINSIC_WIDTH,
-} from "@/components/common/brand-assets";
+const BRAND_LOGO_CLASS_NAME =
+  "block h-11 w-[11.25rem] bg-[url('/logo-light.svg')] bg-contain bg-center bg-no-repeat dark:bg-[url('/logo-dark.svg')] forced-colors:hidden";
 
-const BRAND_ICON_SIZE_CLASS_NAME = "h-11 w-auto";
-
-export function LoginBrandMark() {
+export function LoginBrandMark(): ReactElement {
   return (
-    <div aria-hidden="true" className="flex items-center justify-center">
-      <Image
-        src="/logo-light.svg"
-        alt=""
-        width={BRAND_LOGO_INTRINSIC_WIDTH}
-        height={BRAND_LOGO_INTRINSIC_HEIGHT}
-        className={`block ${BRAND_ICON_SIZE_CLASS_NAME} dark:hidden`}
-        priority
-      />
-      <Image
-        src="/logo-dark.svg"
-        alt=""
-        width={BRAND_LOGO_INTRINSIC_WIDTH}
-        height={BRAND_LOGO_INTRINSIC_HEIGHT}
-        className={`hidden ${BRAND_ICON_SIZE_CLASS_NAME} dark:block`}
-        priority
-      />
+    <div
+      data-slot="login-brand-mark"
+      aria-hidden="true"
+      className="flex min-h-11 items-center justify-center"
+    >
+      <span className={BRAND_LOGO_CLASS_NAME} />
+      <span className="hidden text-section-title forced-colors:block">
+        Ozotec EV
+      </span>
     </div>
   );
 }

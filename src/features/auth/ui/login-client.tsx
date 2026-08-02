@@ -2,7 +2,7 @@
 "use client";
 
 import { useSearchParams } from "next/navigation";
-import { useCallback, useMemo, useState } from "react";
+import { useState, type ReactElement } from "react";
 
 import {
   Card,
@@ -65,6 +65,7 @@ const CONTROL_CHARACTER_REPLACEMENT = " ";
 const DELETE_CONTROL_CHARACTER_CODE = 127;
 const WHITESPACE_PATTERN = /\s+/gu;
 const SAFE_EMAIL_LOCAL_PATTERN = /[^a-z0-9._-]/gu;
+const SAFE_EMAIL_DOMAIN_PATTERN = /^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$/u;
 const NON_DIGIT_PATTERN = /\D/gu;
 
 function isUnsafeControlCode(code: number): boolean {
@@ -107,7 +108,7 @@ function normalizeAttemptsRemaining(value: number): number {
     return 0;
   }
 
-  return Math.max(0, Math.trunc(value));
+  return Math.max(0, Math.min(99, Math.trunc(value)));
 }
 
 function normalizeDisplayText(value: string | null | undefined): string | null {
@@ -176,20 +177,25 @@ function maskEmailForVerification(value: string): string | null {
   }
 
   const local = email.local.replace(SAFE_EMAIL_LOCAL_PATTERN, "");
+  const domain = email.domain;
 
-  if (local.length === 0) {
+  if (
+    local.length === 0 ||
+    domain.length > 253 ||
+    domain.includes("..") ||
+    !SAFE_EMAIL_DOMAIN_PATTERN.test(domain)
+  ) {
     return null;
   }
 
   if (local.length <= 3) {
     const first = local[0] ?? "";
-    const last =
-      local.length > 1 ? (email.local[email.local.length - 1] ?? "") : "";
+    const last = local.length > 1 ? (local[local.length - 1] ?? "") : "";
 
-    return `${first}**${last}@${email.domain}`;
+    return `${first}**${last}@${domain}`;
   }
 
-  return `${local.slice(0, 2)}***${local.slice(-1)}@${email.domain}`;
+  return `${local.slice(0, 2)}***${local.slice(-1)}@${domain}`;
 }
 
 function maskPhoneForVerification(value: string): string | null {
@@ -216,7 +222,8 @@ function resolveDestinationLabel(
 ): string {
   return (
     normalizeDisplayText(response.destination?.value_masked) ??
-    fallbackDestinationLabel(identifier)
+    normalizeDisplayText(fallbackDestinationLabel(identifier)) ??
+    "your registered contact"
   );
 }
 
@@ -245,33 +252,26 @@ function buildVerifyState(
   };
 }
 
-export function LoginClient() {
+export function LoginClient(): ReactElement {
   const searchParams = useSearchParams();
   const [state, setState] = useState<LoginState>(INITIAL_STATE);
 
-  const nextPath = useMemo(
-    () => safeNextPath(searchParams.get("next")),
-    [searchParams],
-  );
-  const notice = useMemo(
-    () => loginNoticeFromReason(searchParams.get("reason")),
-    [searchParams],
-  );
+  const nextPath = safeNextPath(searchParams.get("next"));
+  const notice = loginNoticeFromReason(searchParams.get("reason"));
   const step = state.step;
   const title = loginTitle(step);
   const description = loginDescription(state);
 
-  const handleStartSuccess = useCallback(
-    (input: Readonly<{ identifier: string; response: LoginStartResult }>) => {
-      setState({
-        step: "verify",
-        verification: buildVerifyState(input.identifier, input.response),
-      });
-    },
-    [],
-  );
+  function handleStartSuccess(
+    input: Readonly<{ identifier: string; response: LoginStartResult }>,
+  ): void {
+    setState({
+      step: "verify",
+      verification: buildVerifyState(input.identifier, input.response),
+    });
+  }
 
-  const handleBack = useCallback(() => {
+  function handleBack(): void {
     setState((current) => ({
       step: "start",
       identifier:
@@ -279,9 +279,9 @@ export function LoginClient() {
           ? current.verification.identifier
           : current.identifier,
     }));
-  }, []);
+  }
 
-  const handleResendSuccess = useCallback((response: LoginStartResult) => {
+  function handleResendSuccess(response: LoginStartResult): void {
     setState((current) => {
       if (current.step !== "verify") {
         return current;
@@ -295,16 +295,22 @@ export function LoginClient() {
         ),
       };
     });
-  }, []);
+  }
 
   return (
-    <Card aria-labelledby="login-card-title">
+    <Card
+      data-slot="login-card"
+      aria-labelledby="login-card-title"
+      className="w-full shadow-sm shadow-foreground/5"
+    >
       <CardHeader className="items-center gap-5 text-center">
         <LoginBrandMark />
 
         <div className="grid gap-2">
-          <CardTitle id="login-card-title" className="text-page-title">
-            {title}
+          <CardTitle>
+            <h1 id="login-card-title" className="text-page-title">
+              {title}
+            </h1>
           </CardTitle>
           <CardDescription className="text-body-sm text-muted-readable">
             {description}
@@ -313,30 +319,37 @@ export function LoginClient() {
       </CardHeader>
 
       <CardContent className="grid gap-5">
-        {notice !== null ? <SessionExpiredCard notice={notice} /> : null}
+        {notice !== null && state.step === "start" ? (
+          <SessionExpiredCard notice={notice} />
+        ) : null}
 
-        {state.step === "start" ? (
-          <LoginStartForm
-            initialIdentifier={state.identifier}
-            onSuccess={handleStartSuccess}
-          />
-        ) : (
-          <OtpVerifyForm
-            identifier={state.verification.identifier}
-            challengeId={state.verification.challengeId}
-            destinationLabel={state.verification.destinationLabel}
-            expectedLength={state.verification.expectedLength}
-            attemptsRemaining={state.verification.attemptsRemaining}
-            expiresAtMs={state.verification.expiresAtMs}
-            resendAvailableAtMs={state.verification.resendAvailableAtMs}
-            nextPath={nextPath}
-            onBack={handleBack}
-            onResendSuccess={handleResendSuccess}
-          />
-        )}
+        <div
+          key={state.step}
+          className="animate-in fade-in-0 slide-in-from-bottom-1 duration-[var(--motion-duration-standard)] ease-[var(--motion-ease-standard)] motion-reduce:animate-none"
+        >
+          {state.step === "start" ? (
+            <LoginStartForm
+              initialIdentifier={state.identifier}
+              onSuccess={handleStartSuccess}
+            />
+          ) : (
+            <OtpVerifyForm
+              identifier={state.verification.identifier}
+              challengeId={state.verification.challengeId}
+              destinationLabel={state.verification.destinationLabel}
+              expectedLength={state.verification.expectedLength}
+              attemptsRemaining={state.verification.attemptsRemaining}
+              expiresAtMs={state.verification.expiresAtMs}
+              resendAvailableAtMs={state.verification.resendAvailableAtMs}
+              nextPath={nextPath}
+              onBack={handleBack}
+              onResendSuccess={handleResendSuccess}
+            />
+          )}
+        </div>
       </CardContent>
 
-      <CardFooter className="justify-center text-center text-caption text-muted-readable">
+      <CardFooter className="justify-center border-t border-border/70 bg-muted/20 text-center text-caption text-muted-readable">
         <p>
           Need help?{" "}
           <a

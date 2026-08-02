@@ -2,23 +2,32 @@
 import type { Route } from "next";
 
 import type {
+  EngagementDashboardDealerEngagementState,
   EngagementDashboardDealerSortField,
   EngagementDashboardSearchParams,
   EngagementDashboardSortDirection,
+  EngagementIssueCategory,
+  EngagementIssueState,
 } from "@/features/engagement/operations-dashboard/contracts/engagement-dashboard.schema";
 
-export const ENGAGEMENT_DASHBOARD_PATH =
-  "/engagement/dashboard" satisfies Route;
+export const ENGAGEMENT_DASHBOARD_ROUTES = {
+  overview: "/engagement/dashboard",
+  dealers: "/engagement/dashboard/dealers",
+  issues: "/engagement/dashboard/issues",
+  coverage: "/engagement/dashboard/coverage",
+  videoSequences: "/engagement/dashboard/configuration/video-sequences",
+} as const satisfies Readonly<Record<string, Route>>;
 
-type DashboardPatch = Readonly<{
-  tenantId?: string | null;
+export type EngagementDashboardRoute =
+  (typeof ENGAGEMENT_DASHBOARD_ROUTES)[keyof typeof ENGAGEMENT_DASHBOARD_ROUTES];
+
+export type EngagementDashboardPatch = Readonly<{
   from?: string | null;
   to?: string | null;
   comparison?: EngagementDashboardSearchParams["comparison"] | null;
   grain?: EngagementDashboardSearchParams["grain"] | null;
   leadSourceIds?: readonly string[] | null;
   ivrFlowCodes?: readonly string[] | null;
-  leadTypes?: readonly string[] | null;
   statuses?: readonly string[] | null;
   dealerOrgUnitIds?: readonly string[] | null;
   districts?: readonly string[] | null;
@@ -27,11 +36,16 @@ type DashboardPatch = Readonly<{
   conversionStates?: EngagementDashboardSearchParams["conversionStates"] | null;
   followUpStates?: EngagementDashboardSearchParams["followUpStates"] | null;
   issueSeverities?: EngagementDashboardSearchParams["issueSeverities"] | null;
+  issueCategories?: readonly EngagementIssueCategory[] | null;
+  issueStates?: readonly EngagementIssueState[] | null;
   q?: string | null;
+  dealerEngagementState?: EngagementDashboardDealerEngagementState | null;
   dealerSortBy?: EngagementDashboardDealerSortField | null;
   dealerSortDirection?: EngagementDashboardSortDirection | null;
   dealerLimit?: 25 | 50 | 100 | null;
   dealerCursor?: string | null;
+  leadLimit?: 25 | 50 | 100 | null;
+  leadCursor?: string | null;
   issueLimit?: 25 | 50 | 100 | null;
   issueCursor?: string | null;
 }>;
@@ -55,18 +69,21 @@ function resolved<TValue>(
   return patch === undefined ? current : patch;
 }
 
-export function engagementDashboardHref(
+export function engagementWorkspaceHref(
+  route: Route,
   query: EngagementDashboardSearchParams,
-  patch: DashboardPatch = {},
-  hash?: string,
+  patch: EngagementDashboardPatch = {},
 ): Route {
   const search = new URLSearchParams();
-  const tenantId = resolved(query.tenantId, patch.tenantId);
   const from = resolved(query.from, patch.from);
   const to = resolved(query.to, patch.to);
   const comparison = resolved(query.comparison, patch.comparison);
   const grain = resolved(query.grain, patch.grain);
   const q = resolved(query.q, patch.q);
+  const dealerEngagementState = resolved(
+    query.dealerEngagementState,
+    patch.dealerEngagementState,
+  );
   const dealerSortBy = resolved(query.dealerSortBy, patch.dealerSortBy);
   const dealerSortDirection = resolved(
     query.dealerSortDirection,
@@ -74,17 +91,21 @@ export function engagementDashboardHref(
   );
   const dealerLimit = resolved(query.dealerLimit, patch.dealerLimit);
   const dealerCursor = resolved(query.dealerCursor, patch.dealerCursor);
+  const leadLimit = resolved(query.leadLimit, patch.leadLimit);
+  const leadCursor = resolved(query.leadCursor, patch.leadCursor);
   const issueLimit = resolved(query.issueLimit, patch.issueLimit);
   const issueCursor = resolved(query.issueCursor, patch.issueCursor);
 
-  if (tenantId !== null && tenantId !== undefined)
-    search.set("tenantId", tenantId);
   if (from !== null) search.set("from", from);
   if (to !== null) search.set("to", to);
   if (comparison !== null) search.set("comparison", comparison);
   if (grain !== null) search.set("grain", grain);
-  if (q !== null && q !== undefined && q.trim().length > 0)
+  if (q !== null && q !== undefined && q.trim().length > 0) {
     search.set("q", q.trim());
+  }
+  if (dealerEngagementState !== null) {
+    search.set("dealerEngagementState", dealerEngagementState);
+  }
   if (dealerSortBy !== null) search.set("dealerSortBy", dealerSortBy);
   if (dealerSortDirection !== null) {
     search.set("dealerSortDirection", dealerSortDirection);
@@ -92,6 +113,10 @@ export function engagementDashboardHref(
   if (dealerLimit !== null) search.set("dealerLimit", String(dealerLimit));
   if (dealerCursor !== null && dealerCursor !== undefined) {
     search.set("dealerCursor", dealerCursor);
+  }
+  if (leadLimit !== null) search.set("leadLimit", String(leadLimit));
+  if (leadCursor !== null && leadCursor !== undefined) {
+    search.set("leadCursor", leadCursor);
   }
   if (issueLimit !== null) search.set("issueLimit", String(issueLimit));
   if (issueCursor !== null && issueCursor !== undefined) {
@@ -107,11 +132,6 @@ export function engagementDashboardHref(
     search,
     "ivrFlowCode",
     resolved(query.ivrFlowCodes, patch.ivrFlowCodes) ?? [],
-  );
-  appendMany(
-    search,
-    "leadType",
-    resolved(query.leadTypes, patch.leadTypes) ?? [],
   );
   appendMany(search, "status", resolved(query.statuses, patch.statuses) ?? []);
   appendMany(
@@ -145,56 +165,36 @@ export function engagementDashboardHref(
     "issueSeverity",
     resolved(query.issueSeverities, patch.issueSeverities) ?? [],
   );
+  appendMany(
+    search,
+    "issueCategory",
+    resolved(query.issueCategories, patch.issueCategories) ?? [],
+  );
+  appendMany(
+    search,
+    "issueState",
+    resolved(query.issueStates, patch.issueStates) ?? [],
+  );
 
   const serialized = search.toString();
-  const fragment: "" | `#${string}` =
-    hash === undefined || hash.length === 0
-      ? ""
-      : `#${hash.replace(/^#/u, "")}`;
-  return serialized.length > 0
-    ? `${ENGAGEMENT_DASHBOARD_PATH}?${serialized}${fragment}`
-    : `${ENGAGEMENT_DASHBOARD_PATH}${fragment}`;
+  return serialized.length > 0 ? (`${route}?${serialized}` as Route) : route;
 }
 
 export function engagementDashboardResetHref(
-  query: EngagementDashboardSearchParams,
+  route: EngagementDashboardRoute,
 ): Route {
-  const search = new URLSearchParams();
-  if (query.tenantId !== undefined) {
-    search.set("tenantId", query.tenantId);
-  }
-  const serialized = search.toString();
-  return serialized.length > 0
-    ? `${ENGAGEMENT_DASHBOARD_PATH}?${serialized}`
-    : ENGAGEMENT_DASHBOARD_PATH;
+  return route;
 }
 
 export function engagementDealerDetailHref(
   dealerOrgUnitId: string,
   query: EngagementDashboardSearchParams,
 ): Route {
-  const search = new URLSearchParams();
-  search.set("from", query.from);
-  search.set("to", query.to);
-  if (query.tenantId !== undefined) search.set("tenantId", query.tenantId);
-  appendMany(search, "leadSourceId", query.leadSourceIds);
-  appendMany(search, "ivrFlowCode", query.ivrFlowCodes);
-  appendMany(search, "leadType", query.leadTypes);
-  appendMany(search, "status", query.statuses);
-  const serialized = search.toString();
-  return `${ENGAGEMENT_DASHBOARD_PATH}/dealers/${encodeURIComponent(dealerOrgUnitId)}?${serialized}` as Route;
-}
-
-export function engagementLeadDetailHref(
-  leadId: string,
-  query: EngagementDashboardSearchParams,
-): Route {
-  const search = new URLSearchParams();
-  if (query.tenantId !== undefined) search.set("tenantId", query.tenantId);
-  const serialized = search.toString();
-  return (
-    serialized.length > 0
-      ? `${ENGAGEMENT_DASHBOARD_PATH}/leads/${encodeURIComponent(leadId)}?${serialized}`
-      : `${ENGAGEMENT_DASHBOARD_PATH}/leads/${encodeURIComponent(leadId)}`
-  ) as Route;
+  const route =
+    `${ENGAGEMENT_DASHBOARD_ROUTES.dealers}/${encodeURIComponent(dealerOrgUnitId)}` as Route;
+  return engagementWorkspaceHref(route, query, {
+    dealerCursor: null,
+    leadCursor: null,
+    issueCursor: null,
+  });
 }

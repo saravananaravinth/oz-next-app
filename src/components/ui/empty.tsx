@@ -89,7 +89,7 @@ function EmptyDescription({
     <p
       data-slot="empty-description"
       className={cn(
-        "text-body-sm text-muted-readable [&>a]:underline [&>a]:underline-offset-4 [&>a:hover]:text-primary",
+        "text-body-sm text-muted-readable [&>a]:underline [&>a]:underline-offset-4 [&>a]:transition-colors [&>a]:duration-[var(--motion-duration-fast)] [&>a]:ease-enterprise [&>a:hover]:text-primary motion-reduce:[&>a]:transition-none",
         className,
       )}
       {...props}

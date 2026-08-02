@@ -1944,6 +1944,7 @@ export function PublicServiceFeedbackPage({
                             <Input
                               id="service-feedback-city"
                               type="text"
+                              placeholder="Enter city"
                               autoComplete="address-level2"
                               enterKeyHint="next"
                               aria-invalid={
@@ -1977,6 +1978,7 @@ export function PublicServiceFeedbackPage({
                             <Input
                               id="service-feedback-district"
                               type="text"
+                              placeholder="Enter district"
                               enterKeyHint="next"
                               aria-invalid={
                                 form.formState.errors.district === undefined
@@ -2009,6 +2011,7 @@ export function PublicServiceFeedbackPage({
                             <Input
                               id="service-feedback-state"
                               type="text"
+                              placeholder="Enter state"
                               autoComplete="address-level1"
                               enterKeyHint="next"
                               aria-invalid={
@@ -2046,6 +2049,7 @@ export function PublicServiceFeedbackPage({
                                 <Input
                                   id="service-feedback-postal-code"
                                   type="text"
+                                  placeholder="Enter 6-digit PIN code"
                                   inputMode="numeric"
                                   autoComplete="postal-code"
                                   enterKeyHint="done"

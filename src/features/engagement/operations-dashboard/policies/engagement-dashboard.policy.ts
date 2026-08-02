@@ -9,9 +9,12 @@ const PERMISSION = {
   DASHBOARD_READ: "engagement:dashboard:read",
   DEALER_PERFORMANCE_READ: "engagement:dealer-performance:read",
   LEAD_READ: "engagement:lead:read",
+  CUSTOMER_CONTACT_READ: "engagement:customer-contact:read",
+  LEAD_UPDATE: "engagement:lead:update",
   SUPPORT_READ: "engagement:support:read",
   SUPPORT_INTERVENE: "engagement:support:intervene",
   LEAD_REASSIGN: "engagement:lead:reassign",
+  CRM_LEAD_UPDATE: "crm:lead:update",
   CRM_LEAD_ASSIGN: "crm:lead:assign",
   DELIVERY_RETRY: "engagement:delivery:retry",
   TASK_RETRY: "task:retry",
@@ -31,6 +34,8 @@ export type EngagementDashboardCapabilities = Readonly<{
   canReadDashboard: boolean;
   canReadDealerPerformance: boolean;
   canReadLeads: boolean;
+  canReadCustomerContact: boolean;
+  canUpdateLeads: boolean;
   canReadIssues: boolean;
   canIntervene: boolean;
   canReassignLead: boolean;
@@ -73,6 +78,8 @@ const NO_CAPABILITIES = {
   canReadDashboard: false,
   canReadDealerPerformance: false,
   canReadLeads: false,
+  canReadCustomerContact: false,
+  canUpdateLeads: false,
   canReadIssues: false,
   canIntervene: false,
   canReassignLead: false,
@@ -129,7 +136,6 @@ function forbidden(
 
 export function resolveEngagementDashboardAccess(
   me: MeResponse,
-  selectedTenantId: string | undefined,
 ): EngagementDashboardAccess {
   const scope = erpActorScopeFromMe(me);
   const actorKind = me.auth?.actor.actorKind ?? scope.actorKind;
@@ -146,7 +152,7 @@ export function resolveEngagementDashboardAccess(
       actorKind,
       role,
       scope,
-      "The engagement operations dashboard is restricted to authorized staff and administrators.",
+      "Vehicle-sales engagement operations are restricted to authorized staff and administrators.",
     );
   }
 
@@ -159,7 +165,7 @@ export function resolveEngagementDashboardAccess(
       actorKind,
       role,
       scope,
-      "Staff dashboard access requires the staff or staff_manager role.",
+      "Staff access requires the staff or staff_manager role.",
     );
   }
 
@@ -172,11 +178,9 @@ export function resolveEngagementDashboardAccess(
     );
   }
 
-  let tenantId: string;
-  let actorContext: ServerActorContextHeaders | undefined;
-
-  if (actorKind === "SUPER_ADMIN") {
-    if (selectedTenantId === undefined) {
+  const globallySelectedTenantId = me.tenant_id ?? scope.tenantId;
+  if (globallySelectedTenantId === null) {
+    if (actorKind === "SUPER_ADMIN") {
       return {
         kind: "context_required",
         actorKind,
@@ -186,28 +190,25 @@ export function resolveEngagementDashboardAccess(
       };
     }
 
-    tenantId = selectedTenantId;
-    actorContext = { tenantId };
-  } else {
-    if (scope.tenantId === null) {
-      return forbidden(
-        actorKind,
-        role,
-        scope,
-        "The authenticated actor does not have a resolved tenant scope.",
-      );
-    }
+    return forbidden(
+      actorKind,
+      role,
+      scope,
+      "The application does not have a globally selected tenant context.",
+    );
+  }
 
-    if (selectedTenantId !== undefined && selectedTenantId !== scope.tenantId) {
-      return forbidden(
-        actorKind,
-        role,
-        scope,
-        "The selected tenant does not match the authenticated tenant scope.",
-      );
-    }
-
-    tenantId = scope.tenantId;
+  if (
+    actorKind !== "SUPER_ADMIN" &&
+    scope.tenantId !== null &&
+    globallySelectedTenantId !== scope.tenantId
+  ) {
+    return forbidden(
+      actorKind,
+      role,
+      scope,
+      "The globally selected tenant does not match the authenticated tenant scope.",
+    );
   }
 
   const canReadDealerPerformance = hasPermission(
@@ -223,24 +224,41 @@ export function resolveEngagementDashboardAccess(
   const canIntervene =
     canReadIssues &&
     hasPermission(actorKind, permissions, PERMISSION.SUPPORT_INTERVENE);
-
+  const canUpdateLeads =
+    canIntervene &&
+    hasPermission(actorKind, permissions, PERMISSION.LEAD_UPDATE) &&
+    hasPermission(actorKind, permissions, PERMISSION.CRM_LEAD_UPDATE);
   const canReadVideoSequences = hasPermission(
     actorKind,
     permissions,
     PERMISSION.VIDEO_SEQUENCE_READ,
   );
+  const actorContext: ServerActorContextHeaders | undefined =
+    actorKind === "SUPER_ADMIN"
+      ? { tenantId: globallySelectedTenantId }
+      : undefined;
+  const resolvedScope: ErpActorScope = {
+    ...scope,
+    tenantId: globallySelectedTenantId,
+  };
 
   return {
     kind: "resolved",
     actorKind,
     role,
-    tenantId,
-    scope,
+    tenantId: globallySelectedTenantId,
+    scope: resolvedScope,
     ...(actorContext !== undefined ? { actorContext } : {}),
     capabilities: {
       canReadDashboard: true,
       canReadDealerPerformance,
       canReadLeads: hasPermission(actorKind, permissions, PERMISSION.LEAD_READ),
+      canReadCustomerContact: hasPermission(
+        actorKind,
+        permissions,
+        PERMISSION.CUSTOMER_CONTACT_READ,
+      ),
+      canUpdateLeads,
       canReadIssues,
       canIntervene,
       canReassignLead:

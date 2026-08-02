@@ -6,12 +6,10 @@ import { Bell } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 
 export type NotificationItem = Readonly<{
   id: string;
@@ -108,57 +106,87 @@ export function NotificationsSheet({
   const unreadCount = notifications.filter(
     (notification) => notification.unread === true,
   ).length;
+  const triggerLabel =
+    unreadCount > 0
+      ? `Open notifications, ${String(unreadCount)} unread`
+      : "Open notifications";
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
+    <Popover>
+      <PopoverTrigger asChild>
         <Button
           type="button"
           variant="outline"
           size="icon"
-          aria-label="Open notifications"
+          aria-label={triggerLabel}
         >
           <span className="relative">
             <Bell aria-hidden="true" className="size-4" />
             {unreadCount > 0 ? (
-              <span className="absolute -right-1 -top-1 size-2 rounded-full bg-primary" />
+              <span
+                aria-hidden="true"
+                className="absolute -end-1 -top-1 size-2 rounded-full bg-primary ring-2 ring-background"
+              />
             ) : null}
           </span>
         </Button>
-      </DropdownMenuTrigger>
+      </PopoverTrigger>
 
-      <DropdownMenuContent align="end" className="w-80">
-        <DropdownMenuLabel>Notifications</DropdownMenuLabel>
+      <PopoverContent
+        align="end"
+        className="w-80 max-w-[calc(100vw-1rem)] overflow-hidden p-0"
+      >
+        <div className="flex items-center justify-between gap-3 border-b border-border/70 px-4 py-3">
+          <h2 className="text-card-title">Notifications</h2>
+          {unreadCount > 0 ? (
+            <span className="rounded-full bg-primary/10 px-2 py-0.5 text-caption text-primary text-tabular">
+              {unreadCount} unread
+            </span>
+          ) : null}
+        </div>
 
         {notifications.length === 0 ? (
           <div className="px-3 py-6 text-center text-body-sm text-muted-readable">
             No notifications.
           </div>
         ) : (
-          notifications.map((notification) => (
-            <DropdownMenuItem
-              key={notification.id}
-              className="items-start gap-3"
-            >
-              <span
-                className="mt-1 size-2 rounded-full bg-primary opacity-0 data-[unread=true]:opacity-100"
-                data-unread={notification.unread === true}
-              />
-              <span className="grid min-w-0 gap-0.5">
-                <span className="truncate text-body-sm">
-                  {notification.title}
-                </span>
-                {notification.description !== null &&
-                notification.description !== undefined ? (
-                  <span className="line-clamp-2 text-caption text-muted-readable">
-                    {notification.description}
+          <div
+            role="region"
+            aria-label="Notification list"
+            tabIndex={0}
+            className="scrollbar-compact max-h-[min(24rem,55dvh)] overflow-y-auto overscroll-contain outline-none focus-visible:ring-3 focus-visible:ring-inset focus-visible:ring-ring/35"
+          >
+            <ul role="list" className="divide-y divide-border/70">
+              {notifications.map((notification) => (
+                <li
+                  key={notification.id}
+                  className="flex min-w-0 items-start gap-3 px-4 py-3"
+                >
+                  <span
+                    aria-hidden="true"
+                    className="mt-1.5 size-2 shrink-0 rounded-full bg-primary opacity-0 data-[unread=true]:opacity-100"
+                    data-unread={notification.unread === true}
+                  />
+                  <span className="grid min-w-0 gap-0.5">
+                    {notification.unread === true ? (
+                      <span className="sr-only">Unread notification. </span>
+                    ) : null}
+                    <span className="text-body-sm text-foreground">
+                      {notification.title}
+                    </span>
+                    {notification.description !== null &&
+                    notification.description !== undefined ? (
+                      <span className="line-clamp-2 text-caption text-muted-readable">
+                        {notification.description}
+                      </span>
+                    ) : null}
                   </span>
-                ) : null}
-              </span>
-            </DropdownMenuItem>
-          ))
+                </li>
+              ))}
+            </ul>
+          </div>
         )}
-      </DropdownMenuContent>
-    </DropdownMenu>
+      </PopoverContent>
+    </Popover>
   );
 }

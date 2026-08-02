@@ -2,7 +2,13 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useId, useMemo, useState } from "react";
+import {
+  useId,
+  useRef,
+  useState,
+  type ReactElement,
+  type SyntheticEvent,
+} from "react";
 import { Controller, useForm } from "react-hook-form";
 
 import { Button } from "@/components/ui/button";
@@ -11,10 +17,10 @@ import {
   FieldDescription,
   FieldError,
   FieldGroup,
+  FieldLabel,
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
-import { useToast } from "@/shared/hooks/use-toast";
 import { idempotencyKey as createIdempotencyKey } from "@/lib/security/request-identifiers";
 
 import { useLoginStart } from "@/features/auth/hooks/use-login-start";
@@ -48,19 +54,19 @@ function describedBy(
   return input.hasError ? `${input.helpId} ${input.errorId}` : input.helpId;
 }
 
-export function LoginStartForm(props: LoginStartFormProps) {
+export function LoginStartForm({
+  initialIdentifier,
+  disabled: disabledProp = false,
+  onSuccess,
+}: LoginStartFormProps): ReactElement {
   const identifierFieldId = useId();
   const identifierHelpId = useId();
   const identifierErrorId = useId();
-  const toast = useToast();
   const [formError, setFormError] = useState<UserFacingAuthError | null>(null);
-  const [submissionIntent, setSubmissionIntent] =
-    useState<LoginStartIntent | null>(null);
+  const submissionIntentRef = useRef<LoginStartIntent | null>(null);
+  const submissionPendingRef = useRef(false);
   const mutation = useLoginStart();
-  const defaultIdentifier = useMemo(
-    () => props.initialIdentifier?.trim() ?? "",
-    [props.initialIdentifier],
-  );
+  const defaultIdentifier = initialIdentifier?.trim() ?? "";
 
   const form = useForm<LoginStartFormValues>({
     resolver: zodResolver(loginStartFormSchema),
@@ -75,59 +81,60 @@ export function LoginStartForm(props: LoginStartFormProps) {
   const identifierError = form.formState.errors.identifier?.message;
   const identifierHasError = identifierError !== undefined;
   const isBusy = form.formState.isSubmitting || mutation.isPending;
-  const disabled = props.disabled === true || isBusy;
+  const disabled = disabledProp || isBusy;
 
   async function onSubmit(values: LoginStartFormValues): Promise<void> {
-    if (mutation.isPending || props.disabled === true) {
+    if (mutation.isPending || disabledProp || submissionPendingRef.current) {
       return;
     }
 
+    submissionPendingRef.current = true;
     setFormError(null);
 
     try {
       const identifier = values.identifier.trim();
+      const existingIntent = submissionIntentRef.current;
       const nextSubmissionIntent =
-        submissionIntent?.identifier === identifier
-          ? submissionIntent
+        existingIntent?.identifier === identifier
+          ? existingIntent
           : {
               identifier,
               idempotencyKey: createIdempotencyKey("auth-login-start"),
             };
 
-      setSubmissionIntent(nextSubmissionIntent);
+      submissionIntentRef.current = nextSubmissionIntent;
 
       const response = await mutation.mutateAsync({
         identifier,
         idempotencyKey: nextSubmissionIntent.idempotencyKey,
       });
 
-      setSubmissionIntent(null);
-
-      toast.success({
-        title: "Verification code sent",
-        description: "Enter the code to continue.",
-        replace: true,
-      });
-
-      props.onSuccess({ identifier, response });
+      submissionIntentRef.current = null;
+      onSuccess({ identifier, response });
     } catch (error) {
       const userFacingError = toUserFacingAuthError(error);
 
       setFormError(userFacingError);
-      toast.error({
-        title: userFacingError.title,
-        description: userFacingError.description,
-        replace: true,
-      });
+    } finally {
+      submissionPendingRef.current = false;
     }
   }
 
+  function handleFormSubmit(event: SyntheticEvent<HTMLFormElement>): void {
+    event.preventDefault();
+    void form.handleSubmit(onSubmit)(event);
+  }
+
   return (
-    <form onSubmit={form.handleSubmit(onSubmit)} noValidate>
+    <form onSubmit={handleFormSubmit} noValidate aria-busy={isBusy}>
       <FieldGroup>
         {formError !== null ? <AuthErrorAlert error={formError} /> : null}
 
         <Field data-invalid={identifierHasError ? true : undefined}>
+          <FieldLabel htmlFor={identifierFieldId}>
+            Email or mobile number
+          </FieldLabel>
+
           <Controller
             control={form.control}
             name="identifier"
@@ -140,6 +147,7 @@ export function LoginStartForm(props: LoginStartFormProps) {
                 autoCorrect="off"
                 inputMode="text"
                 enterKeyHint="send"
+                spellCheck={false}
                 placeholder="Email or phone"
                 aria-invalid={identifierHasError ? true : undefined}
                 aria-describedby={describedBy({
@@ -152,7 +160,7 @@ export function LoginStartForm(props: LoginStartFormProps) {
                 ref={field.ref}
                 value={field.value}
                 onChange={(event) => {
-                  setSubmissionIntent(null);
+                  submissionIntentRef.current = null;
 
                   if (formError !== null) {
                     setFormError(null);
@@ -178,7 +186,7 @@ export function LoginStartForm(props: LoginStartFormProps) {
           {isBusy ? (
             <>
               <Spinner aria-hidden="true" className="size-4" />
-              Sending code
+              Sending code…
             </>
           ) : (
             "Continue"

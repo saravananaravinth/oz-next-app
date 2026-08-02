@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts";
 import { BarChart3, Layers3, Rows3 } from "lucide-react";
 
+import { ContentEmptyState } from "@/components/common/content-shell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -23,6 +24,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { usePrefersReducedMotion } from "@/shared/hooks";
 
 import {
   addDashboardDays,
@@ -33,7 +35,10 @@ import {
   formatDashboardDate,
   formatDashboardInteger,
 } from "@/features/engagement/operations-dashboard/utils/engagement-dashboard-format";
-import { engagementDashboardHref } from "@/features/engagement/operations-dashboard/utils/engagement-dashboard-url";
+import {
+  ENGAGEMENT_DASHBOARD_ROUTES,
+  engagementWorkspaceHref,
+} from "@/features/engagement/operations-dashboard/utils/engagement-dashboard-url";
 
 const ALL_SOURCES = "__ALL_SOURCES__";
 const CHART_COLORS = [
@@ -46,53 +51,82 @@ const CHART_COLORS = [
   "var(--muted-foreground)",
 ] as const;
 
+type ChartMode = "STACKED" | "GROUPED";
+type ChartSource = Readonly<{
+  key: `series_${number}`;
+  code: string;
+  id: string;
+  name: string;
+  totalCount: number;
+}>;
 type ChartRow = Readonly<Record<string, string | number>> &
   Readonly<{ periodStart: string; totalCount: number }>;
-
-type ChartMode = "STACKED" | "GROUPED";
 
 export type LeadSourceChartProps = Readonly<{
   series: EngagementLeadSourceSeries;
   query: EngagementDashboardSearchParams;
 }>;
 
-function chartRows(series: EngagementLeadSourceSeries): readonly ChartRow[] {
-  return series.points.map((point) => ({
-    periodStart: point.periodStart,
-    totalCount: point.totalCount,
-    ...point.sourceCounts,
+function chartSourceKey(index: number): ChartSource["key"] {
+  return `series_${String(index)}` as ChartSource["key"];
+}
+
+function chartSources(
+  series: EngagementLeadSourceSeries,
+): readonly ChartSource[] {
+  return series.sources.map((source, index) => ({
+    key: chartSourceKey(index),
+    code: source.code,
+    id: source.leadSourceId,
+    name: source.name,
+    totalCount: source.totalCount,
   }));
 }
 
-function chartConfig(series: EngagementLeadSourceSeries): ChartConfig {
-  const config: ChartConfig = {};
-  for (const [index, source] of series.sources.entries()) {
-    config[source.code] = {
-      label: source.name,
-      color: CHART_COLORS[index % CHART_COLORS.length] ?? CHART_COLORS[0],
+function chartRows(
+  series: EngagementLeadSourceSeries,
+  sources: readonly ChartSource[],
+): readonly ChartRow[] {
+  return series.points.map((point) => {
+    const values: Record<string, string | number> = {
+      periodStart: point.periodStart,
+      totalCount: point.totalCount,
     };
-  }
-  return config;
+
+    for (const source of sources) {
+      values[source.key] = point.sourceCounts[source.code] ?? 0;
+    }
+
+    return values as ChartRow;
+  });
+}
+
+function chartConfig(sources: readonly ChartSource[]): ChartConfig {
+  return Object.fromEntries(
+    sources.map((source, index) => [
+      source.key,
+      {
+        label: source.name,
+        color: CHART_COLORS[index % CHART_COLORS.length] ?? CHART_COLORS[0],
+      },
+    ]),
+  ) satisfies ChartConfig;
 }
 
 function periodEnd(
   periodStart: string,
   grain: EngagementLeadSourceSeries["range"]["grain"],
 ): string {
-  if (grain === "DAY") {
-    return periodStart;
-  }
-  if (grain === "WEEK") {
-    return addDashboardDays(periodStart, 6);
-  }
+  if (grain === "DAY") return periodStart;
+  if (grain === "WEEK") return addDashboardDays(periodStart, 6);
 
   const [yearText, monthText] = periodStart.split("-");
   const year = Number(yearText);
   const month = Number(monthText);
-  if (!Number.isInteger(year) || !Number.isInteger(month)) {
-    return periodStart;
-  }
-  return new Date(Date.UTC(year, month, 0)).toISOString().slice(0, 10);
+
+  return Number.isInteger(year) && Number.isInteger(month)
+    ? new Date(Date.UTC(year, month, 0)).toISOString().slice(0, 10)
+    : periodStart;
 }
 
 function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
@@ -100,14 +134,8 @@ function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
 }
 
 function periodStartFromBarEvent(value: unknown): string | null {
-  if (!isRecord(value)) {
-    return null;
-  }
-  const payload = value["payload"];
-  if (!isRecord(payload)) {
-    return null;
-  }
-  const periodStart = payload["periodStart"];
+  if (!isRecord(value) || !isRecord(value["payload"])) return null;
+  const periodStart = value["payload"]["periodStart"];
   return typeof periodStart === "string" ? periodStart : null;
 }
 
@@ -116,61 +144,64 @@ export function LeadSourceChart({
   query,
 }: LeadSourceChartProps): React.ReactElement {
   const router = useRouter();
-  const [sourceCode, setSourceCode] = React.useState(ALL_SOURCES);
+  const reducedMotion = usePrefersReducedMotion();
+  const [selectedKey, setSelectedKey] = React.useState(ALL_SOURCES);
   const [mode, setMode] = React.useState<ChartMode>("STACKED");
-  const rows = React.useMemo(() => chartRows(series), [series]);
-  const config = React.useMemo(() => chartConfig(series), [series]);
+  const sources = React.useMemo(() => chartSources(series), [series]);
+  const rows = React.useMemo(
+    () => chartRows(series, sources),
+    [series, sources],
+  );
+  const config = React.useMemo(() => chartConfig(sources), [sources]);
   const visibleSources = React.useMemo(
     () =>
-      sourceCode === ALL_SOURCES
-        ? series.sources
-        : series.sources.filter((source) => source.code === sourceCode),
-    [series.sources, sourceCode],
+      selectedKey === ALL_SOURCES
+        ? sources
+        : sources.filter((source) => source.key === selectedKey),
+    [selectedKey, sources],
   );
   const total = visibleSources.reduce(
     (sum, source) => sum + source.totalCount,
     0,
   );
+  const hasChartData =
+    sources.length > 0 && rows.some((row) => row.totalCount > 0);
 
   const crossFilter = React.useCallback(
-    (periodStart: string, selectedSourceCode: string): void => {
-      const source = series.sources.find(
-        (item) => item.code === selectedSourceCode,
-      );
+    (periodStart: string, source: ChartSource): void => {
       const selectedFrom =
         periodStart < series.range.from ? series.range.from : periodStart;
       const rawPeriodEnd = periodEnd(periodStart, series.range.grain);
       const selectedTo =
         rawPeriodEnd > series.range.to ? series.range.to : rawPeriodEnd;
+      const isOther = source.id === "00000000-0000-0000-0000-000000000000";
+
       router.push(
-        engagementDashboardHref(
-          query,
-          {
-            from: selectedFrom,
-            to: selectedTo,
-            leadSourceIds:
-              source === undefined || source.code === "OTHER"
-                ? query.leadSourceIds
-                : [source.leadSourceId],
-            dealerCursor: null,
-            issueCursor: null,
-          },
-          "dealers",
-        ),
+        engagementWorkspaceHref(ENGAGEMENT_DASHBOARD_ROUTES.overview, query, {
+          from: selectedFrom,
+          to: selectedTo,
+          leadSourceIds: isOther ? query.leadSourceIds : [source.id],
+          dealerCursor: null,
+          leadCursor: null,
+          issueCursor: null,
+        }),
       );
     },
-    [
-      query,
-      router,
-      series.range.from,
-      series.range.grain,
-      series.range.to,
-      series.sources,
-    ],
+    [query, router, series.range.from, series.range.grain, series.range.to],
   );
 
+  if (!hasChartData) {
+    return (
+      <ContentEmptyState
+        icon={<BarChart3 aria-hidden="true" />}
+        title="No lead-source activity in this period"
+        description="No vehicle-sales leads match the selected period and filters. Adjust the date range or clear filters to compare lead sources."
+      />
+    );
+  }
+
   return (
-    <div className="grid gap-4">
+    <div className="flex min-h-0 flex-1 flex-col gap-4">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex flex-wrap items-center gap-2">
           <Badge variant="secondary">
@@ -184,14 +215,14 @@ export function LeadSourceChart({
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <Select value={sourceCode} onValueChange={setSourceCode}>
+          <Select value={selectedKey} onValueChange={setSelectedKey}>
             <SelectTrigger className="w-52">
-              <SelectValue placeholder="All sources" />
+              <SelectValue placeholder="Select lead source" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value={ALL_SOURCES}>All sources</SelectItem>
-              {series.sources.map((source) => (
-                <SelectItem key={source.code} value={source.code}>
+              {sources.map((source) => (
+                <SelectItem key={source.key} value={source.key}>
                   {source.name}
                 </SelectItem>
               ))}
@@ -224,8 +255,8 @@ export function LeadSourceChart({
 
       <ChartContainer
         config={config}
-        className="min-h-[20rem] w-full"
-        initialDimension={{ width: 960, height: 360 }}
+        className="min-h-[20rem] w-full flex-1 aspect-auto"
+        initialDimension={{ width: 960, height: 480 }}
       >
         <BarChart
           accessibilityLayer
@@ -261,17 +292,18 @@ export function LeadSourceChart({
           <ChartLegend content={<ChartLegendContent />} />
           {visibleSources.map((source) => (
             <Bar
-              key={source.code}
-              dataKey={source.code}
-              fill={`var(--color-${source.code})`}
-              radius={mode === "STACKED" ? [3, 3, 0, 0] : 3}
+              key={source.key}
+              dataKey={source.key}
+              fill={`var(--color-${source.key})`}
+              radius={mode === "STACKED" ? [4, 4, 0, 0] : 4}
               {...(mode === "STACKED" ? { stackId: "lead-source" } : {})}
               maxBarSize={48}
+              isAnimationActive={!reducedMotion}
+              animationDuration={450}
+              animationEasing="ease-out"
               onClick={(entry: unknown) => {
                 const periodStart = periodStartFromBarEvent(entry);
-                if (periodStart !== null) {
-                  crossFilter(periodStart, source.code);
-                }
+                if (periodStart !== null) crossFilter(periodStart, source);
               }}
             />
           ))}
@@ -279,9 +311,8 @@ export function LeadSourceChart({
       </ChartContainer>
 
       <p className="text-caption text-muted-readable">
-        Select a bar to constrain the dashboard to that period and source. The
-        aggregated Other series remains period-clickable but cannot be
-        represented as a backend source identifier.
+        Select a bar to focus the lead table on that period and source.
+        Aggregated Other remains visible but keeps the current source filter.
       </p>
     </div>
   );

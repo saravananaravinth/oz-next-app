@@ -6,10 +6,7 @@ import type { ReactElement, ReactNode } from "react";
 import { env } from "@/lib/env/public-env";
 import Providers from "@/app/_providers/app-providers";
 
-import {
-  DISPLAY_SCALE_ZOOM_BOOTSTRAP_SCRIPT,
-  THEME_BOOTSTRAP_SCRIPT,
-} from "@/app/layout-bootstrap";
+import { THEME_BOOTSTRAP_SCRIPT } from "@/app/layout-bootstrap";
 import "@/app/globals.css";
 
 const ROOT_APP_NAME = "Ozotec EV" as const;
@@ -32,36 +29,26 @@ const APP_KEYWORDS = [
   "Finance",
 ] as const;
 
-const HTML_CLASS_NAME = "h-full scroll-smooth";
+const HTML_CLASS_NAME = "h-full";
 
 const BODY_CLASS_NAME = [
-  "ozo-ui-scale-root",
   "min-h-dvh",
   "bg-background text-foreground antialiased font-sans",
-  "transition-colors duration-200 ease-out",
-  "motion-reduce:transition-none motion-reduce:animate-none",
-  "supports-[padding:env(safe-area-inset-top)]:pt-[env(safe-area-inset-top)]",
-  "supports-[padding:env(safe-area-inset-right)]:pr-[env(safe-area-inset-right)]",
-  "supports-[padding:env(safe-area-inset-bottom)]:pb-[env(safe-area-inset-bottom)]",
-  "supports-[padding:env(safe-area-inset-left)]:pl-[env(safe-area-inset-left)]",
   "touch-manipulation",
 ].join(" ");
 
-const APP_SCALE_SHELL_CLASS_NAME =
-  "ozo-ui-scale-shell relative flex min-h-dvh w-full flex-col overflow-x-clip";
+const APP_SHELL_CLASS_NAME =
+  "relative flex min-h-dvh w-full flex-col overflow-x-clip";
 
-const CONTENT_ROOT_CLASS_NAME = [
-  "relative z-10 flex min-h-dvh w-full flex-1 flex-col overflow-x-clip",
-  "transition-colors duration-200 ease-out motion-reduce:transition-none",
-].join(" ");
+const CONTENT_ROOT_CLASS_NAME =
+  "relative flex min-h-dvh w-full flex-1 flex-col overflow-x-clip";
 
 const SKIP_LINK_CLASS_NAME = [
-  "sr-only text-body-sm [font-weight:var(--typography-emphasis-weight)] transition-opacity duration-150 ease-out",
-  "focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[9999]",
-  "focus:rounded-2xl focus:border focus:border-border focus:bg-primary",
+  "sr-only text-body-sm [font-weight:var(--typography-emphasis-weight)]",
+  "focus:not-sr-only focus:fixed focus:start-4 focus:top-4 focus:z-[9999]",
+  "focus:rounded-xl focus:border focus:border-primary/30 focus:bg-primary",
   "focus:px-4 focus:py-2 focus:text-primary-foreground",
   "focus:shadow-lg focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background",
-  "motion-reduce:transition-none",
 ].join(" ");
 
 function createMetadataBase(value: string, appEnv: string): URL {
@@ -166,7 +153,7 @@ export const metadata = {
   },
   appleWebApp: {
     capable: true,
-    statusBarStyle: "black-translucent",
+    statusBarStyle: "default",
     title: ROOT_APP_NAME,
   },
   formatDetection: {
@@ -187,10 +174,9 @@ export const viewport = {
   minimumScale: 1,
   maximumScale: 5,
   userScalable: true,
-  viewportFit: "cover",
   themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#ffffff" },
-    { media: "(prefers-color-scheme: dark)", color: "#000000" },
+    { media: "(prefers-color-scheme: light)", color: "#fafafa" },
+    { media: "(prefers-color-scheme: dark)", color: "#18181b" },
   ],
   colorScheme: "light dark",
   interactiveWidget: "resizes-content",
@@ -206,8 +192,6 @@ export default function RootLayout({
       lang="en"
       dir="ltr"
       data-accent="default"
-      data-ozo-boot="pending"
-      data-scroll-behavior="smooth"
       suppressHydrationWarning
       className={HTML_CLASS_NAME}
     >
@@ -215,28 +199,16 @@ export default function RootLayout({
         <Script id="ozo-theme-bootstrap" strategy="beforeInteractive">
           {THEME_BOOTSTRAP_SCRIPT}
         </Script>
-        <Script id="ozo-display-scale-bootstrap" strategy="beforeInteractive">
-          {DISPLAY_SCALE_ZOOM_BOOTSTRAP_SCRIPT}
-        </Script>
       </head>
 
       <body className={BODY_CLASS_NAME} suppressHydrationWarning>
-        <div className={APP_SCALE_SHELL_CLASS_NAME}>
-          <div
-            aria-hidden="true"
-            className="pointer-events-none absolute inset-x-0 top-0 h-28 bg-linear-to-b from-primary/10 via-primary/5 to-transparent"
-          />
-
+        <div className={APP_SHELL_CLASS_NAME}>
           <a href="#main-content" className={SKIP_LINK_CLASS_NAME}>
             Skip to main content
           </a>
 
           <Providers>
-            <div
-              id="main-content"
-              tabIndex={-1}
-              className={CONTENT_ROOT_CLASS_NAME}
-            >
+            <div id="application-root" className={CONTENT_ROOT_CLASS_NAME}>
               {children}
             </div>
 

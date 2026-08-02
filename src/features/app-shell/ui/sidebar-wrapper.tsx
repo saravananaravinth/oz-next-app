@@ -5,6 +5,11 @@ import { AppSidebar, type AuthInfo } from "@/features/app-shell/ui/app-sidebar";
 import { HeaderBar } from "@/features/app-shell/ui/header-bar";
 import type { NotificationItem } from "@/features/app-shell/ui/notifications";
 import type { SearchResult } from "@/features/app-shell/ui/nav-search";
+import {
+  cleanDisplayText,
+  formatRoleLabel,
+  formatUniqueRoleLabels,
+} from "@/components/common/display-label";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import type {
   MeResponse,
@@ -38,41 +43,23 @@ const FALLBACK_MENU_ITEM = {
   description: "Workspace overview",
 } satisfies MenuItem;
 
+const MAX_ID_LENGTH = 160;
+const MAX_TENANT_COUNT = 100;
+
 function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function safeText(value: string | null | undefined, fallback: string): string {
-  const normalized = value?.trim().replace(/\s+/gu, " ") ?? "";
-
-  return normalized.length > 0 ? normalized : fallback;
-}
-
-function normalizeRoles(values: readonly string[]): readonly string[] {
-  const roles: string[] = [];
-  const seen = new Set<string>();
-
-  for (const value of values) {
-    const normalized = value.trim().replace(/\s+/gu, " ");
-
-    if (normalized.length === 0 || seen.has(normalized)) {
-      continue;
-    }
-
-    seen.add(normalized);
-    roles.push(normalized);
-  }
-
-  return roles;
-}
-
 function authInfoFromMe(me: MeResponse): AuthInfo {
-  const displayName = safeText(me.display_name, "ERP User");
-  const roles = normalizeRoles(me.roles);
-  const primaryRole = safeText(me.primary_role, roles[0] ?? "Workspace user");
+  const displayName = cleanDisplayText(me.display_name, "ERP User");
+  const roles = formatUniqueRoleLabels(me.roles);
+  const primaryRole = formatRoleLabel(
+    me.primary_role,
+    roles[0] ?? "Workspace user",
+  );
 
   return {
-    id: safeText(me.user_id, "unknown"),
+    id: cleanDisplayText(me.user_id, "unknown", MAX_ID_LENGTH),
     name: displayName,
     email: me.primary_email ?? null,
     avatar: me.picture_url ?? null,
@@ -91,7 +78,9 @@ function isMenuItem(value: unknown): value is MenuItem {
     typeof value["menuid"] === "string" &&
     typeof value["title"] === "string" &&
     typeof value["url"] === "string" &&
-    typeof value["menugroup"] === "string" &&
+    (value["menugroup"] === undefined ||
+      value["menugroup"] === null ||
+      typeof value["menugroup"] === "string") &&
     typeof value["sortorder"] === "number" &&
     typeof value["isvisible"] === "boolean" &&
     typeof value["isactive"] === "boolean"
@@ -130,7 +119,7 @@ function tenantsFromMe(me: MeResponse): readonly TenantMembership[] {
     return [];
   }
 
-  return rawTenants.filter(isTenantMembership);
+  return rawTenants.filter(isTenantMembership).slice(0, MAX_TENANT_COUNT);
 }
 
 export function SidebarWrapper({
@@ -150,7 +139,7 @@ export function SidebarWrapper({
   const tenants = tenantsFromMe(me);
 
   return (
-    <SidebarProvider>
+    <SidebarProvider className="h-dvh min-h-0 overflow-hidden print:h-auto print:overflow-visible">
       <AppSidebar
         auth={auth}
         menus={menusFromMe(me)}
@@ -163,14 +152,24 @@ export function SidebarWrapper({
         {...(brandLogoDark !== undefined ? { brandLogoDark } : {})}
       />
 
-      <SidebarInset>
+      <SidebarInset
+        aria-label="Application workspace"
+        className="min-h-0 overflow-hidden print:overflow-visible"
+      >
         <HeaderBar
           {...(searchResults !== undefined ? { searchResults } : {})}
           {...(notifications !== undefined ? { notifications } : {})}
           tenants={tenants}
-          currentTenantId={me.tenant_id}
+          currentTenantId={me.tenant_id ?? null}
         />
-        <main className="min-w-0 px-4 py-5 sm:px-6 lg:px-8">{children}</main>
+        <div
+          id="main-content"
+          tabIndex={-1}
+          data-slot="app-shell-content"
+          className="scrollbar-compact min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-y-contain px-4 py-5 outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/35 print:overflow-visible sm:px-6 lg:px-8"
+        >
+          {children}
+        </div>
       </SidebarInset>
     </SidebarProvider>
   );

@@ -1,117 +1,84 @@
 // oz-next-app/src/app/(protected)/engagement/dashboard/dealers/[dealerOrgUnitId]/page.tsx
 import type { Metadata } from "next";
-import type { ReactElement } from "react";
 import { notFound } from "next/navigation";
+import type { ReactElement } from "react";
 import { z } from "zod";
 
-import { ContentRoot, ContentStatus } from "@/components/common/content-shell";
-import { requireAuthenticatedMe } from "@/features/auth/server/require-auth";
 import {
-  EngagementDashboardAccessState,
-  EngagementDashboardInvalidQueryState,
   EngagementDealerDetailPage,
-  parseEngagementDashboardSearchParams,
+  ENGAGEMENT_DASHBOARD_ROUTES,
   readEngagementDashboardDealer,
-  resolveEngagementDashboardAccess,
-  type EngagementDealerDetail,
   type EngagementDashboardRawSearchParams,
 } from "@/features/engagement/operations-dashboard";
-import { isApiHttpError } from "@/lib/api/problem";
+import {
+  renderEngagementDashboardResourceFailure,
+  resolveEngagementDashboardRoute,
+} from "@/app/(protected)/engagement/dashboard/_lib/engagement-dashboard-route";
 
-const dealerParamsSchema = z.object({ dealerOrgUnitId: z.uuid() }).strict();
+const PAGE_TITLE = "Dealer engagement details";
+const PAGE_DESCRIPTION =
+  "Authorized dealer-level vehicle-sales engagement performance, settings, location, and operational health.";
 
-type RoutePageProps = Readonly<{
+const dealerRouteParamsSchema = z
+  .object({
+    dealerOrgUnitId: z.uuid(),
+  })
+  .strict();
+
+type EngagementDealerRoutePageProps = Readonly<{
   params: Promise<Readonly<{ dealerOrgUnitId: string }>>;
   searchParams: Promise<EngagementDashboardRawSearchParams>;
 }>;
 
 export const metadata = {
-  title: "Dealer engagement details",
-  robots: { index: false, follow: false, nocache: true },
+  title: PAGE_TITLE,
+  description: PAGE_DESCRIPTION,
 } satisfies Metadata;
-
-export const dynamic = "force-dynamic";
-export const revalidate = 0;
-export const fetchCache = "force-no-store";
-export const runtime = "nodejs";
 
 export default async function EngagementDealerRoutePage({
   params,
   searchParams,
-}: RoutePageProps): Promise<ReactElement> {
-  const [me, rawParams, rawSearchParams] = await Promise.all([
-    requireAuthenticatedMe(),
+}: EngagementDealerRoutePageProps): Promise<ReactElement> {
+  const [route, rawParams] = await Promise.all([
+    resolveEngagementDashboardRoute({
+      searchParams,
+      requiredCapability: "canReadDealerPerformance",
+      capabilityFallbackHref: ENGAGEMENT_DASHBOARD_ROUTES.dealers,
+    }),
     params,
-    searchParams,
   ]);
-  const parsedParams = dealerParamsSchema.safeParse(rawParams);
-  if (!parsedParams.success) notFound();
 
-  const parsedQuery = parseEngagementDashboardSearchParams(rawSearchParams);
-  if (!parsedQuery.success) {
-    return (
-      <EngagementDashboardInvalidQueryState
-        issues={parsedQuery.error.issues.map(
-          (issue) =>
-            `${issue.path.map(String).join(".") || "$"}: ${issue.message}`,
-        )}
-      />
-    );
+  if (route.kind === "blocked") {
+    return route.content;
   }
 
-  const access = resolveEngagementDashboardAccess(
-    me,
-    parsedQuery.data.tenantId,
-  );
-  if (access.kind !== "resolved") {
-    return (
-      <EngagementDashboardAccessState access={access} tenants={me.tenants} />
-    );
-  }
-  if (!access.capabilities.canReadDealerPerformance) {
-    return (
-      <ContentRoot width="default">
-        <ContentStatus
-          variant="destructive"
-          title="Dealer performance access denied"
-          description="The active actor lacks engagement:dealer-performance:read."
-        />
-      </ContentRoot>
-    );
+  const parsedParams = dealerRouteParamsSchema.safeParse(rawParams);
+
+  if (!parsedParams.success) {
+    notFound();
   }
 
-  let dealer: EngagementDealerDetail;
+  let dealer: Awaited<ReturnType<typeof readEngagementDashboardDealer>>;
+
   try {
     dealer = await readEngagementDashboardDealer({
       dealerOrgUnitId: parsedParams.data.dealerOrgUnitId,
-      query: parsedQuery.data,
-      access,
+      query: route.query,
+      access: route.access,
     });
   } catch (error: unknown) {
-    if (isApiHttpError(error) && error.status === 404) notFound();
-    if (isApiHttpError(error)) {
-      return (
-        <ContentRoot width="default">
-          <ContentStatus
-            variant="destructive"
-            title="Dealer details unavailable"
-            description={
-              error.status === 409
-                ? "The dealer view changed. Return to the dashboard and reopen it."
-                : "The dealer detail request could not be completed."
-            }
-          />
-        </ContentRoot>
-      );
-    }
-    throw error;
+    return renderEngagementDashboardResourceFailure(error, {
+      resourceLabel: "Dealer engagement details",
+      fallbackHref: ENGAGEMENT_DASHBOARD_ROUTES.dealers,
+      fallbackLabel: "Back to dealer performance",
+    });
   }
 
   return (
     <EngagementDealerDetailPage
       dealer={dealer}
-      query={parsedQuery.data}
-      access={access}
+      query={route.query}
+      access={route.access}
     />
   );
 }

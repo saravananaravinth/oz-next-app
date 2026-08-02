@@ -230,7 +230,9 @@ function badgeVariantFor(
     case "error":
       return "destructive";
     case "success":
+      return "success";
     case "warning":
+      return "warning";
     case "default":
     case undefined:
       return "outline";
@@ -240,14 +242,14 @@ function badgeVariantFor(
 function badgeClassNameFor(value: NavigationBadge["variant"]): string {
   switch (value) {
     case "success":
-      return "border-success/25 bg-success/10 text-success dark:border-success/35";
+      return "shadow-none";
     case "warning":
-      return "border-warning/30 bg-warning/10 text-warning-foreground dark:border-warning/35 dark:text-warning";
+      return "shadow-none";
     case "error":
-      return "border-destructive/25 bg-destructive/10 text-destructive dark:border-destructive/35";
+      return "shadow-none";
     case "default":
     case undefined:
-      return "border-sidebar-border/70 bg-background/70 text-sidebar-foreground/75 dark:bg-background/25";
+      return "border-sidebar-border/70 bg-background text-sidebar-foreground/75";
   }
 }
 
@@ -264,7 +266,7 @@ function NavBadge({
     <Badge
       variant={badgeVariantFor(badge.variant)}
       className={cn(
-        "ml-auto h-5 max-w-[4.5rem] shrink-0 rounded-full px-2 text-[0.625rem] leading-none shadow-none",
+        "ms-auto h-5 max-w-[4.5rem] shrink-0 rounded-full px-2 text-[0.625rem] leading-none shadow-none",
         badgeClassNameFor(badge.variant),
       )}
     >
@@ -290,11 +292,11 @@ function LeafNavItem({
         <SidebarMenuSubButton
           asChild
           isActive={active}
-          className="h-8 rounded-xl px-2.5 text-sidebar-foreground/80 hover:bg-sidebar-accent/70 hover:text-sidebar-accent-foreground data-active:bg-sidebar-accent data-active:text-sidebar-accent-foreground"
+          className="h-8 rounded-lg px-2.5 text-sidebar-foreground/80 hover:bg-sidebar-accent/70 hover:text-sidebar-accent-foreground data-active:bg-sidebar-accent data-active:text-sidebar-accent-foreground"
         >
           <Link
             href={item.url}
-            prefetch
+            prefetch={false}
             aria-current={active ? "page" : undefined}
           >
             <NavIcon item={item} aria-hidden="true" className="size-3.5" />
@@ -312,11 +314,11 @@ function LeafNavItem({
         asChild
         isActive={active}
         tooltip={item.title}
-        className="h-10 rounded-2xl px-3 text-sidebar-foreground/85 hover:bg-sidebar-accent/70 hover:text-sidebar-accent-foreground data-active:bg-sidebar-accent data-active:text-sidebar-accent-foreground data-active:shadow-xs"
+        className="h-10 rounded-xl px-3 text-sidebar-foreground/85 hover:bg-sidebar-accent/70 hover:text-sidebar-accent-foreground data-active:bg-sidebar-accent data-active:text-sidebar-accent-foreground data-active:shadow-xs"
       >
         <Link
           href={item.url}
-          prefetch
+          prefetch={false}
           aria-current={active ? "page" : undefined}
         >
           <NavIcon item={item} aria-hidden="true" />
@@ -331,55 +333,105 @@ function LeafNavItem({
 function ParentNavItem({
   item,
   currentPath,
+  subItem = false,
 }: Readonly<{
   item: Item;
   currentPath: string;
+  subItem?: boolean;
 }>): React.ReactElement {
   const children = item.children ?? [];
   const active = isItemActive(item, currentPath);
   const [userOpen, setUserOpen] = React.useState(false);
   const open = active || userOpen;
 
-  const handleOpenChange = React.useCallback((nextOpen: boolean) => {
-    setUserOpen(nextOpen);
-  }, []);
+  const triggerContent = (
+    <>
+      <NavIcon
+        item={item}
+        aria-hidden="true"
+        className={subItem ? "size-3.5" : undefined}
+      />
+      <span className="min-w-0 flex-1 truncate">{item.title}</span>
+      <NavBadge badge={item.badge} />
+      <ChevronRight
+        aria-hidden="true"
+        className={cn(
+          "ms-1 size-4 shrink-0 text-sidebar-foreground/45 transition-transform duration-[var(--motion-duration-fast)] ease-[var(--motion-ease-standard)] motion-reduce:transition-none rtl:rotate-180",
+          open && "rotate-90 rtl:rotate-90",
+        )}
+      />
+    </>
+  );
+
+  const content = (
+    <CollapsibleContent>
+      <SidebarMenuSub
+        className={cn(
+          "my-1 gap-1 border-sidebar-border/60 py-1",
+          subItem ? "ms-3 me-0 px-1.5" : "mx-4 px-2",
+        )}
+      >
+        {children.map((child) => (
+          <NavTreeItem
+            key={child.menuid}
+            item={child}
+            currentPath={currentPath}
+            subItem
+          />
+        ))}
+      </SidebarMenuSub>
+    </CollapsibleContent>
+  );
+
+  if (subItem) {
+    return (
+      <Collapsible open={open} onOpenChange={setUserOpen} asChild>
+        <SidebarMenuSubItem>
+          <CollapsibleTrigger asChild>
+            <SidebarMenuSubButton
+              isActive={active}
+              className="h-8 rounded-lg px-2.5 text-sidebar-foreground/80 hover:bg-sidebar-accent/70 hover:text-sidebar-accent-foreground data-active:bg-sidebar-accent data-active:text-sidebar-accent-foreground"
+            >
+              {triggerContent}
+            </SidebarMenuSubButton>
+          </CollapsibleTrigger>
+          {content}
+        </SidebarMenuSubItem>
+      </Collapsible>
+    );
+  }
 
   return (
-    <Collapsible open={open} onOpenChange={handleOpenChange} asChild>
+    <Collapsible open={open} onOpenChange={setUserOpen} asChild>
       <SidebarMenuItem>
         <CollapsibleTrigger asChild>
           <SidebarMenuButton
             isActive={active}
             tooltip={item.title}
-            className="h-10 rounded-2xl px-3 text-sidebar-foreground/85 hover:bg-sidebar-accent/70 hover:text-sidebar-accent-foreground data-active:bg-sidebar-accent data-active:text-sidebar-accent-foreground data-active:shadow-xs"
+            className="h-10 rounded-xl px-3 text-sidebar-foreground/85 hover:bg-sidebar-accent/70 hover:text-sidebar-accent-foreground data-active:bg-sidebar-accent data-active:text-sidebar-accent-foreground data-active:shadow-xs"
           >
-            <NavIcon item={item} aria-hidden="true" />
-            <span className="min-w-0 flex-1 truncate">{item.title}</span>
-            <NavBadge badge={item.badge} />
-            <ChevronRight
-              aria-hidden="true"
-              className={cn(
-                "ml-1 size-4 shrink-0 text-sidebar-foreground/45 transition-transform duration-200 motion-reduce:transition-none",
-                open ? "rotate-90" : "rotate-0",
-              )}
-            />
+            {triggerContent}
           </SidebarMenuButton>
         </CollapsibleTrigger>
-
-        <CollapsibleContent>
-          <SidebarMenuSub className="mx-4 my-1 gap-1 border-sidebar-border/60 px-2 py-1">
-            {children.map((child) => (
-              <LeafNavItem
-                key={child.menuid}
-                item={child}
-                currentPath={currentPath}
-                subItem
-              />
-            ))}
-          </SidebarMenuSub>
-        </CollapsibleContent>
+        {content}
       </SidebarMenuItem>
     </Collapsible>
+  );
+}
+
+function NavTreeItem({
+  item,
+  currentPath,
+  subItem = false,
+}: Readonly<{
+  item: Item;
+  currentPath: string;
+  subItem?: boolean;
+}>): React.ReactElement {
+  return item.children !== undefined && item.children.length > 0 ? (
+    <ParentNavItem item={item} currentPath={currentPath} subItem={subItem} />
+  ) : (
+    <LeafNavItem item={item} currentPath={currentPath} subItem={subItem} />
   );
 }
 
@@ -396,6 +448,7 @@ export function NavMain({
   return (
     <SidebarGroup
       data-collapsed={collapsed ? "true" : undefined}
+      role="group"
       className="gap-1 px-2 py-2"
       aria-label={label}
     >
@@ -403,21 +456,13 @@ export function NavMain({
         {label}
       </SidebarGroupLabel>
       <SidebarMenu className="gap-1">
-        {items.map((item) =>
-          item.children !== undefined && item.children.length > 0 ? (
-            <ParentNavItem
-              key={item.menuid}
-              item={item}
-              currentPath={currentPath}
-            />
-          ) : (
-            <LeafNavItem
-              key={item.menuid}
-              item={item}
-              currentPath={currentPath}
-            />
-          ),
-        )}
+        {items.map((item) => (
+          <NavTreeItem
+            key={item.menuid}
+            item={item}
+            currentPath={currentPath}
+          />
+        ))}
       </SidebarMenu>
     </SidebarGroup>
   );

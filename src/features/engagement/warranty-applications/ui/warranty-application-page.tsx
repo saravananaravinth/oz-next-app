@@ -914,6 +914,7 @@ function InvoiceUploadPicker({
       <Input
         id={inputId}
         type="file"
+        placeholder="Choose warranty evidence files"
         accept={WARRANTY_APPLICATION_UPLOAD_ACCEPT}
         multiple={multiple}
         disabled={disabled}

@@ -32,6 +32,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
+  DialogBody,
   DialogClose,
   DialogContent,
   DialogDescription,
@@ -1006,8 +1007,8 @@ function AdvancedFiltersDialog({
         </TooltipContent>
       </Tooltip>
 
-      <DialogContent className="grid max-h-[min(92svh,58rem)] grid-rows-[auto_minmax(0,1fr)_auto] gap-0 overflow-hidden p-0 sm:max-w-5xl">
-        <DialogHeader className="border-b border-border/70 px-5 py-5 sm:px-6">
+      <DialogContent height="viewport" className="sm:max-w-5xl">
+        <DialogHeader>
           <div className="flex min-w-0 flex-wrap items-start justify-between gap-4 pr-8">
             <div className="min-w-0">
               <DialogTitle>Filter vehicle inventory</DialogTitle>
@@ -1033,419 +1034,424 @@ function AdvancedFiltersDialog({
           </div>
         </DialogHeader>
 
-        <form
-          id="vehicle-inventory-advanced-filters"
-          onSubmit={applyDraft}
-          className="min-h-0 overflow-y-auto overscroll-contain px-4 py-4 sm:px-6 sm:py-5"
-        >
-          <Accordion
-            key={`${accordionKey}-${open ? "open" : "closed"}`}
-            type="multiple"
-            defaultValue={defaultExpandedSections(draft)}
-            className="grid gap-3"
-          >
-            <AccordionItem
-              value="lifecycle"
-              className="rounded-2xl border border-border/70 bg-card/65 px-1"
+        <DialogBody>
+          <form id="vehicle-inventory-advanced-filters" onSubmit={applyDraft}>
+            <Accordion
+              key={`${accordionKey}-${open ? "open" : "closed"}`}
+              type="multiple"
+              defaultValue={defaultExpandedSections(draft)}
+              className="grid gap-3"
             >
-              <SectionTrigger
-                section="lifecycle"
-                count={sectionFilterCount("lifecycle", draft)}
-              />
-              <AccordionContent className="px-2 pb-4 sm:px-3">
-                <div className="grid gap-3 lg:grid-cols-3">
-                  <FilterOptionGroup
-                    label="Statuses"
-                    description="Authoritative inventory lifecycle states."
-                    options={facets.statuses}
-                    selected={draft.status}
-                    maximum={MAX_SELECTIONS.status}
-                    onChange={(values) => {
-                      updateArray("status", values);
-                    }}
-                  />
-                  <FilterOptionGroup
-                    label="Entry types"
-                    description="Current stock or historical transfers."
-                    options={facets.entryTypes}
-                    selected={draft.entryType}
-                    maximum={MAX_SELECTIONS.entryType}
-                    searchable={false}
-                    onChange={(values) => {
-                      updateArray("entryType", values);
-                    }}
-                  />
-                  <FilterOptionGroup
-                    label="Age buckets"
-                    description="Elapsed days since verified arrival."
-                    options={facets.ageBuckets}
-                    selected={draft.ageBucket}
-                    maximum={MAX_SELECTIONS.ageBucket}
-                    searchable={false}
-                    onChange={(values) => {
-                      updateArray("ageBucket", values);
-                    }}
-                  />
-                </div>
-              </AccordionContent>
-            </AccordionItem>
-
-            <AccordionItem
-              value="product"
-              className="rounded-2xl border border-border/70 bg-card/65 px-1"
-            >
-              <SectionTrigger
-                section="product"
-                count={sectionFilterCount("product", draft)}
-              />
-              <AccordionContent className="px-2 pb-4 sm:px-3">
-                <div className="grid gap-3 lg:grid-cols-2 xl:grid-cols-3">
-                  <FilterOptionGroup
-                    label="Models"
-                    options={facets.models}
-                    selected={draft.modelId}
-                    maximum={MAX_SELECTIONS.modelId}
-                    onChange={(values) => {
-                      updateArray("modelId", values);
-                    }}
-                  />
-                  <FilterOptionGroup
-                    label="Variants"
-                    options={variantOptions}
-                    selected={draft.variantId}
-                    maximum={MAX_SELECTIONS.variantId}
-                    onChange={(values) => {
-                      updateArray("variantId", values);
-                    }}
-                  />
-                  <FilterOptionGroup
-                    label="Colors"
-                    options={facets.colors}
-                    selected={draft.color}
-                    maximum={MAX_SELECTIONS.color}
-                    onChange={(values) => {
-                      updateArray("color", values);
-                    }}
-                  />
-                  <FilterOptionGroup
-                    label="Fuel"
-                    options={facets.fuels}
-                    selected={draft.fuel}
-                    maximum={MAX_SELECTIONS.fuel}
-                    onChange={(values) => {
-                      updateArray("fuel", values);
-                    }}
-                  />
-                  <FilterOptionGroup
-                    label="Segment"
-                    options={facets.segments}
-                    selected={draft.segment}
-                    maximum={MAX_SELECTIONS.segment}
-                    onChange={(values) => {
-                      updateArray("segment", values);
-                    }}
-                  />
-                  <div className="grid content-start gap-4 rounded-2xl border border-border/70 bg-background/55 p-3.5 shadow-xs">
-                    <div>
-                      <h4 className="text-body-sm font-medium text-foreground">
-                        Vehicle attributes
-                      </h4>
-                      <p className="mt-0.5 text-caption text-muted-readable">
-                        Optional finish and registration characteristics.
-                      </p>
-                    </div>
-                    <TriStateSelect
-                      id="inventory-filter-metallic"
-                      label="Finish"
-                      value={draft.metallic}
-                      trueLabel="Metallic"
-                      falseLabel="Matt / non-metallic"
-                      onChange={(value) => {
-                        setDraft((current) => ({
-                          ...current,
-                          metallic: value,
-                        }));
-                        setValidationError(null);
+              <AccordionItem
+                value="lifecycle"
+                className="rounded-2xl border border-border/70 bg-card/65 px-1"
+              >
+                <SectionTrigger
+                  section="lifecycle"
+                  count={sectionFilterCount("lifecycle", draft)}
+                />
+                <AccordionContent className="px-2 pb-4 sm:px-3">
+                  <div className="grid gap-3 lg:grid-cols-3">
+                    <FilterOptionGroup
+                      label="Statuses"
+                      description="Authoritative inventory lifecycle states."
+                      options={facets.statuses}
+                      selected={draft.status}
+                      maximum={MAX_SELECTIONS.status}
+                      onChange={(values) => {
+                        updateArray("status", values);
                       }}
                     />
-                    <TriStateSelect
-                      id="inventory-filter-registration"
-                      label="Registration"
-                      value={draft.registrationRequired}
-                      trueLabel="Required"
-                      falseLabel="Not required"
-                      onChange={(value) => {
-                        setDraft((current) => ({
-                          ...current,
-                          registrationRequired: value,
-                        }));
-                        setValidationError(null);
+                    <FilterOptionGroup
+                      label="Entry types"
+                      description="Current stock or historical transfers."
+                      options={facets.entryTypes}
+                      selected={draft.entryType}
+                      maximum={MAX_SELECTIONS.entryType}
+                      searchable={false}
+                      onChange={(values) => {
+                        updateArray("entryType", values);
+                      }}
+                    />
+                    <FilterOptionGroup
+                      label="Age buckets"
+                      description="Elapsed days since verified arrival."
+                      options={facets.ageBuckets}
+                      selected={draft.ageBucket}
+                      maximum={MAX_SELECTIONS.ageBucket}
+                      searchable={false}
+                      onChange={(values) => {
+                        updateArray("ageBucket", values);
                       }}
                     />
                   </div>
-                </div>
-              </AccordionContent>
-            </AccordionItem>
+                </AccordionContent>
+              </AccordionItem>
 
-            <AccordionItem
-              value="location"
-              className="rounded-2xl border border-border/70 bg-card/65 px-1"
-            >
-              <SectionTrigger
-                section="location"
-                count={sectionFilterCount("location", draft)}
-              />
-              <AccordionContent className="px-2 pb-4 sm:px-3">
-                <div className="grid gap-3 lg:grid-cols-2">
-                  <FilterOptionGroup
-                    label="Organization units"
-                    options={facets.orgUnits}
-                    selected={draft.orgUnitId}
-                    maximum={MAX_SELECTIONS.orgUnitId}
-                    onChange={(values) => {
-                      updateArray("orgUnitId", values);
-                    }}
-                  />
-                  <FilterOptionGroup
-                    label="Stores"
-                    options={storeOptions}
-                    selected={draft.storeId}
-                    maximum={MAX_SELECTIONS.storeId}
-                    onChange={(values) => {
-                      updateArray("storeId", values);
-                    }}
-                  />
-                </div>
-
-                <Separator className="my-5" />
-
-                <div className="grid gap-5 xl:grid-cols-2">
-                  <section
-                    className="grid gap-3 rounded-2xl border border-border/70 bg-background/55 p-4"
-                    aria-labelledby="inventory-price-range-title"
-                  >
-                    <div>
-                      <h4
-                        id="inventory-price-range-title"
-                        className="text-body-sm font-medium text-foreground"
-                      >
-                        MRP range
-                      </h4>
-                      <p className="mt-0.5 text-caption text-muted-readable">
-                        Available facet range:{" "}
-                        {facets.mrp.minimum === null
-                          ? "not configured"
-                          : facets.mrp.minimum.toLocaleString("en-IN")}{" "}
-                        –{" "}
-                        {facets.mrp.maximum === null
-                          ? "not configured"
-                          : facets.mrp.maximum.toLocaleString("en-IN")}{" "}
-                        {facets.mrp.currency ?? ""}
-                      </p>
-                    </div>
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      <FieldShell
-                        id="inventory-filter-mrp-min"
-                        label="Minimum MRP"
-                      >
-                        <Input
-                          id="inventory-filter-mrp-min"
-                          type="number"
-                          min={0}
-                          max={1_000_000_000}
-                          step="0.01"
-                          value={draft.mrpMin}
-                          onChange={(event) => {
-                            setDraft((current) => ({
-                              ...current,
-                              mrpMin: event.currentTarget.value,
-                            }));
-                            setValidationError(null);
-                          }}
-                          inputMode="decimal"
-                          placeholder="No minimum"
-                        />
-                      </FieldShell>
-                      <FieldShell
-                        id="inventory-filter-mrp-max"
-                        label="Maximum MRP"
-                      >
-                        <Input
-                          id="inventory-filter-mrp-max"
-                          type="number"
-                          min={0}
-                          max={1_000_000_000}
-                          step="0.01"
-                          value={draft.mrpMax}
-                          onChange={(event) => {
-                            setDraft((current) => ({
-                              ...current,
-                              mrpMax: event.currentTarget.value,
-                            }));
-                            setValidationError(null);
-                          }}
-                          inputMode="decimal"
-                          placeholder="No maximum"
-                        />
-                      </FieldShell>
-                    </div>
-                  </section>
-
-                  <section
-                    className="grid gap-4 rounded-2xl border border-border/70 bg-background/55 p-4"
-                    aria-labelledby="inventory-date-range-title"
-                  >
-                    <div className="flex items-start gap-3">
-                      <span className="grid size-9 shrink-0 place-items-center rounded-xl border border-border/70 bg-muted/55 text-muted-readable">
-                        <CalendarRange aria-hidden="true" className="size-4" />
-                      </span>
+              <AccordionItem
+                value="product"
+                className="rounded-2xl border border-border/70 bg-card/65 px-1"
+              >
+                <SectionTrigger
+                  section="product"
+                  count={sectionFilterCount("product", draft)}
+                />
+                <AccordionContent className="px-2 pb-4 sm:px-3">
+                  <div className="grid gap-3 lg:grid-cols-2 xl:grid-cols-3">
+                    <FilterOptionGroup
+                      label="Models"
+                      options={facets.models}
+                      selected={draft.modelId}
+                      maximum={MAX_SELECTIONS.modelId}
+                      onChange={(values) => {
+                        updateArray("modelId", values);
+                      }}
+                    />
+                    <FilterOptionGroup
+                      label="Variants"
+                      options={variantOptions}
+                      selected={draft.variantId}
+                      maximum={MAX_SELECTIONS.variantId}
+                      onChange={(values) => {
+                        updateArray("variantId", values);
+                      }}
+                    />
+                    <FilterOptionGroup
+                      label="Colors"
+                      options={facets.colors}
+                      selected={draft.color}
+                      maximum={MAX_SELECTIONS.color}
+                      onChange={(values) => {
+                        updateArray("color", values);
+                      }}
+                    />
+                    <FilterOptionGroup
+                      label="Fuel"
+                      options={facets.fuels}
+                      selected={draft.fuel}
+                      maximum={MAX_SELECTIONS.fuel}
+                      onChange={(values) => {
+                        updateArray("fuel", values);
+                      }}
+                    />
+                    <FilterOptionGroup
+                      label="Segment"
+                      options={facets.segments}
+                      selected={draft.segment}
+                      maximum={MAX_SELECTIONS.segment}
+                      onChange={(values) => {
+                        updateArray("segment", values);
+                      }}
+                    />
+                    <div className="grid content-start gap-4 rounded-2xl border border-border/70 bg-background/55 p-3.5 shadow-xs">
                       <div>
-                        <h4
-                          id="inventory-date-range-title"
-                          className="text-body-sm font-medium text-foreground"
-                        >
-                          Business date ranges
+                        <h4 className="text-body-sm font-medium text-foreground">
+                          Vehicle attributes
                         </h4>
                         <p className="mt-0.5 text-caption text-muted-readable">
-                          Arrival and transfer boundaries are inclusive.
+                          Optional finish and registration characteristics.
                         </p>
                       </div>
+                      <TriStateSelect
+                        id="inventory-filter-metallic"
+                        label="Finish"
+                        value={draft.metallic}
+                        trueLabel="Metallic"
+                        falseLabel="Matt / non-metallic"
+                        onChange={(value) => {
+                          setDraft((current) => ({
+                            ...current,
+                            metallic: value,
+                          }));
+                          setValidationError(null);
+                        }}
+                      />
+                      <TriStateSelect
+                        id="inventory-filter-registration"
+                        label="Registration"
+                        value={draft.registrationRequired}
+                        trueLabel="Required"
+                        falseLabel="Not required"
+                        onChange={(value) => {
+                          setDraft((current) => ({
+                            ...current,
+                            registrationRequired: value,
+                          }));
+                          setValidationError(null);
+                        }}
+                      />
                     </div>
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      <FieldShell
-                        id="inventory-filter-arrival-from"
-                        label="Arrival from"
-                      >
-                        <Input
-                          id="inventory-filter-arrival-from"
-                          type="date"
-                          value={draft.arrivalFrom}
-                          max={
-                            draft.arrivalTo.length === 0
-                              ? undefined
-                              : draft.arrivalTo
-                          }
-                          onChange={(event) => {
-                            setDraft((current) => ({
-                              ...current,
-                              arrivalFrom: event.currentTarget.value,
-                            }));
-                            setValidationError(null);
-                          }}
-                        />
-                      </FieldShell>
-                      <FieldShell
-                        id="inventory-filter-arrival-to"
-                        label="Arrival to"
-                      >
-                        <Input
-                          id="inventory-filter-arrival-to"
-                          type="date"
-                          value={draft.arrivalTo}
-                          min={
-                            draft.arrivalFrom.length === 0
-                              ? undefined
-                              : draft.arrivalFrom
-                          }
-                          onChange={(event) => {
-                            setDraft((current) => ({
-                              ...current,
-                              arrivalTo: event.currentTarget.value,
-                            }));
-                            setValidationError(null);
-                          }}
-                        />
-                      </FieldShell>
-                      <FieldShell
-                        id="inventory-filter-transfer-from"
-                        label="Transfer from"
-                      >
-                        <Input
-                          id="inventory-filter-transfer-from"
-                          type="date"
-                          value={draft.transferFrom}
-                          max={
-                            draft.transferTo.length === 0
-                              ? undefined
-                              : draft.transferTo
-                          }
-                          onChange={(event) => {
-                            setDraft((current) => ({
-                              ...current,
-                              transferFrom: event.currentTarget.value,
-                            }));
-                            setValidationError(null);
-                          }}
-                        />
-                      </FieldShell>
-                      <FieldShell
-                        id="inventory-filter-transfer-to"
-                        label="Transfer to"
-                      >
-                        <Input
-                          id="inventory-filter-transfer-to"
-                          type="date"
-                          value={draft.transferTo}
-                          min={
-                            draft.transferFrom.length === 0
-                              ? undefined
-                              : draft.transferFrom
-                          }
-                          onChange={(event) => {
-                            setDraft((current) => ({
-                              ...current,
-                              transferTo: event.currentTarget.value,
-                            }));
-                            setValidationError(null);
-                          }}
-                        />
-                      </FieldShell>
-                    </div>
-                  </section>
-                </div>
-              </AccordionContent>
-            </AccordionItem>
+                  </div>
+                </AccordionContent>
+              </AccordionItem>
 
-            <AccordionItem
-              value="quality"
-              className="rounded-2xl border border-border/70 bg-card/65 px-1"
-            >
-              <SectionTrigger
-                section="quality"
-                count={sectionFilterCount("quality", draft)}
-              />
-              <AccordionContent className="px-2 pb-4 sm:px-3">
-                <FilterOptionGroup
-                  label="Warnings"
-                  description="Show records requiring controlled configuration or reconciliation."
-                  options={VEHICLE_INVENTORY_DATA_QUALITY_FLAGS.map(
-                    (value) => ({
-                      value,
-                      label: QUALITY_LABELS[value] ?? humanizeToken(value),
-                    }),
-                  )}
-                  selected={draft.warning}
-                  maximum={MAX_SELECTIONS.warning}
-                  searchable={false}
-                  onChange={(values) => {
-                    updateArray("warning", values);
-                  }}
+              <AccordionItem
+                value="location"
+                className="rounded-2xl border border-border/70 bg-card/65 px-1"
+              >
+                <SectionTrigger
+                  section="location"
+                  count={sectionFilterCount("location", draft)}
                 />
-              </AccordionContent>
-            </AccordionItem>
-          </Accordion>
+                <AccordionContent className="px-2 pb-4 sm:px-3">
+                  <div className="grid gap-3 lg:grid-cols-2">
+                    <FilterOptionGroup
+                      label="Organization units"
+                      options={facets.orgUnits}
+                      selected={draft.orgUnitId}
+                      maximum={MAX_SELECTIONS.orgUnitId}
+                      onChange={(values) => {
+                        updateArray("orgUnitId", values);
+                      }}
+                    />
+                    <FilterOptionGroup
+                      label="Stores"
+                      options={storeOptions}
+                      selected={draft.storeId}
+                      maximum={MAX_SELECTIONS.storeId}
+                      onChange={(values) => {
+                        updateArray("storeId", values);
+                      }}
+                    />
+                  </div>
 
-          {validationError === null ? null : (
-            <p
-              role="alert"
-              className="mt-4 rounded-2xl border border-destructive/25 bg-destructive/10 px-4 py-3 text-body-sm text-destructive"
-            >
-              {validationError}
-            </p>
-          )}
-        </form>
+                  <Separator className="my-5" />
 
-        <DialogFooter className="mx-0 mb-0 flex-row flex-wrap items-center rounded-none rounded-b-3xl border-t border-border/70 bg-muted/35 px-4 py-4 sm:justify-between sm:px-6">
+                  <div className="grid gap-5 xl:grid-cols-2">
+                    <section
+                      className="grid gap-3 rounded-2xl border border-border/70 bg-background/55 p-4"
+                      aria-labelledby="inventory-price-range-title"
+                    >
+                      <div>
+                        <h4
+                          id="inventory-price-range-title"
+                          className="text-body-sm font-medium text-foreground"
+                        >
+                          MRP range
+                        </h4>
+                        <p className="mt-0.5 text-caption text-muted-readable">
+                          Available facet range:{" "}
+                          {facets.mrp.minimum === null
+                            ? "not configured"
+                            : facets.mrp.minimum.toLocaleString("en-IN")}{" "}
+                          –{" "}
+                          {facets.mrp.maximum === null
+                            ? "not configured"
+                            : facets.mrp.maximum.toLocaleString("en-IN")}{" "}
+                          {facets.mrp.currency ?? ""}
+                        </p>
+                      </div>
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <FieldShell
+                          id="inventory-filter-mrp-min"
+                          label="Minimum MRP"
+                        >
+                          <Input
+                            id="inventory-filter-mrp-min"
+                            type="number"
+                            min={0}
+                            max={1_000_000_000}
+                            step="0.01"
+                            value={draft.mrpMin}
+                            onChange={(event) => {
+                              setDraft((current) => ({
+                                ...current,
+                                mrpMin: event.currentTarget.value,
+                              }));
+                              setValidationError(null);
+                            }}
+                            inputMode="decimal"
+                            placeholder="No minimum"
+                          />
+                        </FieldShell>
+                        <FieldShell
+                          id="inventory-filter-mrp-max"
+                          label="Maximum MRP"
+                        >
+                          <Input
+                            id="inventory-filter-mrp-max"
+                            type="number"
+                            min={0}
+                            max={1_000_000_000}
+                            step="0.01"
+                            value={draft.mrpMax}
+                            onChange={(event) => {
+                              setDraft((current) => ({
+                                ...current,
+                                mrpMax: event.currentTarget.value,
+                              }));
+                              setValidationError(null);
+                            }}
+                            inputMode="decimal"
+                            placeholder="No maximum"
+                          />
+                        </FieldShell>
+                      </div>
+                    </section>
+
+                    <section
+                      className="grid gap-4 rounded-2xl border border-border/70 bg-background/55 p-4"
+                      aria-labelledby="inventory-date-range-title"
+                    >
+                      <div className="flex items-start gap-3">
+                        <span className="grid size-9 shrink-0 place-items-center rounded-xl border border-border/70 bg-muted/55 text-muted-readable">
+                          <CalendarRange
+                            aria-hidden="true"
+                            className="size-4"
+                          />
+                        </span>
+                        <div>
+                          <h4
+                            id="inventory-date-range-title"
+                            className="text-body-sm font-medium text-foreground"
+                          >
+                            Business date ranges
+                          </h4>
+                          <p className="mt-0.5 text-caption text-muted-readable">
+                            Arrival and transfer boundaries are inclusive.
+                          </p>
+                        </div>
+                      </div>
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <FieldShell
+                          id="inventory-filter-arrival-from"
+                          label="Arrival from"
+                        >
+                          <Input
+                            id="inventory-filter-arrival-from"
+                            type="date"
+                            placeholder="Select arrival start date"
+                            value={draft.arrivalFrom}
+                            max={
+                              draft.arrivalTo.length === 0
+                                ? undefined
+                                : draft.arrivalTo
+                            }
+                            onChange={(event) => {
+                              setDraft((current) => ({
+                                ...current,
+                                arrivalFrom: event.currentTarget.value,
+                              }));
+                              setValidationError(null);
+                            }}
+                          />
+                        </FieldShell>
+                        <FieldShell
+                          id="inventory-filter-arrival-to"
+                          label="Arrival to"
+                        >
+                          <Input
+                            id="inventory-filter-arrival-to"
+                            type="date"
+                            placeholder="Select arrival end date"
+                            value={draft.arrivalTo}
+                            min={
+                              draft.arrivalFrom.length === 0
+                                ? undefined
+                                : draft.arrivalFrom
+                            }
+                            onChange={(event) => {
+                              setDraft((current) => ({
+                                ...current,
+                                arrivalTo: event.currentTarget.value,
+                              }));
+                              setValidationError(null);
+                            }}
+                          />
+                        </FieldShell>
+                        <FieldShell
+                          id="inventory-filter-transfer-from"
+                          label="Transfer from"
+                        >
+                          <Input
+                            id="inventory-filter-transfer-from"
+                            type="date"
+                            placeholder="Select transfer start date"
+                            value={draft.transferFrom}
+                            max={
+                              draft.transferTo.length === 0
+                                ? undefined
+                                : draft.transferTo
+                            }
+                            onChange={(event) => {
+                              setDraft((current) => ({
+                                ...current,
+                                transferFrom: event.currentTarget.value,
+                              }));
+                              setValidationError(null);
+                            }}
+                          />
+                        </FieldShell>
+                        <FieldShell
+                          id="inventory-filter-transfer-to"
+                          label="Transfer to"
+                        >
+                          <Input
+                            id="inventory-filter-transfer-to"
+                            type="date"
+                            placeholder="Select transfer end date"
+                            value={draft.transferTo}
+                            min={
+                              draft.transferFrom.length === 0
+                                ? undefined
+                                : draft.transferFrom
+                            }
+                            onChange={(event) => {
+                              setDraft((current) => ({
+                                ...current,
+                                transferTo: event.currentTarget.value,
+                              }));
+                              setValidationError(null);
+                            }}
+                          />
+                        </FieldShell>
+                      </div>
+                    </section>
+                  </div>
+                </AccordionContent>
+              </AccordionItem>
+
+              <AccordionItem
+                value="quality"
+                className="rounded-2xl border border-border/70 bg-card/65 px-1"
+              >
+                <SectionTrigger
+                  section="quality"
+                  count={sectionFilterCount("quality", draft)}
+                />
+                <AccordionContent className="px-2 pb-4 sm:px-3">
+                  <FilterOptionGroup
+                    label="Warnings"
+                    description="Show records requiring controlled configuration or reconciliation."
+                    options={VEHICLE_INVENTORY_DATA_QUALITY_FLAGS.map(
+                      (value) => ({
+                        value,
+                        label: QUALITY_LABELS[value] ?? humanizeToken(value),
+                      }),
+                    )}
+                    selected={draft.warning}
+                    maximum={MAX_SELECTIONS.warning}
+                    searchable={false}
+                    onChange={(values) => {
+                      updateArray("warning", values);
+                    }}
+                  />
+                </AccordionContent>
+              </AccordionItem>
+            </Accordion>
+
+            {validationError === null ? null : (
+              <p
+                role="alert"
+                className="mt-4 rounded-2xl border border-destructive/25 bg-destructive/10 px-4 py-3 text-body-sm text-destructive"
+              >
+                {validationError}
+              </p>
+            )}
+          </form>
+        </DialogBody>
+
+        <DialogFooter className="flex-row flex-wrap items-center sm:justify-between">
           <div className="mr-auto flex min-w-0 items-center gap-2 text-caption text-muted-readable">
             <Filter aria-hidden="true" className="size-4 shrink-0" />
             <span>
@@ -1584,7 +1590,7 @@ export function VehicleInventoryFilters({
               id="vehicle-inventory-sort-field"
               className="h-11 w-full"
             >
-              <SelectValue />
+              <SelectValue placeholder="Select inventory sort field" />
             </SelectTrigger>
             <SelectContent position="popper" align="start">
               {VEHICLE_INVENTORY_SORT_FIELDS.map((value) => (
@@ -1609,7 +1615,7 @@ export function VehicleInventoryFilters({
               id="vehicle-inventory-sort-direction"
               className="h-11 w-full"
             >
-              <SelectValue />
+              <SelectValue placeholder="Select sort direction" />
             </SelectTrigger>
             <SelectContent position="popper" align="start">
               <SelectItem value="ASC">

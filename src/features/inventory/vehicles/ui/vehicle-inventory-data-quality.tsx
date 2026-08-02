@@ -24,6 +24,7 @@ import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -836,8 +837,8 @@ export function VehicleInventoryDataQuality({
             </TooltipContent>
           </Tooltip>
 
-          <DialogContent className="max-h-[92svh] overflow-hidden gap-0 p-0 sm:max-w-3xl">
-            <DialogHeader className="border-b border-border/70 px-6 py-5">
+          <DialogContent height="viewport" className="sm:max-w-3xl">
+            <DialogHeader>
               <DialogTitle>
                 {step === "CATEGORY"
                   ? "Review and resolve inventory warnings"
@@ -851,7 +852,7 @@ export function VehicleInventoryDataQuality({
               </DialogDescription>
             </DialogHeader>
 
-            <div className="min-h-0 overflow-y-auto px-6 py-5">
+            <DialogBody>
               {step === "CATEGORY" ? (
                 <CategorySelector counts={counts} onSelect={selectCategory} />
               ) : null}
@@ -906,9 +907,9 @@ export function VehicleInventoryDataQuality({
                   {errorMessage}
                 </p>
               ) : null}
-            </div>
+            </DialogBody>
 
-            <DialogFooter className="mx-0 mb-0 rounded-none rounded-b-3xl border-t border-border/70 bg-muted/30 px-6 py-4">
+            <DialogFooter>
               {step !== "CATEGORY" && step !== "WORKING" ? (
                 <Button type="button" variant="ghost" onClick={resetFlow}>
                   <ArrowLeft aria-hidden="true" className="size-4" />

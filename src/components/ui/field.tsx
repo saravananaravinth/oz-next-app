@@ -198,7 +198,7 @@ function fieldErrorContent(
   }
 
   return (
-    <ul className="ml-4 flex list-disc flex-col gap-1">
+    <ul className="ms-4 flex list-disc flex-col gap-1">
       {messages.map((message) => (
         <li key={message}>{message}</li>
       ))}

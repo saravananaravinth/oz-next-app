@@ -2,85 +2,45 @@
 import type { Metadata } from "next";
 import type { ReactElement } from "react";
 
-import { requireAuthenticatedMe } from "@/features/auth/server/require-auth";
 import {
-  EngagementDashboardAccessState,
-  EngagementDashboardInvalidQueryState,
   EngagementDashboardPage,
-  parseEngagementDashboardSearchParams,
-  readEngagementDashboardWorkspace,
-  resolveEngagementDashboardAccess,
+  readEngagementOverview,
   type EngagementDashboardRawSearchParams,
 } from "@/features/engagement/operations-dashboard";
+import { resolveEngagementDashboardRoute } from "@/app/(protected)/engagement/dashboard/_lib/engagement-dashboard-route";
 
-const PAGE_TITLE = "Engagement dashboard";
+const PAGE_TITLE = "Vehicle sales engagement";
 const PAGE_DESCRIPTION =
-  "Actor-scoped lead operations, dealer performance, support issues, and district coverage.";
+  "Focused vehicle-sales lead intake, assignment, response, follow-up, and conversion operations.";
 
-type RoutePageProps = Readonly<{
+type EngagementDashboardPageProps = Readonly<{
   searchParams: Promise<EngagementDashboardRawSearchParams>;
 }>;
 
 export const metadata = {
   title: PAGE_TITLE,
   description: PAGE_DESCRIPTION,
-  robots: {
-    index: false,
-    follow: false,
-    nocache: true,
-    noarchive: true,
-    nosnippet: true,
-    noimageindex: true,
-  },
 } satisfies Metadata;
-
-export const dynamic = "force-dynamic";
-export const revalidate = 0;
-export const fetchCache = "force-no-store";
-export const runtime = "nodejs";
 
 export default async function EngagementDashboardRoutePage({
   searchParams,
-}: RoutePageProps): Promise<ReactElement> {
-  const [me, rawSearchParams] = await Promise.all([
-    requireAuthenticatedMe(),
-    searchParams,
-  ]);
-  const parsedQuery = parseEngagementDashboardSearchParams(rawSearchParams);
+}: EngagementDashboardPageProps): Promise<ReactElement> {
+  const route = await resolveEngagementDashboardRoute({ searchParams });
 
-  if (!parsedQuery.success) {
-    return (
-      <EngagementDashboardInvalidQueryState
-        issues={parsedQuery.error.issues.map((issue) => {
-          const path =
-            issue.path.length === 0 ? "$" : issue.path.map(String).join(".");
-          return `${path}: ${issue.message}`;
-        })}
-      />
-    );
+  if (route.kind === "blocked") {
+    return route.content;
   }
 
-  const access = resolveEngagementDashboardAccess(
-    me,
-    parsedQuery.data.tenantId,
-  );
-  if (access.kind !== "resolved") {
-    return (
-      <EngagementDashboardAccessState access={access} tenants={me.tenants} />
-    );
-  }
-
-  const data = await readEngagementDashboardWorkspace({
-    query: parsedQuery.data,
-    access,
+  const data = await readEngagementOverview({
+    query: route.query,
+    access: route.access,
   });
 
   return (
     <EngagementDashboardPage
-      access={access}
-      query={parsedQuery.data}
+      access={route.access}
+      query={route.query}
       data={data}
-      tenants={me.tenants}
     />
   );
 }

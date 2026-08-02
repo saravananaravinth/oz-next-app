@@ -1,4 +1,6 @@
 // oz-next-app/src/features/auth/ui/login-client-fallback.tsx
+import type { ReactElement } from "react";
+
 import {
   Card,
   CardContent,
@@ -9,19 +11,18 @@ import { Skeleton } from "@/components/ui/skeleton";
 
 import { LoginBrandMark } from "@/features/auth/ui/login-brand-mark";
 
-export function LoginClientFallback() {
+export function LoginClientFallback(): ReactElement {
   return (
     <>
-      <p
-        className="sr-only"
-        role="status"
-        aria-live="polite"
-        aria-atomic="true"
-      >
+      <p className="sr-only" role="status" aria-atomic="true">
         Loading secure sign-in…
       </p>
 
-      <Card aria-hidden="true">
+      <Card
+        data-slot="login-client-fallback"
+        aria-hidden="true"
+        className="w-full shadow-sm shadow-foreground/5"
+      >
         <CardHeader className="items-center gap-5 text-center">
           <div className="grid justify-items-center gap-3">
             <LoginBrandMark />

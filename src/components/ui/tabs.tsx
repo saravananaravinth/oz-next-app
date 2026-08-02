@@ -17,7 +17,7 @@ function Tabs({
       data-slot="tabs"
       orientation={orientation}
       className={cn(
-        "group/tabs flex gap-3 data-[orientation=horizontal]:flex-col data-[orientation=vertical]:flex-row",
+        "group/tabs flex min-w-0 gap-3 data-[orientation=horizontal]:flex-col data-[orientation=vertical]:flex-row",
         className,
       )}
       {...props}
@@ -26,12 +26,11 @@ function Tabs({
 }
 
 const tabsListVariants = cva(
-  "inline-flex w-fit shrink-0 items-center justify-center text-muted-readable data-[variant=line]:rounded-none data-[variant=line]:bg-transparent group-data-[orientation=horizontal]/tabs:h-10 group-data-[orientation=vertical]/tabs:h-fit group-data-[orientation=vertical]/tabs:flex-col",
+  "inline-flex max-w-full w-fit shrink-0 items-center justify-start overflow-x-auto overscroll-x-contain text-muted-readable [scrollbar-width:none] [&::-webkit-scrollbar]:hidden data-[variant=line]:rounded-none data-[variant=line]:bg-transparent group-data-[orientation=horizontal]/tabs:h-10 group-data-[orientation=vertical]/tabs:h-fit group-data-[orientation=vertical]/tabs:flex-col group-data-[orientation=vertical]/tabs:overflow-visible",
   {
     variants: {
       variant: {
-        default:
-          "rounded-2xl border border-border/70 bg-muted/70 p-1 shadow-xs backdrop-blur-sm",
+        default: "rounded-2xl border border-border/70 bg-muted p-1 shadow-xs",
         line: "gap-1 border-b border-border/80 p-0",
       },
     },
@@ -65,14 +64,14 @@ function TabsTrigger({
     <TabsPrimitive.Trigger
       data-slot="tabs-trigger"
       className={cn(
-        "relative inline-flex min-h-8 flex-1 items-center justify-center gap-1.5 whitespace-nowrap rounded-xl border border-transparent px-3 py-1.5 text-body-sm text-muted-readable transition-[background-color,border-color,color,box-shadow,transform] duration-200 ease-out select-none motion-reduce:transition-none",
+        "relative inline-flex min-h-8 flex-1 items-center justify-center gap-1.5 whitespace-nowrap rounded-xl border border-transparent px-3 py-1.5 text-body-sm text-muted-readable transition-[background-color,border-color,color,box-shadow,transform] duration-[var(--motion-duration-fast)] ease-enterprise select-none motion-reduce:transition-none",
         "hover:text-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/40 focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50",
         "group-data-[orientation=vertical]/tabs:w-full group-data-[orientation=vertical]/tabs:justify-start",
         "data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-xs data-active:bg-background data-active:text-foreground data-active:shadow-xs dark:data-[state=active]:bg-input/45 dark:data-active:bg-input/45",
         "group-data-[variant=line]/tabs-list:rounded-none group-data-[variant=line]/tabs-list:bg-transparent group-data-[variant=line]/tabs-list:px-2 group-data-[variant=line]/tabs-list:shadow-none group-data-[variant=line]/tabs-list:data-[state=active]:bg-transparent group-data-[variant=line]/tabs-list:data-active:bg-transparent",
-        "after:absolute after:bg-foreground after:opacity-0 after:transition-opacity after:duration-200 motion-reduce:after:transition-none group-data-[variant=line]/tabs-list:data-[state=active]:after:opacity-100 group-data-[variant=line]/tabs-list:data-active:after:opacity-100",
-        "group-data-[orientation=horizontal]/tabs:after:inset-x-0 group-data-[orientation=horizontal]/tabs:after:-bottom-px group-data-[orientation=horizontal]/tabs:after:h-px group-data-[orientation=vertical]/tabs:after:inset-y-1 group-data-[orientation=vertical]/tabs:after:right-0 group-data-[orientation=vertical]/tabs:after:w-px",
-        "[font-weight:var(--typography-emphasis-weight)] has-data-[icon=inline-end]:pr-2 has-data-[icon=inline-start]:pl-2 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+        "after:absolute after:bg-foreground after:opacity-0 after:transition-opacity after:duration-[var(--motion-duration-fast)] motion-reduce:after:transition-none group-data-[variant=line]/tabs-list:data-[state=active]:after:opacity-100 group-data-[variant=line]/tabs-list:data-active:after:opacity-100",
+        "group-data-[orientation=horizontal]/tabs:after:inset-x-0 group-data-[orientation=horizontal]/tabs:after:-bottom-px group-data-[orientation=horizontal]/tabs:after:h-px group-data-[orientation=vertical]/tabs:after:inset-y-1 group-data-[orientation=vertical]/tabs:after:end-0 group-data-[orientation=vertical]/tabs:after:w-px",
+        "[font-weight:var(--typography-emphasis-weight)] has-data-[icon=inline-end]:pe-2 has-data-[icon=inline-start]:ps-2 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
         className,
       )}
       {...props}

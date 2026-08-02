@@ -3,14 +3,7 @@
 
 import Link from "next/link";
 import { AlertTriangle, Home, LoaderCircle, RefreshCw } from "lucide-react";
-import {
-  useCallback,
-  useEffect,
-  useId,
-  useMemo,
-  useTransition,
-  type ReactElement,
-} from "react";
+import { useEffect, useId, useTransition, type ReactElement } from "react";
 
 import { Button } from "@/components/ui/button";
 import { isClientDevelopment } from "@/lib/env/client-public-env";
@@ -156,16 +149,13 @@ export default function RootError({
   const referenceId = useId();
   const [isResetPending, startResetTransition] = useTransition();
 
-  const errorReference = useMemo(
-    () => safeErrorReference(error.digest),
-    [error.digest],
-  );
+  const errorReference = safeErrorReference(error.digest);
 
-  const handleReset = useCallback((): void => {
+  function handleReset(): void {
     startResetTransition(() => {
       reset();
     });
-  }, [reset]);
+  }
 
   useEffect(() => {
     if (!isClientDevelopment) {
@@ -180,15 +170,17 @@ export default function RootError({
 
   return (
     <main
+      id="main-content"
+      tabIndex={-1}
       aria-labelledby={titleId}
       aria-describedby={descriptionId}
-      className="flex min-h-svh items-center justify-center bg-background px-4 py-10 text-foreground sm:px-6 lg:px-8"
+      className="flex min-h-dvh items-center justify-center bg-background px-4 py-10 text-foreground sm:px-6 lg:px-8"
     >
       <section
         role="alert"
         aria-live="assertive"
         aria-atomic="true"
-        className="w-full max-w-xl rounded-3xl border border-border bg-card/95 p-6 text-center shadow-sm shadow-foreground/5 backdrop-blur sm:p-8"
+        className="w-full max-w-xl rounded-2xl border border-border bg-card p-6 text-center shadow-sm shadow-foreground/5 sm:p-8"
       >
         <div
           aria-hidden="true"
@@ -198,9 +190,7 @@ export default function RootError({
         </div>
 
         <div className="mt-6 grid gap-3">
-          <p className="text-overline text-muted-readable">
-            Application boundary
-          </p>
+          <p className="text-overline text-muted-readable">Workspace error</p>
 
           <h1 id={titleId} className="text-page-title text-foreground">
             Something went wrong.
@@ -218,7 +208,7 @@ export default function RootError({
         {errorReference !== null ? (
           <div
             aria-labelledby={referenceId}
-            className="mt-6 rounded-2xl border border-border bg-muted/40 px-4 py-3 text-left"
+            className="mt-6 rounded-xl border border-border bg-muted/35 px-4 py-3 text-start"
           >
             <p id={referenceId} className="text-overline text-muted-readable">
               Error reference
@@ -230,14 +220,7 @@ export default function RootError({
           </div>
         ) : null}
 
-        <div className="mt-8 flex flex-col-reverse gap-3 sm:flex-row sm:justify-center">
-          <Button asChild variant="outline">
-            <Link href="/dashboard" prefetch={false}>
-              <Home aria-hidden="true" className="size-4" />
-              Go to dashboard
-            </Link>
-          </Button>
-
+        <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:justify-center">
           <Button
             type="button"
             onClick={handleReset}
@@ -252,7 +235,14 @@ export default function RootError({
             ) : (
               <RefreshCw aria-hidden="true" className="size-4" />
             )}
-            Try again
+            {isResetPending ? "Retrying…" : "Try again"}
+          </Button>
+
+          <Button asChild variant="outline">
+            <Link href="/dashboard">
+              <Home aria-hidden="true" className="size-4" />
+              Go to dashboard
+            </Link>
           </Button>
         </div>
       </section>

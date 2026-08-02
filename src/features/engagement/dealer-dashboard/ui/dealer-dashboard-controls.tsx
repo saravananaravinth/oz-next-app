@@ -32,6 +32,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -47,7 +48,6 @@ import {
   FieldLabel,
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -283,7 +283,7 @@ export function OwnerGuideOnboardDialog({
           Onboard Owner Guide
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-h-[min(92dvh,58rem)] grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden sm:max-w-3xl">
+      <DialogContent height="tall" className="sm:max-w-3xl">
         <DialogHeader className="pr-10">
           <DialogTitle>Onboard an Owner Guide</DialogTitle>
           <DialogDescription>
@@ -293,8 +293,8 @@ export function OwnerGuideOnboardDialog({
         </DialogHeader>
 
         <form className="contents" onSubmit={submit} noValidate>
-          <ScrollArea className="h-full min-h-0">
-            <div className="grid gap-5 pb-1 pr-4">
+          <DialogBody>
+            <div className="grid gap-5">
               <FormSection
                 step={1}
                 title="Identify the customer"
@@ -329,6 +329,7 @@ export function OwnerGuideOnboardDialog({
                     <Input
                       id="owner-guide-name"
                       autoComplete="name"
+                      placeholder="Enter Owner Guide name"
                       aria-invalid={
                         form.formState.errors.displayName !== undefined
                       }
@@ -353,6 +354,7 @@ export function OwnerGuideOnboardDialog({
                     </FieldLabel>
                     <Input
                       id="owner-guide-model"
+                      placeholder="Enter vehicle model"
                       {...form.register("vehicleModel")}
                     />
                   </Field>
@@ -363,6 +365,7 @@ export function OwnerGuideOnboardDialog({
                     </FieldLabel>
                     <Input
                       id="owner-guide-variant"
+                      placeholder="Enter vehicle variant"
                       {...form.register("vehicleVariant")}
                     />
                   </Field>
@@ -400,6 +403,7 @@ export function OwnerGuideOnboardDialog({
                     <Input
                       id="owner-guide-delivery-date"
                       type="date"
+                      placeholder="Select delivery date"
                       aria-invalid={
                         form.formState.errors.vehicleDeliveryDate !== undefined
                       }
@@ -489,7 +493,7 @@ export function OwnerGuideOnboardDialog({
                 </FieldGroup>
               </FormSection>
             </div>
-          </ScrollArea>
+          </DialogBody>
 
           <DialogFooter>
             <Button
@@ -574,7 +578,7 @@ function OwnerGuideEditDialog({
           <TooltipContent>Edit Owner Guide</TooltipContent>
         </Tooltip>
       )}
-      <DialogContent className="max-h-[min(92dvh,52rem)] grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden sm:max-w-2xl">
+      <DialogContent className="sm:max-w-2xl">
         <DialogHeader className="pr-10">
           <DialogTitle>Edit Owner Guide</DialogTitle>
           <DialogDescription>
@@ -584,8 +588,8 @@ function OwnerGuideEditDialog({
         </DialogHeader>
 
         <form className="contents" onSubmit={submit} noValidate>
-          <ScrollArea className="h-full min-h-0">
-            <div className="grid gap-5 pb-1 pr-4">
+          <DialogBody>
+            <div className="grid gap-5">
               <FieldGroup className="grid gap-4 sm:grid-cols-2">
                 <Field className="sm:col-span-2">
                   <FieldLabel htmlFor={`edit-name-${ownerGuide.ownerGuideId}`}>
@@ -593,6 +597,7 @@ function OwnerGuideEditDialog({
                   </FieldLabel>
                   <Input
                     id={`edit-name-${ownerGuide.ownerGuideId}`}
+                    placeholder="Enter display name"
                     {...form.register("displayName")}
                   />
                 </Field>
@@ -602,6 +607,7 @@ function OwnerGuideEditDialog({
                   </FieldLabel>
                   <Input
                     id={`edit-model-${ownerGuide.ownerGuideId}`}
+                    placeholder="Enter vehicle model"
                     {...form.register("vehicleModel")}
                   />
                 </Field>
@@ -613,6 +619,7 @@ function OwnerGuideEditDialog({
                   </FieldLabel>
                   <Input
                     id={`edit-variant-${ownerGuide.ownerGuideId}`}
+                    placeholder="Enter vehicle variant"
                     {...form.register("vehicleVariant")}
                   />
                 </Field>
@@ -649,6 +656,7 @@ function OwnerGuideEditDialog({
                   <Input
                     id={`edit-distance-${ownerGuide.ownerGuideId}`}
                     type="number"
+                    placeholder="Enter maximum distance"
                     min={1}
                     max={250}
                     inputMode="decimal"
@@ -664,6 +672,7 @@ function OwnerGuideEditDialog({
                   <Input
                     id={`edit-limit-${ownerGuide.ownerGuideId}`}
                     type="number"
+                    placeholder="Enter daily assignment limit"
                     min={1}
                     max={100}
                     inputMode="numeric"
@@ -700,7 +709,7 @@ function OwnerGuideEditDialog({
                 )}
               />
             </div>
-          </ScrollArea>
+          </DialogBody>
 
           <DialogFooter>
             <Button

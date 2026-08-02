@@ -2,11 +2,11 @@
 import type { Metadata } from "next";
 import { Suspense, type ReactElement } from "react";
 
-import { LoginClient, LoginClientFallback } from "@/features/auth";
+import { LoginClientFallback } from "@/features/auth/ui/login-client-fallback";
+import { LoginClient } from "@/features/auth/ui/login-client";
 
 const PAGE_TITLE = "Sign in";
 const PAGE_DESCRIPTION = "Sign in to access your Ozotec ERP workspace.";
-const PRODUCT_NAME = "Ozotec EV";
 const COMPANY_LEGAL_NAME = "Ozotec Automobile Pvt Ltd";
 const CURRENT_YEAR = new Date().getUTCFullYear();
 
@@ -35,13 +35,10 @@ export const metadata = {
 export default function LoginPage(): ReactElement {
   return (
     <section
-      aria-labelledby="login-page-title"
-      className="grid w-full max-w-xl gap-6"
+      data-slot="login-page"
+      aria-label="Secure sign in"
+      className="grid min-w-0 w-full max-w-md gap-6"
     >
-      <div className="sr-only">
-        <h1 id="login-page-title">Sign in to {PRODUCT_NAME}</h1>
-      </div>
-
       <Suspense fallback={<LoginClientFallback />}>
         <LoginClient />
       </Suspense>

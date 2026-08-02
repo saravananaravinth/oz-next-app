@@ -74,6 +74,7 @@ import {
 } from "@/components/ui/field";
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogHeader,
@@ -913,7 +914,7 @@ function DealerSelectionDialog({
         </Button>
       </DialogTrigger>
 
-      <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-hidden sm:max-w-xl">
+      <DialogContent height="viewport" className="sm:max-w-xl">
         <DialogHeader className="pr-8">
           <DialogTitle>Choose dealer destination</DialogTitle>
           <DialogDescription>
@@ -922,7 +923,7 @@ function DealerSelectionDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <ScrollArea className="max-h-[min(65dvh,34rem)] pr-3">
+        <DialogBody>
           <div className="grid gap-2 pb-1">
             <Button
               type="button"
@@ -982,8 +983,7 @@ function DealerSelectionDialog({
               );
             })}
           </div>
-          <ScrollBar orientation="vertical" />
-        </ScrollArea>
+        </DialogBody>
       </DialogContent>
     </Dialog>
   );
@@ -1088,7 +1088,7 @@ function FollowUpDateTimeDialog({
         </Button>
       </DialogTrigger>
 
-      <DialogContent className="max-h-[calc(100dvh-1rem)] overflow-y-auto sm:max-w-xl">
+      <DialogContent height="viewport" className="sm:max-w-xl">
         <DialogHeader className="pr-8">
           <DialogTitle>Schedule the next follow-up</DialogTitle>
           <DialogDescription>
@@ -1096,7 +1096,7 @@ function FollowUpDateTimeDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="grid gap-5">
+        <DialogBody className="grid content-start gap-5">
           <div className="overflow-x-auto rounded-2xl border border-border/70 bg-background p-1">
             <Calendar
               mode="single"
@@ -1128,6 +1128,7 @@ function FollowUpDateTimeDialog({
             <Input
               id="follow-up-time"
               type="time"
+              placeholder="Select follow-up time"
               value={draftTime}
               min={selectedMinimumTime}
               max={selectedMaximumTime}
@@ -1194,7 +1195,7 @@ function FollowUpDateTimeDialog({
               Use this schedule
             </Button>
           </div>
-        </div>
+        </DialogBody>
       </DialogContent>
     </Dialog>
   );
@@ -1367,7 +1368,7 @@ function LeadSummaryDialog({
         </Button>
       </DialogTrigger>
 
-      <DialogContent className="max-h-[min(90dvh,48rem)] overflow-y-auto sm:max-w-xl">
+      <DialogContent height="viewport" className="sm:max-w-xl">
         <DialogHeader>
           <DialogTitle>Lead details</DialogTitle>
           <DialogDescription>
@@ -1375,11 +1376,13 @@ function LeadSummaryDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <LeadSummaryContent
-          lead={lead}
-          locationText={locationText}
-          readOnly={readOnly}
-        />
+        <DialogBody>
+          <LeadSummaryContent
+            lead={lead}
+            locationText={locationText}
+            readOnly={readOnly}
+          />
+        </DialogBody>
       </DialogContent>
     </Dialog>
   );

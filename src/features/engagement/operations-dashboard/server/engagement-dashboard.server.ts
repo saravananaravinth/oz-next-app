@@ -9,6 +9,7 @@ import { isApiHttpError } from "@/lib/api/problem";
 import {
   engagementCoverageResultSchema,
   engagementDashboardIssueResultSchema,
+  engagementDashboardLeadListResultSchema,
   engagementDashboardSummarySchema,
   engagementDealerDetailSchema,
   engagementDealerPerformanceResultSchema,
@@ -27,8 +28,12 @@ import {
   type EngagementVideoSequenceListResult,
 } from "@/features/engagement/operations-dashboard/contracts/engagement-dashboard.schema";
 import type {
+  EngagementCoverageWorkspaceData,
   EngagementDashboardSectionResult,
-  EngagementDashboardWorkspaceData,
+  EngagementDealerWorkspaceData,
+  EngagementIssueWorkspaceData,
+  EngagementOverviewData,
+  EngagementVideoSequenceWorkspaceData,
 } from "@/features/engagement/operations-dashboard/contracts/engagement-dashboard.types";
 import type { ResolvedEngagementDashboardAccess } from "@/features/engagement/operations-dashboard/policies/engagement-dashboard.policy";
 
@@ -38,7 +43,7 @@ const videoSequenceClient = createErpFeatureClient({
 });
 
 const dashboardClient = createErpFeatureClient({
-  featureName: "engagement.operations-dashboard",
+  featureName: "engagement.vehicle-sales-dashboard",
   basePath: ENGAGEMENT_ENDPOINTS.operationsDashboardBase,
 });
 
@@ -69,7 +74,6 @@ function commonQuery(
     to: range.to,
     leadSourceId: query.leadSourceIds,
     ivrFlowCode: query.ivrFlowCodes,
-    leadType: query.leadTypes,
     status: query.statuses,
     dealerOrgUnitId: query.dealerOrgUnitIds,
     district: query.districts,
@@ -103,135 +107,103 @@ function forbiddenSection<TData>(): EngagementDashboardSectionResult<TData> {
   return { status: "forbidden" };
 }
 
-export async function readEngagementDashboardWorkspace(
+type EngagementActorContext = NonNullable<
+  ResolvedEngagementDashboardAccess["actorContext"]
+>;
+
+type EngagementActorContextOptions =
+  | Readonly<Record<never, never>>
+  | Readonly<{ actorContext: EngagementActorContext }>;
+
+function actorContextOptions(
+  access: ResolvedEngagementDashboardAccess,
+): EngagementActorContextOptions {
+  return access.actorContext === undefined
+    ? {}
+    : { actorContext: access.actorContext };
+}
+
+async function readFilterOptions(access: ResolvedEngagementDashboardAccess) {
+  return await settle(
+    dashboardClient.request({
+      path: "/filter-options",
+      schema: engagementFilterOptionsSchema,
+      ...actorContextOptions(access),
+    }),
+  );
+}
+
+export async function readEngagementOverview(
   input: Readonly<{
     query: EngagementDashboardSearchParams;
     access: ResolvedEngagementDashboardAccess;
   }>,
-): Promise<EngagementDashboardWorkspaceData> {
-  const actorContext = input.access.actorContext;
+): Promise<EngagementOverviewData> {
   const common = commonQuery(input.query);
   const previousRange = previousDashboardRange(
     input.query.from,
     input.query.to,
   );
-
-  const summaryPromise = settle(
-    dashboardClient.request({
-      path: "/summary",
-      query: common,
-      schema: engagementDashboardSummarySchema,
-      ...(actorContext !== undefined ? { actorContext } : {}),
-    }),
-  );
-  const comparisonSummaryPromise =
-    input.query.comparison === "PREVIOUS_PERIOD"
-      ? settle(
-          dashboardClient.request({
-            path: "/summary",
-            query: commonQuery(input.query, previousRange),
-            schema: engagementDashboardSummarySchema,
-            ...(actorContext !== undefined ? { actorContext } : {}),
-          }),
-        )
-      : Promise.resolve(null);
-  const sourceSeriesPromise = settle(
-    dashboardClient.request({
-      path: "/lead-sources/timeseries",
-      query: compactQuery({
-        ...common,
-        ...(input.query.grain === "AUTO" ? {} : { grain: input.query.grain }),
-      }),
-      schema: engagementLeadSourceSeriesSchema,
-      ...(actorContext !== undefined ? { actorContext } : {}),
-    }),
-  );
-  const funnelPromise = settle(
-    dashboardClient.request({
-      path: "/funnel",
-      query: common,
-      schema: engagementFunnelSchema,
-      ...(actorContext !== undefined ? { actorContext } : {}),
-    }),
-  );
-  const filterOptionsPromise = settle(
-    dashboardClient.request({
-      path: "/filter-options",
-      schema: engagementFilterOptionsSchema,
-      ...(actorContext !== undefined ? { actorContext } : {}),
-    }),
-  );
-  const dealersPromise = input.access.capabilities.canReadDealerPerformance
-    ? settle(
-        dashboardClient.request({
-          path: "/dealers",
-          query: compactQuery({
-            ...common,
-            sortBy: input.query.dealerSortBy,
-            sortDirection: input.query.dealerSortDirection,
-            limit: input.query.dealerLimit,
-            cursor: input.query.dealerCursor,
-          }),
-          schema: engagementDealerPerformanceResultSchema,
-          ...(actorContext !== undefined ? { actorContext } : {}),
-        }),
-      )
-    : Promise.resolve(forbiddenSection<EngagementDealerPerformanceResult>());
-  const issuesPromise = input.access.capabilities.canReadIssues
-    ? settle(
-        dashboardClient.request({
-          path: "/issues",
-          query: compactQuery({
-            ...common,
-            limit: input.query.issueLimit,
-            cursor: input.query.issueCursor,
-          }),
-          schema: engagementDashboardIssueResultSchema,
-          ...(actorContext !== undefined ? { actorContext } : {}),
-        }),
-      )
-    : Promise.resolve(forbiddenSection<EngagementDashboardIssueResult>());
-  const videoSequencesPromise = input.access.capabilities.canReadVideoSequences
-    ? settle(
-        videoSequenceClient.request({
-          path: "/",
-          query: { includeInactive: true },
-          schema: engagementVideoSequenceListResultSchema,
-          ...(actorContext !== undefined ? { actorContext } : {}),
-        }),
-      )
-    : Promise.resolve(forbiddenSection<EngagementVideoSequenceListResult>());
-  const coveragePromise = input.access.capabilities.canReadDealerPerformance
-    ? settle(
-        dashboardClient.request({
-          path: "/coverage",
-          query: common,
-          schema: engagementCoverageResultSchema,
-          ...(actorContext !== undefined ? { actorContext } : {}),
-        }),
-      )
-    : Promise.resolve(forbiddenSection<EngagementCoverageResult>());
+  const options = actorContextOptions(input.access);
 
   const [
     summary,
     comparisonSummary,
     sourceSeries,
     funnel,
-    dealers,
-    issues,
-    coverage,
     filterOptions,
-    videoSequences,
+    leads,
   ] = await Promise.all([
-    summaryPromise,
-    comparisonSummaryPromise,
-    sourceSeriesPromise,
-    funnelPromise,
-    dealersPromise,
-    issuesPromise,
-    coveragePromise,
-    filterOptionsPromise,
-    videoSequencesPromise,
+    settle(
+      dashboardClient.request({
+        path: "/summary",
+        query: common,
+        schema: engagementDashboardSummarySchema,
+        ...options,
+      }),
+    ),
+    input.query.comparison === "PREVIOUS_PERIOD"
+      ? settle(
+          dashboardClient.request({
+            path: "/summary",
+            query: commonQuery(input.query, previousRange),
+            schema: engagementDashboardSummarySchema,
+            ...options,
+          }),
+        )
+      : Promise.resolve(null),
+    settle(
+      dashboardClient.request({
+        path: "/lead-sources/timeseries",
+        query: compactQuery({
+          ...common,
+          ...(input.query.grain === "AUTO" ? {} : { grain: input.query.grain }),
+        }),
+        schema: engagementLeadSourceSeriesSchema,
+        ...options,
+      }),
+    ),
+    settle(
+      dashboardClient.request({
+        path: "/funnel",
+        query: common,
+        schema: engagementFunnelSchema,
+        ...options,
+      }),
+    ),
+    readFilterOptions(input.access),
+    settle(
+      dashboardClient.request({
+        path: "/leads",
+        query: compactQuery({
+          ...common,
+          limit: input.query.leadLimit,
+          cursor: input.query.leadCursor,
+        }),
+        schema: engagementDashboardLeadListResultSchema,
+        ...options,
+      }),
+    ),
   ]);
 
   return {
@@ -239,11 +211,128 @@ export async function readEngagementDashboardWorkspace(
     comparisonSummary,
     sourceSeries,
     funnel,
-    dealers,
-    issues,
-    coverage,
     filterOptions,
-    videoSequences,
+    leads,
+  };
+}
+
+export async function readEngagementDealerWorkspace(
+  input: Readonly<{
+    query: EngagementDashboardSearchParams;
+    access: ResolvedEngagementDashboardAccess;
+  }>,
+): Promise<EngagementDealerWorkspaceData> {
+  if (!input.access.capabilities.canReadDealerPerformance) {
+    return {
+      dealers: forbiddenSection<EngagementDealerPerformanceResult>(),
+      filterOptions: await readFilterOptions(input.access),
+    };
+  }
+
+  const [dealers, filterOptions] = await Promise.all([
+    settle(
+      dashboardClient.request({
+        path: "/dealers",
+        query: compactQuery({
+          ...commonQuery(input.query),
+          engagementState: input.query.dealerEngagementState,
+          sortBy: input.query.dealerSortBy,
+          sortDirection: input.query.dealerSortDirection,
+          limit: input.query.dealerLimit,
+          cursor: input.query.dealerCursor,
+        }),
+        schema: engagementDealerPerformanceResultSchema,
+        ...actorContextOptions(input.access),
+      }),
+    ),
+    readFilterOptions(input.access),
+  ]);
+
+  return { dealers, filterOptions };
+}
+
+export async function readEngagementIssueWorkspace(
+  input: Readonly<{
+    query: EngagementDashboardSearchParams;
+    access: ResolvedEngagementDashboardAccess;
+  }>,
+): Promise<EngagementIssueWorkspaceData> {
+  if (!input.access.capabilities.canReadIssues) {
+    return {
+      issues: forbiddenSection<EngagementDashboardIssueResult>(),
+      filterOptions: await readFilterOptions(input.access),
+    };
+  }
+
+  const [issues, filterOptions] = await Promise.all([
+    settle(
+      dashboardClient.request({
+        path: "/issues",
+        query: compactQuery({
+          ...commonQuery(input.query),
+          issueCategory: input.query.issueCategories,
+          issueState: input.query.issueStates,
+          limit: input.query.issueLimit,
+          cursor: input.query.issueCursor,
+        }),
+        schema: engagementDashboardIssueResultSchema,
+        ...actorContextOptions(input.access),
+      }),
+    ),
+    readFilterOptions(input.access),
+  ]);
+
+  return { issues, filterOptions };
+}
+
+export async function readEngagementCoverageWorkspace(
+  input: Readonly<{
+    query: EngagementDashboardSearchParams;
+    access: ResolvedEngagementDashboardAccess;
+  }>,
+): Promise<EngagementCoverageWorkspaceData> {
+  if (!input.access.capabilities.canReadDealerPerformance) {
+    return {
+      coverage: forbiddenSection<EngagementCoverageResult>(),
+      filterOptions: await readFilterOptions(input.access),
+    };
+  }
+
+  const [coverage, filterOptions] = await Promise.all([
+    settle(
+      dashboardClient.request({
+        path: "/coverage",
+        query: commonQuery(input.query),
+        schema: engagementCoverageResultSchema,
+        ...actorContextOptions(input.access),
+      }),
+    ),
+    readFilterOptions(input.access),
+  ]);
+
+  return { coverage, filterOptions };
+}
+
+export async function readEngagementVideoSequenceWorkspace(
+  input: Readonly<{
+    access: ResolvedEngagementDashboardAccess;
+  }>,
+): Promise<EngagementVideoSequenceWorkspaceData> {
+  if (!input.access.capabilities.canReadVideoSequences) {
+    return {
+      videoSequences: forbiddenSection<EngagementVideoSequenceListResult>(),
+    };
+  }
+
+  return {
+    videoSequences: await settle(
+      videoSequenceClient.request({
+        path: "/",
+        query: { includeInactive: true },
+        schema: engagementVideoSequenceListResultSchema,
+        ...actorContextOptions(input.access),
+      }),
+    ),
   };
 }
 
@@ -258,9 +347,7 @@ export async function readEngagementDashboardDealer(
     path: `/dealers/${encodeURIComponent(input.dealerOrgUnitId)}`,
     query: commonQuery(input.query),
     schema: engagementDealerDetailSchema,
-    ...(input.access.actorContext !== undefined
-      ? { actorContext: input.access.actorContext }
-      : {}),
+    ...actorContextOptions(input.access),
   });
 }
 
@@ -273,8 +360,6 @@ export async function readEngagementDashboardLead(
   return await dashboardClient.request({
     path: `/leads/${encodeURIComponent(input.leadId)}`,
     schema: engagementLeadDetailSchema,
-    ...(input.access.actorContext !== undefined
-      ? { actorContext: input.access.actorContext }
-      : {}),
+    ...actorContextOptions(input.access),
   });
 }

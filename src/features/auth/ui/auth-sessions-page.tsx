@@ -52,8 +52,14 @@ const DATE_FORMAT = new Intl.DateTimeFormat("en-IN", {
   timeZone: "Asia/Kolkata",
 });
 const CONTROL_CHARACTER_PATTERN = /\p{Cc}/gu;
+const CONTROL_CHARACTER_TEST_PATTERN = /\p{Cc}/u;
 const WHITESPACE_PATTERN = /\s+/gu;
+const DEFAULT_SESSIONS_PER_PAGE = 25;
+const MAX_SESSIONS_PER_PAGE = 100;
+const MAX_SESSION_ID_LENGTH = 512;
+const MAX_CURSOR_LENGTH = 512;
 const MAX_USER_AGENT_LENGTH = 180;
+const MAX_RESULT_MESSAGE_LENGTH = 360;
 const MAX_REQUEST_ID_LENGTH = 128;
 
 export type AuthSessionsPageProps = Readonly<{
@@ -70,10 +76,13 @@ function formatTimestamp(value: string | null): string {
   const date = new Date(value);
   return Number.isNaN(date.getTime())
     ? "Unavailable"
-    : DATE_FORMAT.format(date);
+    : `${DATE_FORMAT.format(date)} IST`;
 }
 
-function normalizeDisplayText(value: string | null): string | null {
+function normalizeDisplayText(
+  value: string | null,
+  maxLength = MAX_USER_AGENT_LENGTH,
+): string | null {
   if (value === null) {
     return null;
   }
@@ -87,9 +96,9 @@ function normalizeDisplayText(value: string | null): string | null {
     return null;
   }
 
-  return normalized.length <= MAX_USER_AGENT_LENGTH
+  return normalized.length <= maxLength
     ? normalized
-    : `${normalized.slice(0, MAX_USER_AGENT_LENGTH - 1).trimEnd()}…`;
+    : `${normalized.slice(0, maxLength - 1).trimEnd()}…`;
 }
 
 function maskedIpAddress(value: string | null): string {
@@ -116,8 +125,59 @@ function safeRequestId(value: string | null): string | null {
     : null;
 }
 
+function safeCursor(value: string | null): string | null {
+  if (
+    value === null ||
+    value.length === 0 ||
+    value.length > MAX_CURSOR_LENGTH ||
+    CONTROL_CHARACTER_TEST_PATTERN.test(value)
+  ) {
+    return null;
+  }
+
+  return value;
+}
+
+function normalizePageLimit(value: number): number {
+  if (!Number.isFinite(value)) {
+    return DEFAULT_SESSIONS_PER_PAGE;
+  }
+
+  return Math.max(1, Math.min(MAX_SESSIONS_PER_PAGE, Math.trunc(value)));
+}
+
+function visibleSessions(
+  sessions: readonly AuthSessionSummary[],
+): readonly AuthSessionSummary[] {
+  const seenSessionIds = new Set<string>();
+  const visible: AuthSessionSummary[] = [];
+
+  for (const session of sessions.slice(0, MAX_SESSIONS_PER_PAGE)) {
+    const sessionId = session.sessionId;
+
+    if (
+      typeof sessionId !== "string" ||
+      sessionId.trim().length === 0 ||
+      sessionId.length > MAX_SESSION_ID_LENGTH ||
+      seenSessionIds.has(sessionId)
+    ) {
+      continue;
+    }
+
+    seenSessionIds.add(sessionId);
+    visible.push(session);
+
+    if (visible.length >= MAX_SESSIONS_PER_PAGE) {
+      break;
+    }
+  }
+
+  return visible;
+}
+
 function sessionIcon(session: AuthSessionSummary): React.ReactElement {
-  const userAgent = session.userAgent?.toLowerCase() ?? "";
+  const userAgent =
+    session.userAgent?.slice(0, MAX_USER_AGENT_LENGTH).toLowerCase() ?? "";
   return /android|iphone|ipad|mobile/u.test(userAgent) ? (
     <Smartphone aria-hidden="true" className="size-5" />
   ) : (
@@ -126,11 +186,16 @@ function sessionIcon(session: AuthSessionSummary): React.ReactElement {
 }
 
 function resultDescription(result: RevokeAuthSessionActionResult): string {
-  if (result.ok || result.requestId === null) {
-    return result.ok ? "The selected session was revoked." : result.message;
+  if (result.ok) {
+    return "The selected session was revoked.";
   }
 
-  return `${result.message} Reference: ${result.requestId}`;
+  const message =
+    normalizeDisplayText(result.message, MAX_RESULT_MESSAGE_LENGTH) ??
+    "The server could not revoke the selected session.";
+  const reference = safeRequestId(result.requestId);
+
+  return reference === null ? message : `${message} Reference: ${reference}`;
 }
 
 function SessionCard({
@@ -139,15 +204,28 @@ function SessionCard({
   const router = useRouter();
   const toast = useToast();
   const [pending, startTransition] = React.useTransition();
+  const revokePendingRef = React.useRef(false);
   const userAgent = normalizeDisplayText(session.userAgent);
+  const revokeLabel =
+    userAgent === null
+      ? "Revoke this authenticated device session"
+      : `Revoke session for ${userAgent}`;
 
   function revoke(): void {
-    startTransition((): void => {
-      void revokeAuthSessionAction(session.sessionId).then((result) => {
+    if (pending || revokePendingRef.current) {
+      return;
+    }
+
+    revokePendingRef.current = true;
+    startTransition(async (): Promise<void> => {
+      try {
+        const result = await revokeAuthSessionAction(session.sessionId);
+
         if (result.ok) {
           toast.success({
             title: "Session revoked",
             description: resultDescription(result),
+            replace: true,
           });
           router.refresh();
           return;
@@ -156,22 +234,34 @@ function SessionCard({
         toast.error({
           title: "Session was not revoked",
           description: resultDescription(result),
+          replace: true,
         });
-      });
+      } catch {
+        toast.error({
+          title: "Session was not revoked",
+          description:
+            "The request could not be completed. Check your connection and try again.",
+          replace: true,
+        });
+      } finally {
+        revokePendingRef.current = false;
+      }
     });
   }
 
   return (
-    <Card className="overflow-hidden">
+    <Card data-slot="auth-session-card" className="overflow-hidden">
       <CardHeader className="gap-3">
-        <div className="flex items-start justify-between gap-4">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div className="flex min-w-0 items-start gap-3">
-            <span className="flex size-10 shrink-0 items-center justify-center rounded-2xl border border-border/70 bg-muted/50 text-muted-readable">
+            <span className="flex size-10 shrink-0 items-center justify-center rounded-xl border border-border/70 bg-muted/50 text-muted-readable">
               {sessionIcon(session)}
             </span>
             <div className="min-w-0">
-              <CardTitle className="text-card-title">
-                {session.isCurrent ? "This device" : "Authenticated device"}
+              <CardTitle>
+                <h2 className="text-card-title">
+                  {session.isCurrent ? "This device" : "Authenticated device"}
+                </h2>
               </CardTitle>
               <CardDescription className="mt-1 break-words text-caption">
                 {userAgent ?? "Device details were not retained"}
@@ -179,7 +269,7 @@ function SessionCard({
             </div>
           </div>
 
-          <div className="flex shrink-0 flex-wrap justify-end gap-2">
+          <div className="flex shrink-0 flex-wrap justify-start gap-2 sm:justify-end">
             {session.isCurrent ? (
               <Badge>
                 <ShieldCheck aria-hidden="true" className="size-3.5" />
@@ -189,7 +279,7 @@ function SessionCard({
             {session.isExpired || !session.hasActiveRefreshToken ? (
               <Badge variant="secondary">Inactive</Badge>
             ) : (
-              <Badge variant="outline">Active</Badge>
+              <Badge variant="success">Active</Badge>
             )}
           </div>
         </div>
@@ -224,7 +314,7 @@ function SessionCard({
         </div>
       </CardContent>
 
-      <CardFooter className="justify-between gap-3 border-t border-border/70 bg-muted/25">
+      <CardFooter className="flex-col items-stretch justify-between gap-3 sm:flex-row sm:items-center">
         <span className="inline-flex items-center gap-2 text-caption text-muted-readable">
           <Clock3 aria-hidden="true" className="size-3.5" />
           Device fingerprint{" "}
@@ -238,7 +328,13 @@ function SessionCard({
         ) : (
           <AlertDialog>
             <AlertDialogTrigger asChild>
-              <Button type="button" variant="destructive" disabled={pending}>
+              <Button
+                type="button"
+                variant="destructive"
+                disabled={pending}
+                aria-busy={pending}
+                aria-label={revokeLabel}
+              >
                 {pending ? (
                   <LoaderCircle
                     aria-hidden="true"
@@ -247,7 +343,7 @@ function SessionCard({
                 ) : (
                   <Trash2 aria-hidden="true" className="size-4" />
                 )}
-                Revoke
+                {pending ? "Revoking…" : "Revoke"}
               </Button>
             </AlertDialogTrigger>
             <AlertDialogContent>
@@ -281,14 +377,21 @@ export function AuthSessionsPage({
   pagination,
   requestId,
 }: AuthSessionsPageProps): React.ReactElement {
+  const boundedSessions = visibleSessions(sessions);
+  const pageLimit = normalizePageLimit(pagination.limit);
   const reference = safeRequestId(requestId);
+  const nextCursor = safeCursor(pagination.nextCursor);
   const nextHref: Route | null =
-    pagination.hasNextPage && pagination.nextCursor !== null
-      ? (`/account/sessions?cursor=${encodeURIComponent(pagination.nextCursor)}` as Route)
+    pagination.hasNextPage && nextCursor !== null
+      ? (`/account/sessions?cursor=${encodeURIComponent(nextCursor)}` as Route)
       : null;
 
   return (
-    <section aria-labelledby="active-sessions-title" className="grid gap-6">
+    <section
+      data-slot="auth-sessions-page"
+      aria-labelledby="active-sessions-title"
+      className="grid min-w-0 gap-6"
+    >
       <header className="grid gap-2">
         <Badge variant="secondary" className="w-fit">
           <ShieldCheck aria-hidden="true" className="size-3.5" />
@@ -315,10 +418,12 @@ export function AuthSessionsPage({
 
       <Separator />
 
-      {sessions.length === 0 ? (
+      {boundedSessions.length === 0 ? (
         <Card>
           <CardHeader>
-            <CardTitle>No sessions found</CardTitle>
+            <CardTitle>
+              <h2 className="text-card-title">No sessions found</h2>
+            </CardTitle>
             <CardDescription>
               The server did not return an active or historical session for this
               page.
@@ -326,16 +431,18 @@ export function AuthSessionsPage({
           </CardHeader>
         </Card>
       ) : (
-        <div className="grid gap-4">
-          {sessions.map((session) => (
-            <SessionCard key={session.sessionId} session={session} />
+        <ul role="list" className="grid min-w-0 list-none gap-4">
+          {boundedSessions.map((session) => (
+            <li key={session.sessionId} className="min-w-0">
+              <SessionCard session={session} />
+            </li>
           ))}
-        </div>
+        </ul>
       )}
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-caption text-muted-readable">
-          Showing up to {String(pagination.limit)} sessions.
+          Showing up to {String(pageLimit)} sessions.
           {reference === null ? null : (
             <>
               {" "}

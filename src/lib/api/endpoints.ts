@@ -37,6 +37,15 @@ export const ENGAGEMENT_ENDPOINTS = {
   happyCustomerSettings: `${ERP_PREFIX}/engagement/dealer/happy-customer-settings`,
   warrantyDocumentDownload: (fileId: string) =>
     `${ERP_PREFIX}/engagement/dealer/warranty-documents/${encodeURIComponent(fileId)}/download` as const,
+  dealershipApplicationsBase: `${ERP_PREFIX}/engagement/dealership-applications`,
+  dealerOperationsBase: `${ERP_PREFIX}/engagement/dealer-operations`,
+  dealershipApplication: (applicationId: string) =>
+    `${ERP_PREFIX}/engagement/dealership-applications/${encodeURIComponent(applicationId)}` as const,
+  dealershipApplicationDocumentDownload: (
+    applicationId: string,
+    documentId: string,
+  ) =>
+    `${ERP_PREFIX}/engagement/dealership-applications/${encodeURIComponent(applicationId)}/documents/${encodeURIComponent(documentId)}/download` as const,
   operationsDashboardBase: `${ERP_PREFIX}/engagement/dashboard`,
   operationsDashboardSummary: `${ERP_PREFIX}/engagement/dashboard/summary`,
   operationsDashboardLeadSourceSeries: `${ERP_PREFIX}/engagement/dashboard/lead-sources/timeseries`,

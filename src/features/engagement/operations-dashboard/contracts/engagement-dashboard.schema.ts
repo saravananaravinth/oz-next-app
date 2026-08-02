@@ -4,12 +4,14 @@ import { z } from "zod";
 const DASHBOARD_TIMEZONE = "Asia/Kolkata" as const;
 const DAY_MS = 86_400_000;
 const DEFAULT_RANGE_DAYS = 30;
-const SOURCE_CODE_PATTERN = /^[A-Z][A-Z0-9_]{0,63}$/u;
+const SOURCE_CODE_PATTERN = /^(?:(?!\p{Cc})[\s\S]){1,128}$/u;
 const STATUS_TOKEN_PATTERN = /^[A-Z][A-Z0-9_]{0,63}$/u;
 const SAFE_CURSOR_PATTERN = /^[A-Za-z0-9_-]{1,2048}$/u;
 const SAFE_ISSUE_KEY_PATTERN =
   /^(?:lead:(?:unassigned|response-overdue|follow-up-overdue|location-missing)|dealer:(?:location-missing|inactive)|outbox:failed|video:failed):[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
 const IDEMPOTENCY_KEY_PATTERN = /^[A-Za-z0-9._:-]+$/u;
+const GOOGLE_MAPS_SHORT_CODE_PATTERN = /^[A-Za-z0-9_-]{1,128}$/u;
+const INDIAN_MOBILE_E164_PATTERN = /^\+91[6-9][0-9]{9}$/u;
 
 export const ENGAGEMENT_DASHBOARD_GRAINS = [
   "AUTO",
@@ -38,6 +40,11 @@ export const ENGAGEMENT_DASHBOARD_DEALER_SORT_FIELDS = [
 ] as const;
 export const ENGAGEMENT_DASHBOARD_SORT_DIRECTIONS = ["ASC", "DESC"] as const;
 export const ENGAGEMENT_DASHBOARD_PAGE_LIMITS = [25, 50, 100] as const;
+export const ENGAGEMENT_DASHBOARD_DEALER_ENGAGEMENT_STATES = [
+  "ACTIVE",
+  "INACTIVE",
+  "ALL",
+] as const;
 export const ENGAGEMENT_ASSIGNMENT_STATES = ["ASSIGNED", "UNASSIGNED"] as const;
 export const ENGAGEMENT_CONVERSION_STATES = [
   "CONVERTED",
@@ -98,7 +105,7 @@ const sourceCodeSchema = z
   .string()
   .trim()
   .min(1)
-  .max(64)
+  .max(128)
   .regex(SOURCE_CODE_PATTERN);
 const sourceIdentifierSchema = z.union([
   uuidSchema,
@@ -219,7 +226,6 @@ export function resolvedDashboardGrain(
 
 const engagementDashboardSearchParamsSchema = z
   .object({
-    tenantId: optionalSingleSchema(uuidSchema),
     from: optionalSingleSchema(isoDateSchema),
     to: optionalSingleSchema(isoDateSchema),
     comparison: optionalSingleSchema(
@@ -228,7 +234,6 @@ const engagementDashboardSearchParamsSchema = z
     grain: optionalSingleSchema(z.enum(ENGAGEMENT_DASHBOARD_GRAINS)),
     leadSourceId: csvArraySchema(uuidSchema, 20),
     ivrFlowCode: csvArraySchema(statusTokenSchema, 16),
-    leadType: csvArraySchema(statusTokenSchema, 16),
     status: csvArraySchema(statusTokenSchema, 32),
     dealerOrgUnitId: csvArraySchema(uuidSchema, 50),
     district: csvArraySchema(safeTextSchema, 50),
@@ -237,7 +242,12 @@ const engagementDashboardSearchParamsSchema = z
     conversionState: csvArraySchema(z.enum(ENGAGEMENT_CONVERSION_STATES), 2),
     followUpState: csvArraySchema(z.enum(ENGAGEMENT_FOLLOW_UP_STATES), 4),
     issueSeverity: csvArraySchema(z.enum(ENGAGEMENT_ISSUE_SEVERITIES), 4),
+    issueCategory: csvArraySchema(z.enum(ENGAGEMENT_ISSUE_CATEGORIES), 8),
+    issueState: csvArraySchema(z.enum(["OPEN", "ACKNOWLEDGED", "RESOLVED"]), 3),
     q: optionalSingleSchema(z.string().trim().min(1).max(100)),
+    dealerEngagementState: optionalSingleSchema(
+      z.enum(ENGAGEMENT_DASHBOARD_DEALER_ENGAGEMENT_STATES),
+    ),
     dealerSortBy: optionalSingleSchema(
       z.enum(ENGAGEMENT_DASHBOARD_DEALER_SORT_FIELDS),
     ),
@@ -246,6 +256,10 @@ const engagementDashboardSearchParamsSchema = z
     ),
     dealerLimit: pageLimitSchema(25),
     dealerCursor: optionalSingleSchema(
+      z.string().trim().min(1).max(2048).regex(SAFE_CURSOR_PATTERN),
+    ),
+    leadLimit: pageLimitSchema(25),
+    leadCursor: optionalSingleSchema(
       z.string().trim().min(1).max(2048).regex(SAFE_CURSOR_PATTERN),
     ),
     issueLimit: pageLimitSchema(25),
@@ -276,14 +290,12 @@ const engagementDashboardSearchParamsSchema = z
     const to = value.to ?? dateInKolkata();
     const from = value.from ?? addDashboardDays(to, -(DEFAULT_RANGE_DAYS - 1));
     return {
-      tenantId: value.tenantId,
       from,
       to,
       comparison: value.comparison ?? "PREVIOUS_PERIOD",
       grain: value.grain ?? "AUTO",
       leadSourceIds: value.leadSourceId,
       ivrFlowCodes: value.ivrFlowCode,
-      leadTypes: value.leadType,
       statuses: value.status,
       dealerOrgUnitIds: value.dealerOrgUnitId,
       districts: value.district,
@@ -292,11 +304,16 @@ const engagementDashboardSearchParamsSchema = z
       conversionStates: value.conversionState,
       followUpStates: value.followUpState,
       issueSeverities: value.issueSeverity,
+      issueCategories: value.issueCategory,
+      issueStates: value.issueState,
       q: value.q,
-      dealerSortBy: value.dealerSortBy ?? "ISSUE_COUNT",
+      dealerEngagementState: value.dealerEngagementState ?? "ACTIVE",
+      dealerSortBy: value.dealerSortBy ?? "ASSIGNED_COUNT",
       dealerSortDirection: value.dealerSortDirection ?? "DESC",
       dealerLimit: value.dealerLimit,
       dealerCursor: value.dealerCursor,
+      leadLimit: value.leadLimit,
+      leadCursor: value.leadCursor,
       issueLimit: value.issueLimit,
       issueCursor: value.issueCursor,
     } as const;
@@ -312,6 +329,8 @@ export type EngagementDashboardGrain =
   (typeof ENGAGEMENT_DASHBOARD_GRAINS)[number];
 export type EngagementDashboardApiGrain =
   (typeof ENGAGEMENT_DASHBOARD_API_GRAINS)[number];
+export type EngagementDashboardDealerEngagementState =
+  (typeof ENGAGEMENT_DASHBOARD_DEALER_ENGAGEMENT_STATES)[number];
 export type EngagementDashboardDealerSortField =
   (typeof ENGAGEMENT_DASHBOARD_DEALER_SORT_FIELDS)[number];
 export type EngagementDashboardSortDirection =
@@ -320,6 +339,7 @@ export type EngagementIssueSeverity =
   (typeof ENGAGEMENT_ISSUE_SEVERITIES)[number];
 export type EngagementIssueCategory =
   (typeof ENGAGEMENT_ISSUE_CATEGORIES)[number];
+export type EngagementIssueState = "OPEN" | "ACKNOWLEDGED" | "RESOLVED";
 
 export function parseEngagementDashboardSearchParams(
   raw: EngagementDashboardRawSearchParams,
@@ -511,7 +531,13 @@ export const engagementDealerPerformanceItemSchema = z
     bookedCount: nonNegativeIntSchema,
     convertedCount: nonNegativeIntSchema,
     conversionRatePct: percentageSchema,
+    respondedCount: nonNegativeIntSchema,
+    responseWithinSlaCount: nonNegativeIntSchema,
     responseSlaRatePct: percentageSchema,
+    closedCount: nonNegativeIntSchema,
+    followUpAvailableCount: nonNegativeIntSchema,
+    forwardedToDealerCount: nonNegativeIntSchema,
+    forwardedToFlowCount: nonNegativeIntSchema,
     medianFirstResponseMinutes: nonNegativeNumberSchema.nullable(),
     followUpsDueCount: nonNegativeIntSchema,
     overdueFollowUpCount: nonNegativeIntSchema,
@@ -551,6 +577,74 @@ export const engagementDealerPerformanceResultSchema = z
   })
   .strict();
 
+export const engagementDashboardLeadListItemSchema = z
+  .object({
+    leadId: uuidSchema,
+    leadNo: z.string().trim().min(1).max(128),
+    status: z.string().trim().min(1).max(64),
+    createdAt: isoDateTimeSchema,
+    updatedAt: isoDateTimeSchema,
+    source: z
+      .object({
+        id: uuidSchema,
+        code: sourceCodeSchema,
+        name: z.string().trim().min(1).max(256),
+      })
+      .strict(),
+    customer: z
+      .object({
+        prospectId: uuidSchema,
+        name: z.string().trim().min(1).max(256).nullable(),
+        contact: z.string().trim().min(1).max(128).nullable(),
+        contactMasked: z.string().trim().min(1).max(128).nullable(),
+      })
+      .strict(),
+    dealer: z
+      .object({
+        id: uuidSchema,
+        code: z.string().trim().min(1).max(128),
+        name: z.string().trim().min(1).max(256),
+      })
+      .strict()
+      .nullable(),
+    location: z
+      .object({
+        city: z.string().trim().max(128).nullable(),
+        district: z.string().trim().max(128).nullable(),
+      })
+      .strict(),
+    ownerAssignedAt: isoDateTimeSchema.nullable(),
+    firstResponseAt: isoDateTimeSchema.nullable(),
+    nextFollowUpAt: isoDateTimeSchema.nullable(),
+    bookedAt: isoDateTimeSchema.nullable(),
+    convertedAt: isoDateTimeSchema.nullable(),
+    closedAt: isoDateTimeSchema.nullable(),
+    responseSlaState: z.enum([
+      "NOT_ASSIGNED",
+      "PENDING",
+      "WITHIN_SLA",
+      "BREACHED",
+    ]),
+    followUpState: z.enum([
+      "NONE",
+      "OVERDUE",
+      "DUE_TODAY",
+      "SCHEDULED",
+      "CLOSED",
+    ]),
+    lastActivityAt: isoDateTimeSchema,
+    rowVersion: nonNegativeIntSchema,
+  })
+  .strict();
+
+export const engagementDashboardLeadListResultSchema = z
+  .object({
+    asOf: isoDateTimeSchema,
+    items: z.array(engagementDashboardLeadListItemSchema).max(100).readonly(),
+    pagination: keysetPaginationSchema,
+  })
+  .strict();
+
 export const engagementDashboardIssueSchema = z
   .object({
     issueKey: z.string().trim().min(8).max(128).regex(SAFE_ISSUE_KEY_PATTERN),
@@ -563,6 +657,7 @@ export const engagementDashboardIssueSchema = z
     dealerOrgUnitId: uuidSchema.nullable(),
     dealerName: z.string().trim().min(1).max(256).nullable(),
     customerName: z.string().trim().min(1).max(256).nullable(),
+    customerContact: z.string().trim().min(1).max(128).nullable(),
     customerContactMasked: z.string().trim().min(1).max(128).nullable(),
     flowCode: z.string().trim().min(1).max(64).nullable(),
     issueAgeMinutes: nonNegativeNumberSchema,
@@ -587,27 +682,43 @@ export const engagementDashboardIssueResultSchema = z
 export const engagementCoverageResultSchema = z
   .object({
     generatedAt: isoDateTimeSchema,
+    analysisBasis: z.literal("ASSIGNED_LEADS"),
     items: z
       .array(
         z
           .object({
             district: z.string().trim().min(1).max(128),
+            centroidLatitude: z.number().min(-90).max(90).nullable(),
+            centroidLongitude: z.number().min(-180).max(180).nullable(),
             leadCount: nonNegativeIntSchema,
-            activeDealerCount: nonNegativeIntSchema,
+            assignedLeadCount: nonNegativeIntSchema,
             unassignedLeadCount: nonNegativeIntSchema,
+            unassignedRatePct: percentageSchema,
+            configuredVehicleDealerCount: nonNegativeIntSchema,
+            activeVehicleDealerCount: nonNegativeIntSchema,
+            dealersMissingCoordinatesCount: nonNegativeIntSchema,
             convertedCount: nonNegativeIntSchema,
             conversionRatePct: percentageSchema,
             medianAssignmentDistanceKm: nonNegativeNumberSchema.nullable(),
-            risk: z.enum([
-              "NONE",
-              "LOW_COVERAGE",
+            distanceExceededLeadCount: nonNegativeIntSchema,
+            topDealerName: z.string().trim().min(1).max(256).nullable(),
+            topDealerAssignmentSharePct: percentageSchema,
+            status: z.enum([
+              "HEALTHY",
               "NO_ACTIVE_DEALER",
+              "LOCATION_GAP",
               "HIGH_UNASSIGNED",
+              "DISTANCE_RISK",
+              "CONCENTRATION_RISK",
             ]),
+            reasons: z
+              .array(z.string().trim().min(1).max(500))
+              .max(10)
+              .readonly(),
           })
           .strict(),
       )
-      .max(500)
+      .max(200)
       .readonly(),
   })
   .strict();
@@ -662,6 +773,14 @@ export const engagementFilterOptionsSchema = z
 export const engagementDealerDetailSchema =
   engagementDealerPerformanceItemSchema
     .extend({
+      googleMapsShortCode: z
+        .string()
+        .regex(GOOGLE_MAPS_SHORT_CODE_PATTERN)
+        .nullable(),
+      engagementWhatsappNumber: z
+        .string()
+        .regex(INDIAN_MOBILE_E164_PATTERN)
+        .nullable(),
       address: z
         .object({
           line1: z.string().trim().max(512).nullable(),
@@ -702,6 +821,7 @@ export const engagementLeadDetailSchema = z
       .object({
         prospectId: uuidSchema,
         name: z.string().trim().min(1).max(256).nullable(),
+        contact: z.string().trim().min(1).max(128).nullable(),
         contactMasked: z.string().trim().min(1).max(128).nullable(),
       })
       .strict(),
@@ -725,7 +845,24 @@ export const engagementLeadDetailSchema = z
       .strict(),
     nextFollowUpAt: isoDateTimeSchema.nullable(),
     ownerAssignedAt: isoDateTimeSchema.nullable(),
+    firstResponseAt: isoDateTimeSchema.nullable(),
+    bookedAt: isoDateTimeSchema.nullable(),
     convertedAt: isoDateTimeSchema.nullable(),
+    closedAt: isoDateTimeSchema.nullable(),
+    responseSlaState: z.enum([
+      "NOT_ASSIGNED",
+      "PENDING",
+      "WITHIN_SLA",
+      "BREACHED",
+    ]),
+    followUpState: z.enum([
+      "NONE",
+      "OVERDUE",
+      "DUE_TODAY",
+      "SCHEDULED",
+      "CLOSED",
+    ]),
+    lastActivityAt: isoDateTimeSchema,
     createdAt: isoDateTimeSchema,
     updatedAt: isoDateTimeSchema,
     rowVersion: nonNegativeIntSchema,
@@ -743,6 +880,37 @@ export const engagementLeadDetailSchema = z
       )
       .max(200)
       .readonly(),
+    journey: z
+      .object({
+        items: z
+          .array(
+            z
+              .object({
+                id: z.string().trim().min(1).max(128),
+                kind: z.enum([
+                  "CALL",
+                  "FOLLOW_UP",
+                  "WHATSAPP",
+                  "ROUTING",
+                  "STATUS",
+                  "NOTE",
+                  "ASSIGNMENT",
+                  "SYSTEM",
+                ]),
+                title: z.string().trim().min(1).max(256),
+                description: z.string().trim().min(1).max(4000).nullable(),
+                occurredAt: isoDateTimeSchema,
+                status: z.string().trim().min(1).max(128).nullable(),
+                channel: z.enum(["CALL", "WHATSAPP", "SYSTEM"]).nullable(),
+                actorLabel: z.string().trim().min(1).max(256).nullable(),
+              })
+              .strict(),
+          )
+          .max(200)
+          .readonly(),
+        truncated: z.boolean(),
+      })
+      .strict(),
   })
   .strict();
 
@@ -762,6 +930,25 @@ export const engagementSupportRetryResultSchema = z
     resourceId: uuidSchema,
     operation: z.enum(["OUTBOX_RETRY", "VIDEO_MESSAGE_RETRY", "LEAD_REASSIGN"]),
     outcome: z.enum(["QUEUED", "COMPLETED", "NO_ELIGIBLE_DEALER", "NOOP"]),
+  })
+  .strict();
+
+export const engagementLeadAdminSessionSchema = z
+  .object({
+    leadId: uuidSchema,
+    token: z
+      .string()
+      .trim()
+      .min(32)
+      .max(256)
+      .regex(/^[A-Za-z0-9._~:-]+$/u),
+    expiresAt: isoDateTimeSchema,
+    allowedFields: z
+      .array(
+        z.enum(["customerName", "note", "followUpAt", "status", "forwardFlow"]),
+      )
+      .max(5)
+      .readonly(),
   })
   .strict();
 
@@ -788,7 +975,15 @@ export const dealerLocationMutationResultSchema = z
     locationId: uuidSchema,
     latitude: z.number().min(-90).max(90),
     longitude: z.number().min(-180).max(180),
+    googleMapsShortCode: z
+      .string()
+      .regex(GOOGLE_MAPS_SHORT_CODE_PATTERN)
+      .nullable(),
     googleMapsUrl: z.url().max(2048).nullable(),
+    engagementWhatsappNumber: z
+      .string()
+      .regex(INDIAN_MOBILE_E164_PATTERN)
+      .nullable(),
     rowVersion: nonNegativeIntSchema,
     updatedAt: isoDateTimeSchema,
   })
@@ -818,6 +1013,13 @@ export const retryOperationInputSchema = z
     resourceId: uuidSchema,
     reason: z.string().trim().min(5).max(500),
     idempotencyKey: idempotencyKeySchema,
+  })
+  .strict();
+
+export const leadAdminSessionActionInputSchema = z
+  .object({
+    leadId: uuidSchema,
+    reason: z.string().trim().min(5).max(500),
   })
   .strict();
 
@@ -869,7 +1071,6 @@ export const dealerSettingsActionInputSchema = z
   .object({
     dealerOrgUnitId: uuidSchema,
     rowVersion: nonNegativeIntSchema,
-    orgUnitActive: z.boolean(),
     engagementActive: z.boolean(),
     supportsVehicleEnquiries: z.boolean(),
     supportsServiceEnquiries: z.boolean(),
@@ -890,33 +1091,14 @@ export const dealerLocationActionInputSchema = z
     rowVersion: nonNegativeIntSchema,
     latitude: z.number().min(-90).max(90),
     longitude: z.number().min(-180).max(180),
-    googleMapsUrl: z
-      .url()
-      .max(2048)
-      .refine((value) => {
-        const url = new URL(value);
-        const host = url.hostname.toLowerCase();
-        return (
-          url.protocol === "https:" &&
-          (host === "maps.google.com" ||
-            host === "www.google.com" ||
-            host === "google.com" ||
-            host === "maps.app.goo.gl" ||
-            host.endsWith(".google.com"))
-        );
-      }, "Only HTTPS Google Maps URLs are allowed.")
-      .nullable(),
-    name: z.string().trim().min(1).max(256).optional(),
-    addressLine1: z.string().trim().min(1).max(512).optional(),
-    addressLine2: z.string().trim().max(512).nullable().optional(),
-    city: z.string().trim().min(1).max(128).optional(),
-    district: z.string().trim().min(1).max(128).optional(),
-    state: z.string().trim().min(1).max(128).optional(),
-    postalCode: z
+    googleMapsShortCode: z
       .string()
-      .trim()
-      .regex(/^[1-9][0-9]{5}$/u)
-      .optional(),
+      .regex(GOOGLE_MAPS_SHORT_CODE_PATTERN)
+      .nullable(),
+    engagementWhatsappNumber: z
+      .string()
+      .regex(INDIAN_MOBILE_E164_PATTERN)
+      .nullable(),
     reason: z.string().trim().min(5).max(500),
     idempotencyKey: idempotencyKeySchema,
   })
@@ -950,7 +1132,7 @@ export const engagementVideoSequenceItemSchema = z
   .object({
     videoSequenceItemId: uuidSchema,
     dayNo: z.number().int().min(1).max(365),
-    videoTitle: z.string().trim().min(1).max(256),
+    videoTitle: z.string().trim().min(1).max(1000),
     videoUrl: httpsVideoUrlSchema,
     templateCode: videoTemplateCodeSchema,
     active: z.boolean(),
@@ -985,60 +1167,12 @@ export const engagementVideoSequenceListResultSchema = z
     path: ["totalCount"],
   });
 
-export const videoSequenceCreateActionInputSchema = z
-  .object({
-    sequenceCode: videoSequenceCodeSchema,
-    name: z.string().trim().min(1).max(256),
-    description: z.string().trim().max(2000).nullable().optional(),
-    active: z.boolean(),
-    reason: z.string().trim().min(5).max(500),
-    idempotencyKey: idempotencyKeySchema,
-  })
-  .strict();
-
-export const videoSequenceUpdateActionInputSchema = z
-  .object({
-    videoSequenceId: uuidSchema,
-    rowVersion: rowVersionStringSchema,
-    name: z.string().trim().min(1).max(256).optional(),
-    description: z.string().trim().max(2000).nullable().optional(),
-    active: z.boolean().optional(),
-    reason: z.string().trim().min(5).max(500),
-    idempotencyKey: idempotencyKeySchema,
-  })
-  .strict()
-  .refine(
-    (value) =>
-      value.name !== undefined ||
-      value.description !== undefined ||
-      value.active !== undefined,
-    {
-      message: "At least one video-sequence field must be supplied.",
-      path: ["name"],
-    },
-  );
-
-export const videoSequenceItemCreateActionInputSchema = z
-  .object({
-    videoSequenceId: uuidSchema,
-    dayNo: z.number().int().min(1).max(365),
-    videoTitle: z.string().trim().min(1).max(256),
-    videoUrl: httpsVideoUrlSchema,
-    templateCode: videoTemplateCodeSchema,
-    active: z.boolean(),
-    reason: z.string().trim().min(5).max(500),
-    idempotencyKey: idempotencyKeySchema,
-  })
-  .strict();
-
 export const videoSequenceItemUpdateActionInputSchema = z
   .object({
     videoSequenceItemId: uuidSchema,
     rowVersion: rowVersionStringSchema,
-    dayNo: z.number().int().min(1).max(365).optional(),
-    videoTitle: z.string().trim().min(1).max(256).optional(),
+    videoTitle: z.string().trim().min(1).max(1000).optional(),
     videoUrl: httpsVideoUrlSchema.optional(),
-    templateCode: videoTemplateCodeSchema.optional(),
     active: z.boolean().optional(),
     reason: z.string().trim().min(5).max(500),
     idempotencyKey: idempotencyKeySchema,
@@ -1046,14 +1180,12 @@ export const videoSequenceItemUpdateActionInputSchema = z
   .strict()
   .refine(
     (value) =>
-      value.dayNo !== undefined ||
       value.videoTitle !== undefined ||
       value.videoUrl !== undefined ||
-      value.templateCode !== undefined ||
       value.active !== undefined,
     {
       message: "At least one video-sequence item field must be supplied.",
-      path: ["dayNo"],
+      path: ["videoTitle"],
     },
   );
 
@@ -1069,6 +1201,12 @@ export type EngagementDealerPerformanceItem = z.infer<
 >;
 export type EngagementDealerPerformanceResult = z.infer<
   typeof engagementDealerPerformanceResultSchema
+>;
+export type EngagementDashboardLeadListItem = z.infer<
+  typeof engagementDashboardLeadListItemSchema
+>;
+export type EngagementDashboardLeadListResult = z.infer<
+  typeof engagementDashboardLeadListResultSchema
 >;
 export type EngagementDashboardIssue = z.infer<
   typeof engagementDashboardIssueSchema
@@ -1086,8 +1224,14 @@ export type EngagementDealerDetail = z.infer<
   typeof engagementDealerDetailSchema
 >;
 export type EngagementLeadDetail = z.infer<typeof engagementLeadDetailSchema>;
+export type EngagementLeadAdminSession = z.infer<
+  typeof engagementLeadAdminSessionSchema
+>;
 export type IssueActionInput = z.infer<typeof issueActionInputSchema>;
 export type RetryOperationInput = z.infer<typeof retryOperationInputSchema>;
+export type LeadAdminSessionActionInput = z.infer<
+  typeof leadAdminSessionActionInputSchema
+>;
 export type DealerBusinessHours = z.infer<typeof dealerBusinessHoursSchema>;
 export type DealerSettingsActionInput = z.infer<
   typeof dealerSettingsActionInputSchema
@@ -1103,15 +1247,6 @@ export type EngagementVideoSequence = z.infer<
 >;
 export type EngagementVideoSequenceListResult = z.infer<
   typeof engagementVideoSequenceListResultSchema
->;
-export type VideoSequenceCreateActionInput = z.infer<
-  typeof videoSequenceCreateActionInputSchema
->;
-export type VideoSequenceUpdateActionInput = z.infer<
-  typeof videoSequenceUpdateActionInputSchema
->;
-export type VideoSequenceItemCreateActionInput = z.infer<
-  typeof videoSequenceItemCreateActionInputSchema
 >;
 export type VideoSequenceItemUpdateActionInput = z.infer<
   typeof videoSequenceItemUpdateActionInputSchema

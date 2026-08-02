@@ -40,7 +40,7 @@ function Progress({
     >
       <ProgressPrimitive.Indicator
         data-slot="progress-indicator"
-        className="size-full flex-1 bg-primary transition-transform duration-300 ease-out data-[state=indeterminate]:animate-pulse motion-reduce:transition-none motion-reduce:data-[state=indeterminate]:animate-none"
+        className="size-full flex-1 bg-primary transition-transform duration-[var(--motion-duration-deliberate)] ease-enterprise data-[state=indeterminate]:animate-pulse motion-reduce:transition-none motion-reduce:data-[state=indeterminate]:animate-none"
         style={{ transform: `translateX(-${String(translateX)}%)` }}
       />
     </ProgressPrimitive.Root>

@@ -34,10 +34,11 @@ function HoverCardContent({
     <HoverCardPrimitive.Portal data-slot="hover-card-portal">
       <HoverCardPrimitive.Content
         data-slot="hover-card-content"
+        data-translucent="true"
         align={align}
         sideOffset={sideOffset}
         className={cn(
-          "z-50 w-64 origin-[var(--radix-hover-card-content-transform-origin)] rounded-2xl border border-border/70 bg-popover/95 p-3 text-body-sm text-popover-foreground shadow-lg outline-hidden backdrop-blur-xl duration-150 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 motion-reduce:duration-0",
+          "z-50 w-64 origin-[var(--radix-hover-card-content-transform-origin)] rounded-2xl border border-border/70 bg-popover p-3 text-body-sm text-popover-foreground shadow-lg outline-hidden duration-[var(--motion-duration-fast)] ease-enterprise supports-[backdrop-filter]:bg-popover/92 supports-[backdrop-filter]:backdrop-blur-md data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 motion-reduce:animate-none",
           className,
         )}
         {...props}

@@ -37,7 +37,7 @@ function AlertDialogOverlay({
     <AlertDialogPrimitive.Overlay
       data-slot="alert-dialog-overlay"
       className={cn(
-        "fixed inset-0 z-50 bg-background/70 duration-150 supports-[backdrop-filter]:backdrop-blur-md data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=closed]:animate-out data-[state=closed]:fade-out-0",
+        "fixed inset-0 z-50 bg-black/30 duration-[var(--motion-duration-fast)] ease-enterprise dark:bg-black/65 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 motion-reduce:animate-none",
         className,
       )}
       {...props}
@@ -66,9 +66,9 @@ function AlertDialogContent({
         data-size={size}
         className={cn(
           [
-            "group/alert-dialog-content fixed top-1/2 left-1/2 z-50 grid w-full max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 gap-5 rounded-3xl border border-border/80 bg-popover/95 p-6 text-popover-foreground shadow-2xl shadow-foreground/5 outline-none supports-[backdrop-filter]:backdrop-blur-xl",
+            "group/alert-dialog-content fixed top-1/2 left-1/2 z-50 grid max-h-[calc(100dvh-2rem)] w-full max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 gap-5 overflow-y-auto overscroll-contain rounded-3xl border border-border/80 bg-popover p-6 text-popover-foreground shadow-xl shadow-foreground/10 outline-none scrollbar-stable",
             "data-[size=sm]:sm:max-w-sm data-[size=default]:sm:max-w-lg",
-            "duration-150 ease-out data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95",
+            "duration-[var(--motion-duration-fast)] ease-enterprise data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 motion-reduce:animate-none",
           ].join(" "),
           className,
         )}

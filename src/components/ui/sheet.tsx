@@ -70,9 +70,8 @@ function SheetOverlay({
       data-slot="sheet-overlay"
       className={cn(
         [
-          "fixed inset-0 z-50 bg-black/20 transition-opacity duration-200 ease-out dark:bg-black/55",
-          "supports-backdrop-filter:bg-black/10 supports-backdrop-filter:backdrop-blur-md dark:supports-backdrop-filter:bg-black/35",
-          "data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0",
+          "fixed inset-0 z-50 bg-black/30 transition-opacity duration-[var(--motion-duration-fast)] ease-enterprise dark:bg-black/65",
+          "data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0 motion-reduce:animate-none",
         ].join(" "),
         className,
       )}
@@ -96,10 +95,9 @@ function SheetContent({
         data-side={side}
         className={cn(
           [
-            "fixed z-50 flex max-w-full flex-col gap-0 overflow-y-auto overscroll-contain bg-popover/95 bg-clip-padding text-body-sm text-popover-foreground shadow-2xl outline-none scrollbar-stable",
-            "transition-[opacity,transform] duration-200 ease-out",
-            "supports-backdrop-filter:bg-popover/85 supports-backdrop-filter:backdrop-blur-xl",
-            "data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0",
+            "fixed z-50 flex max-w-full flex-col gap-0 overflow-y-auto overscroll-contain bg-popover bg-clip-padding text-body-sm text-popover-foreground shadow-xl shadow-foreground/10 outline-none scrollbar-stable",
+            "transition-[opacity,transform] duration-[var(--motion-duration-standard)] ease-enterprise",
+            "data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0 motion-reduce:animate-none motion-reduce:transition-none",
             sheetSideClassNames[side],
           ].join(" "),
           className,
@@ -111,7 +109,7 @@ function SheetContent({
           <SheetPrimitive.Close data-slot="sheet-close" asChild>
             <Button
               aria-label="Close sheet"
-              className="absolute top-4 right-4 z-10 rounded-full text-muted-foreground hover:text-foreground"
+              className="absolute top-4 end-4 z-10 rounded-full text-muted-foreground hover:text-foreground"
               size="icon-sm"
               type="button"
               variant="ghost"
@@ -133,7 +131,7 @@ function SheetHeader({
   return (
     <div
       data-slot="sheet-header"
-      className={cn("flex flex-col gap-1 px-5 py-5 pr-14", className)}
+      className={cn("flex flex-col gap-1 px-5 py-5 pe-14", className)}
       {...props}
     />
   );
@@ -147,7 +145,7 @@ function SheetFooter({
     <div
       data-slot="sheet-footer"
       className={cn(
-        "mt-auto flex flex-col gap-2 border-t bg-popover/80 px-5 py-4 supports-backdrop-filter:backdrop-blur-md sm:flex-row sm:justify-end",
+        "mt-auto flex flex-col gap-2 border-t bg-popover px-5 py-4 sm:flex-row sm:justify-end",
         className,
       )}
       {...props}

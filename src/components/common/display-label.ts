@@ -1,6 +1,7 @@
 // oz-next-app/src/components/common/display-label.ts
 const DEFAULT_MAX_DISPLAY_LABEL_LENGTH = 120;
 const MAX_DISPLAY_LABEL_LENGTH = 512;
+const MAX_UNIQUE_DISPLAY_LABELS = 100;
 
 const C0_CONTROL_CHARACTER_MAX_CODE = 0x1f;
 const DELETE_CONTROL_CHARACTER_CODE = 0x7f;
@@ -159,6 +160,10 @@ export function formatUniqueRoleLabels(
   const seen = new Set<string>();
 
   for (const value of values) {
+    if (roles.length >= MAX_UNIQUE_DISPLAY_LABELS) {
+      break;
+    }
+
     const role = formatRoleLabel(value, "");
     const dedupeKey = role.toLocaleLowerCase("en-US");
 

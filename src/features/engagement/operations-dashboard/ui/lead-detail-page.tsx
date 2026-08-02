@@ -30,8 +30,9 @@ import {
   titleCaseDashboardToken,
 } from "@/features/engagement/operations-dashboard/utils/engagement-dashboard-format";
 import {
-  engagementDashboardHref,
+  ENGAGEMENT_DASHBOARD_ROUTES,
   engagementDealerDetailHref,
+  engagementWorkspaceHref,
 } from "@/features/engagement/operations-dashboard/utils/engagement-dashboard-url";
 
 export type EngagementLeadDetailPageProps = Readonly<{
@@ -55,14 +56,21 @@ export function EngagementLeadDetailPage({
   return (
     <ContentRoot width="wide" density="compact">
       <ContentHeader
-        eyebrow="Engagement lead drill-down"
+        icon={<UserRound aria-hidden="true" />}
+        iconTone="primary"
+        eyebrow="Vehicle sales lead"
         title={`Lead ${lead.leadNo}`}
         description={`${titleCaseDashboardToken(lead.leadType)} · ${lead.source.name}`}
         actions={
           <Button variant="outline" asChild>
-            <Link href={engagementDashboardHref(query, {}, "issues")}>
+            <Link
+              href={engagementWorkspaceHref(
+                ENGAGEMENT_DASHBOARD_ROUTES.issues,
+                query,
+              )}
+            >
               <ArrowLeft aria-hidden="true" className="size-4" /> Back to
-              dashboard
+              support
             </Link>
           </Button>
         }
@@ -81,7 +89,7 @@ export function EngagementLeadDetailPage({
       <ContentGrid variant="two">
         <ContentSection
           title="Lead and customer"
-          description="Customer contact remains masked by the API contract."
+          description="Customer identity and contact are shown only when the active actor has the explicit customer-contact permission."
         >
           <ContentDescriptionList columns="two">
             <ContentDescriptionItem term="Lead number">
@@ -99,8 +107,10 @@ export function EngagementLeadDetailPage({
             <ContentDescriptionItem term="Customer name">
               {lead.customer.name ?? "Not available"}
             </ContentDescriptionItem>
-            <ContentDescriptionItem term="Masked contact">
-              {lead.customer.contactMasked ?? "Not available"}
+            <ContentDescriptionItem term="Mobile number">
+              {lead.customer.contact ??
+                lead.customer.contactMasked ??
+                "Not available"}
             </ContentDescriptionItem>
             <ContentDescriptionItem term="Created">
               {formatDashboardDateTime(lead.createdAt)}

@@ -14,6 +14,7 @@ import type { AuthInfo } from "@/features/app-shell/ui/app-sidebar";
 import {
   cleanDisplayText,
   formatRoleLabel,
+  formatUniqueRoleLabels,
 } from "@/components/common/display-label";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
@@ -69,7 +70,7 @@ export function NavUser({
     MAX_DISPLAY_TEXT_LENGTH,
   );
   const avatarSrc = safeImageSrc(user.avatar);
-  const roleCount = Math.max(0, user.roles.length);
+  const roleCount = formatUniqueRoleLabels(user.roles).length;
   const resolvedPending = signOutPending || isPending;
   const canSignOut =
     onSignOut !== undefined && !signOutDisabled && !resolvedPending;
@@ -82,14 +83,14 @@ export function NavUser({
             <SidebarMenuButton
               size="lg"
               tooltip={name}
-              className="rounded-2xl px-2.5 hover:bg-sidebar-accent/80 data-open:bg-sidebar-accent data-open:text-sidebar-accent-foreground"
+              className="rounded-xl px-2.5 hover:bg-sidebar-accent/80 data-open:bg-sidebar-accent data-open:text-sidebar-accent-foreground"
             >
               <Avatar size="sm" className="ring-2 ring-sidebar-border/70">
                 <AvatarImage src={avatarSrc} alt="" />
                 <AvatarFallback>{initials(name)}</AvatarFallback>
               </Avatar>
 
-              <span className="grid min-w-0 flex-1 gap-0.5 text-left group-data-[collapsible=icon]:hidden">
+              <span className="grid min-w-0 flex-1 gap-0.5 text-start group-data-[collapsible=icon]:hidden">
                 <span className="truncate text-body-sm text-sidebar-foreground">
                   {name}
                 </span>
@@ -103,7 +104,7 @@ export function NavUser({
           <DropdownMenuContent
             side="top"
             align="end"
-            className="w-72 rounded-3xl border-border/70 p-2 shadow-xl shadow-foreground/5"
+            className="w-72 rounded-2xl border-border/70 p-2"
           >
             <DropdownMenuLabel className="grid gap-2 rounded-2xl px-3 py-3">
               <span className="truncate text-body-sm text-foreground">
@@ -142,15 +143,17 @@ export function NavUser({
             <DropdownMenuItem
               variant="destructive"
               className="gap-2.5 rounded-2xl"
+              aria-busy={resolvedPending}
               onSelect={(event) => {
                 event.preventDefault();
+                const signOut = onSignOut;
 
-                if (!canSignOut) {
+                if (!canSignOut || signOut === undefined) {
                   return;
                 }
 
-                startTransition(() => {
-                  void onSignOut();
+                startTransition(async () => {
+                  await signOut();
                 });
               }}
               disabled={!canSignOut}

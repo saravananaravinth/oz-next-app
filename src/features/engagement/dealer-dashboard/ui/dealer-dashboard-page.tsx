@@ -76,6 +76,8 @@ import {
   type DashboardQuickRangeValue,
 } from "@/features/engagement/dealer-dashboard/ui/dashboard-quick-range-select";
 import { OwnerGuideIntroDialog } from "@/features/engagement/dealer-dashboard/ui/owner-guide-intro-dialog";
+import { DealerStaffManagement } from "@/features/engagement/dealer-dashboard/ui/dealer-staff-management";
+import type { DealerOperationDetail } from "@/features/engagement/dealer-operations/contracts/dealer-operations.schema";
 
 const DASHBOARD_TITLE_ID = "dealer-dashboard-title";
 const ASSIGNMENT_FUNNEL_TITLE_ID = "owner-guide-assignment-funnel-title";
@@ -104,6 +106,7 @@ export type DealerDashboardPageProps = Readonly<{
   access: Extract<DealerDashboardAccess, { kind: "dealer" | "contextual" }>;
   data: DealerDashboardData;
   query: Pick<DealerDashboardSearchParams, "from" | "to">;
+  staffDetail?: DealerOperationDetail | null;
 }>;
 
 type DashboardNotice = Readonly<{
@@ -490,6 +493,7 @@ function DashboardDateFilter({
                 id="dashboard-from-date"
                 type="date"
                 name="from"
+                placeholder="Select start date"
                 defaultValue={query.from ?? ""}
               />
             </label>
@@ -503,6 +507,7 @@ function DashboardDateFilter({
                 id="dashboard-to-date"
                 type="date"
                 name="to"
+                placeholder="Select end date"
                 defaultValue={query.to ?? ""}
               />
             </label>
@@ -856,6 +861,7 @@ export function DealerDashboardPage({
   access,
   data,
   query,
+  staffDetail = null,
 }: DealerDashboardPageProps): ReactElement {
   const { dashboard, ownerGuides } = data;
   const notices = operationalNotices(dashboard);
@@ -884,6 +890,16 @@ export function DealerDashboardPage({
           includeContextInQuery={access.kind === "contextual"}
         />
       </ContentHeader>
+
+      {access.capabilities.canManageDealerStaff && staffDetail !== null ? (
+        <DealerStaffManagement
+          dealer={{
+            dealerOrgUnitId: staffDetail.dealerOrgUnitId,
+            name: staffDetail.name,
+            users: staffDetail.users,
+          }}
+        />
+      ) : null}
 
       <ContentSection
         title="Lead performance"

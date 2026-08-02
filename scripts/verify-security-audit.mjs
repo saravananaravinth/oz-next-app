@@ -1,13 +1,7 @@
 // oz-next-app/scripts/verify-security-audit.mjs
 import { spawnSync } from "node:child_process";
 
-const EXPECTED_ADVISORY_URL =
-  "https://github.com/advisories/GHSA-frvp-7c67-39w9";
-const EXPECTED_VULNERABILITIES = new Set([
-  "@hono/node-server",
-  "@modelcontextprotocol/sdk",
-  "shadcn",
-]);
+const AUDIT_SEVERITIES = ["info", "low", "moderate", "high", "critical"];
 
 function fail(message) {
   console.error(`Security audit policy failed: ${message}`);
@@ -16,6 +10,10 @@ function fail(message) {
 
 function isRecord(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isCount(value) {
+  return Number.isSafeInteger(value) && value >= 0;
 }
 
 function runAudit() {
@@ -27,7 +25,7 @@ function runAudit() {
 
   const result = spawnSync(
     process.execPath,
-    [npmExecPath, "audit", "--audit-level=high", "--json"],
+    [npmExecPath, "audit", "--audit-level=low", "--json"],
     {
       encoding: "utf8",
       maxBuffer: 16 * 1024 * 1024,
@@ -43,72 +41,88 @@ function runAudit() {
   try {
     report = JSON.parse(result.stdout);
   } catch {
-    fail("npm audit did not return valid JSON.");
+    const detail = result.stderr.trim();
+    fail(
+      detail.length === 0
+        ? "npm audit did not return valid JSON."
+        : `npm audit did not return valid JSON: ${detail}`,
+    );
     return null;
   }
 
-  if (!isRecord(report) || isRecord(report.error)) {
-    fail("npm audit returned an error response.");
+  if (!isRecord(report)) {
+    fail("npm audit returned an unsupported report shape.");
     return null;
   }
 
-  if (result.status !== 0) {
-    fail("npm audit detected a high or critical vulnerability.");
+  if (isRecord(report.error)) {
+    const summary =
+      typeof report.error.summary === "string"
+        ? report.error.summary
+        : "the registry returned an audit error";
+    fail(`npm audit could not complete: ${summary}.`);
     return null;
   }
 
-  return report;
+  return { report, status: result.status, signal: result.signal };
 }
 
-function verifyExpectedException(report) {
+function verifyCleanReport({ report, status, signal }) {
   const vulnerabilities = report.vulnerabilities;
   const counts = report.metadata?.vulnerabilities;
 
   if (!isRecord(vulnerabilities) || !isRecord(counts)) {
-    fail("npm audit returned an unsupported report shape.");
+    fail("npm audit returned an unsupported vulnerability report shape.");
     return;
   }
 
-  const actualNames = Object.keys(vulnerabilities).sort();
-  const expectedNames = [...EXPECTED_VULNERABILITIES].sort();
-  if (JSON.stringify(actualNames) !== JSON.stringify(expectedNames)) {
+  if (
+    !AUDIT_SEVERITIES.every((severity) => isCount(counts[severity])) ||
+    !isCount(counts.total)
+  ) {
+    fail("npm audit returned invalid vulnerability counts.");
+    return;
+  }
+
+  const calculatedTotal = AUDIT_SEVERITIES.reduce(
+    (total, severity) => total + counts[severity],
+    0,
+  );
+  if (calculatedTotal !== counts.total) {
+    fail("npm audit returned inconsistent vulnerability counts.");
+    return;
+  }
+
+  const affectedPackages = Object.keys(vulnerabilities).sort();
+  if (counts.total > 0 || affectedPackages.length > 0) {
+    const severitySummary = AUDIT_SEVERITIES.map(
+      (severity) => `${severity}=${String(counts[severity])}`,
+    ).join(", ");
+    const packageSummary =
+      affectedPackages.length === 0
+        ? "none reported"
+        : affectedPackages.join(", ");
     fail(
-      "the dependency findings no longer match the documented Hono exception; review the audit and advisory register.",
+      `found ${String(counts.total)} known vulnerabilities (${severitySummary}). Affected packages: ${packageSummary}.`,
     );
     return;
   }
 
-  const hasExpectedAdvisory = Object.values(vulnerabilities).some((entry) =>
-    Array.isArray(entry?.via)
-      ? entry.via.some(
-          (cause) => isRecord(cause) && cause.url === EXPECTED_ADVISORY_URL,
-        )
-      : false,
-  );
-  const allModerate = Object.values(vulnerabilities).every(
-    (entry) => entry?.severity === "moderate",
-  );
-  const countsMatch =
-    counts.info === 0 &&
-    counts.low === 0 &&
-    counts.moderate === 3 &&
-    counts.high === 0 &&
-    counts.critical === 0 &&
-    counts.total === 3;
-
-  if (!hasExpectedAdvisory || !allModerate || !countsMatch) {
+  if (status !== 0) {
     fail(
-      "the advisory identity or severity counts changed; review the dependency graph before updating the exception.",
+      signal === null
+        ? `npm audit exited with status ${String(status)} without reporting vulnerabilities.`
+        : `npm audit was terminated by signal ${signal}.`,
     );
     return;
   }
 
   console.log(
-    "Security audit passed: zero high/critical findings; GHSA-frvp-7c67-39w9 is the only documented moderate dependency path.",
+    "Security audit passed: zero known vulnerabilities across production and development dependencies.",
   );
 }
 
-const report = runAudit();
-if (report) {
-  verifyExpectedException(report);
+const auditResult = runAudit();
+if (auditResult) {
+  verifyCleanReport(auditResult);
 }

@@ -749,6 +749,49 @@ export const authUserPermissionResolutionSchema = z
   })
   .strict();
 
+export type AuthMenuItem = Readonly<{
+  menuId: string;
+  parentId: string | null;
+  title: string;
+  description: string | null;
+  icon: string | null;
+  url: string;
+  menuGroup: string | null;
+  sortOrder: number;
+  isVisible: boolean;
+  isActive: boolean;
+  badgeConfig: Readonly<{
+    text?: string | undefined;
+    variant?: string | undefined;
+  }> | null;
+  children: readonly AuthMenuItem[];
+}>;
+
+export const authMenuItemSchema: z.ZodType<AuthMenuItem> = z.lazy(() =>
+  z
+    .object({
+      menuId: uuidSchema,
+      parentId: nullableUuidSchema,
+      title: z.string().trim().min(1).max(160),
+      description: z.string().trim().min(1).max(512).nullable(),
+      icon: z.string().trim().min(1).max(64).nullable(),
+      url: z.string().trim().min(1).max(2_048),
+      menuGroup: z.string().trim().min(1).max(160).nullable(),
+      sortOrder: z.number().int(),
+      isVisible: z.boolean(),
+      isActive: z.boolean(),
+      badgeConfig: z
+        .object({
+          text: z.string().trim().min(1).max(32).optional(),
+          variant: z.string().trim().min(1).max(32).optional(),
+        })
+        .strict()
+        .nullable(),
+      children: z.array(authMenuItemSchema).readonly().default([]),
+    })
+    .strict(),
+);
+
 export const authMeResultSchema = z
   .object({
     actor: authActorViewSchema,
@@ -757,10 +800,38 @@ export const authMeResultSchema = z
     customer: authCustomerProfileSchema.nullable(),
     roles: z.array(authRoleGrantSchema).readonly(),
     tenants: z.array(authTenantMembershipSchema).default([]),
+    menus: z.array(authMenuItemSchema).readonly().default([]),
     effectivePermissions: z.array(permissionStringSchema).readonly(),
     permissionResolution: authUserPermissionResolutionSchema.nullable(),
   })
   .strict();
+
+function menuItemFromAuthMenu(menu: AuthMenuItem): MenuItem {
+  return {
+    menuid: menu.menuId,
+    title: menu.title,
+    url: menu.url,
+    menugroup: menu.menuGroup,
+    parentid: menu.parentId,
+    icon: menu.icon,
+    description: menu.description,
+    sortorder: menu.sortOrder,
+    isvisible: menu.isVisible,
+    isactive: menu.isActive,
+    badgeconfig:
+      menu.badgeConfig === null
+        ? null
+        : {
+            ...(menu.badgeConfig.text === undefined
+              ? {}
+              : { text: menu.badgeConfig.text }),
+            ...(menu.badgeConfig.variant === undefined
+              ? {}
+              : { color: menu.badgeConfig.variant }),
+          },
+    children: menu.children.map(menuItemFromAuthMenu),
+  };
+}
 
 export const authSessionSummarySchema = z
   .object({
@@ -862,7 +933,7 @@ export const meResponseSchema = z.union([
         roles: fallbackRoles,
         primary_role: primaryRole,
         tenants,
-        menus: [],
+        menus: value.menus.map(menuItemFromAuthMenu),
         auth: value,
       };
     },

@@ -10,7 +10,7 @@ function Table({
   return (
     <div
       data-slot="table-container"
-      className="relative w-full overflow-x-auto scrollbar-stable"
+      className="relative w-full overflow-x-auto overscroll-x-contain scrollbar-stable"
     >
       <table
         data-slot="table"
@@ -74,7 +74,7 @@ function TableRow({
     <tr
       data-slot="table-row"
       className={cn(
-        "border-b transition-colors duration-150 hover:bg-muted/50 has-aria-expanded:bg-muted/50 data-[state=selected]:bg-muted motion-reduce:transition-none",
+        "border-b transition-colors duration-[var(--motion-duration-fast)] ease-enterprise hover:bg-muted/50 focus-within:bg-muted/50 has-aria-expanded:bg-muted/50 data-[state=selected]:bg-muted motion-reduce:transition-none",
         className,
       )}
       {...props}
@@ -90,7 +90,7 @@ function TableHead({
     <th
       data-slot="table-head"
       className={cn(
-        "h-10 px-3 text-left align-middle whitespace-nowrap text-foreground [font-weight:var(--typography-emphasis-weight)] [&:has([role=checkbox])]:pr-0",
+        "h-10 px-3 text-start align-middle whitespace-nowrap text-foreground [font-weight:var(--typography-emphasis-weight)] [&:has([role=checkbox])]:pe-0",
         className,
       )}
       {...props}
@@ -106,7 +106,7 @@ function TableCell({
     <td
       data-slot="table-cell"
       className={cn(
-        "p-3 align-middle whitespace-nowrap [&:has([role=checkbox])]:pr-0",
+        "p-3 align-middle whitespace-nowrap [&:has([role=checkbox])]:pe-0",
         className,
       )}
       {...props}

@@ -1,21 +1,19 @@
 // oz-next-app/src/components/common/content-shell.tsx
 import type * as React from "react";
+import Link from "next/link";
 
 import {
   Alert,
-  AlertAction,
   AlertDescription,
   AlertTitle,
   type AlertProps,
 } from "@/components/ui/alert";
 import {
   Card,
-  CardAction,
   CardContent,
   CardDescription,
   CardFooter,
   CardHeader,
-  CardTitle,
 } from "@/components/ui/card";
 import {
   Empty,
@@ -23,14 +21,15 @@ import {
   EmptyDescription,
   EmptyHeader,
   EmptyMedia,
-  EmptyTitle,
 } from "@/components/ui/empty";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 
 export type ContentWidth = "narrow" | "default" | "wide" | "full";
+export type ContentGutter = "none" | "compact" | "default";
 export type ContentDensity = "comfortable" | "compact";
 export type ContentHeaderVariant = "default" | "hero" | "compact";
+export type ContentHeaderSurface = "plain" | "subtle" | "elevated" | "glass";
 export type ContentGridVariant =
   | "single"
   | "two"
@@ -47,24 +46,31 @@ export type ContentToolbarAlign = "between" | "start" | "end";
 export type ContentTone =
   "default" | "primary" | "success" | "warning" | "destructive" | "info";
 export type ContentStatusVariant = NonNullable<AlertProps["variant"]>;
+export type ContentAnnouncement = "off" | "polite" | "assertive";
 export type ContentSkeletonVariant = "page" | "section" | "table" | "form";
 export type ContentDescriptionColumns = "one" | "two" | "three";
 export type ContentListDensity = "comfortable" | "compact";
+export type ContentListVariant = "separated" | "divided";
+export type ContentHeadingLevel = 2 | 3 | 4;
 
 export type ContentRootProps = React.ComponentProps<"div"> &
   Readonly<{
     width?: ContentWidth;
+    gutter?: ContentGutter;
     density?: ContentDensity;
   }>;
 
 export type ContentHeaderProps = Omit<React.ComponentProps<"header">, "title"> &
   Readonly<{
     eyebrow?: React.ReactNode;
+    icon?: React.ReactNode;
+    iconTone?: ContentTone;
     title: React.ReactNode;
     description?: React.ReactNode;
     actions?: React.ReactNode;
     meta?: React.ReactNode;
     variant?: ContentHeaderVariant;
+    surface?: ContentHeaderSurface;
     cardClassName?: string;
   }>;
 
@@ -78,7 +84,7 @@ export type ContentSplitProps = React.ComponentProps<"div"> &
     variant?: ContentSplitVariant;
   }>;
 
-export type ContentToolbarProps = React.ComponentProps<"section"> &
+export type ContentToolbarProps = React.ComponentProps<"div"> &
   Readonly<{
     sticky?: boolean;
     variant?: ContentToolbarVariant;
@@ -94,11 +100,12 @@ export type ContentSectionProps = Omit<
     description?: React.ReactNode;
     actions?: React.ReactNode;
     footer?: React.ReactNode;
+    headingLevel?: ContentHeadingLevel;
     padded?: boolean;
     contentClassName?: string;
   }>;
 
-export type ContentDataSurfaceProps = Omit<
+type ContentDataSurfaceBaseProps = Omit<
   React.ComponentProps<typeof Card>,
   "title"
 > &
@@ -108,10 +115,28 @@ export type ContentDataSurfaceProps = Omit<
     actions?: React.ReactNode;
     toolbar?: React.ReactNode;
     footer?: React.ReactNode;
+    headingLevel?: ContentHeadingLevel;
     padded?: boolean;
-    scrollable?: boolean;
     contentClassName?: string;
   }>;
+
+type ContentDataSurfaceScrollProps =
+  | Readonly<{
+      scrollable?: false;
+      scrollAreaLabel?: never;
+    }>
+  | Readonly<{
+      scrollable: true;
+      scrollAreaLabel: string;
+    }>;
+
+export type ContentDataSurfaceProps = ContentDataSurfaceBaseProps &
+  ContentDataSurfaceScrollProps;
+
+type MetricLinkProps = Omit<
+  React.ComponentProps<typeof Link>,
+  "aria-current" | "aria-label" | "children" | "className" | "href"
+>;
 
 export type ContentMetricCardProps = Omit<
   React.ComponentProps<typeof Card>,
@@ -124,9 +149,11 @@ export type ContentMetricCardProps = Omit<
     icon?: React.ReactNode;
     trend?: React.ReactNode;
     tone?: ContentTone;
-    href?: string;
+    href?: React.ComponentProps<typeof Link>["href"];
+    linkProps?: MetricLinkProps;
     active?: boolean;
     ariaLabel?: string;
+    ariaCurrent?: React.AriaAttributes["aria-current"];
   }>;
 
 export type ContentStatusProps = Omit<
@@ -139,6 +166,7 @@ export type ContentStatusProps = Omit<
     description?: React.ReactNode;
     icon?: React.ReactNode;
     actions?: React.ReactNode;
+    announce?: ContentAnnouncement;
   }>;
 
 export type ContentEmptyStateProps = Omit<
@@ -150,6 +178,7 @@ export type ContentEmptyStateProps = Omit<
     title: React.ReactNode;
     description?: React.ReactNode;
     actions?: React.ReactNode;
+    headingLevel?: ContentHeadingLevel;
   }>;
 
 export type ContentSkeletonProps = React.ComponentProps<"div"> &
@@ -186,6 +215,7 @@ export type ContentDescriptionItemProps = Omit<
 export type ContentListProps = React.ComponentProps<"ul"> &
   Readonly<{
     density?: ContentListDensity;
+    variant?: ContentListVariant;
   }>;
 
 export type ContentListItemProps = Omit<React.ComponentProps<"li">, "title"> &
@@ -195,11 +225,15 @@ export type ContentListItemProps = Omit<React.ComponentProps<"li">, "title"> &
     description?: React.ReactNode;
     meta?: React.ReactNode;
     actions?: React.ReactNode;
+    headingLevel?: Extract<ContentHeadingLevel, 3 | 4>;
   }>;
 
 export type ContentProseProps = React.ComponentProps<"article">;
 
-export type ContentScrollAreaProps = React.ComponentProps<"div">;
+export type ContentScrollAreaProps = React.ComponentProps<"div"> &
+  Readonly<{
+    label?: string;
+  }>;
 
 const CONTENT_WIDTH_CLASSES = {
   narrow: "max-w-4xl",
@@ -208,18 +242,26 @@ const CONTENT_WIDTH_CLASSES = {
   full: "max-w-none",
 } as const satisfies Record<ContentWidth, string>;
 
+const CONTENT_GUTTER_CLASSES = {
+  none: "",
+  compact: "px-3 sm:px-4 lg:px-6",
+  default: "px-4 sm:px-6 lg:px-8",
+} as const satisfies Record<ContentGutter, string>;
+
 const CONTENT_DENSITY_CLASSES = {
-  comfortable: "gap-5 sm:gap-6",
-  compact: "gap-4",
+  comfortable:
+    "[--content-gap:1.5rem] [--content-item-gap:1.25rem] [--content-control-gap:0.75rem]",
+  compact:
+    "[--content-gap:1rem] [--content-item-gap:1rem] [--content-control-gap:0.5rem]",
 } as const satisfies Record<ContentDensity, string>;
 
-const CONTENT_HEADER_CARD_CLASSES = {
-  default:
-    "bg-card/80 supports-[backdrop-filter]:bg-card/70 supports-[backdrop-filter]:backdrop-blur-xl",
-  hero: "bg-card/80 supports-[backdrop-filter]:bg-card/70 supports-[backdrop-filter]:backdrop-blur-xl",
-  compact:
-    "bg-card/90 supports-[backdrop-filter]:bg-card/80 supports-[backdrop-filter]:backdrop-blur-xl",
-} as const satisfies Record<ContentHeaderVariant, string>;
+const CONTENT_HEADER_SURFACE_CLASSES = {
+  plain: "border-transparent bg-transparent shadow-none",
+  subtle: "border-border/70 bg-card shadow-none",
+  elevated: "border-border/70 bg-card shadow-sm shadow-foreground/5",
+  glass:
+    "border-border/70 bg-card/90 shadow-sm shadow-foreground/5 supports-[backdrop-filter]:bg-card/82 supports-[backdrop-filter]:backdrop-blur-md",
+} as const satisfies Record<ContentHeaderSurface, string>;
 
 const CONTENT_HEADER_TITLE_CLASSES = {
   default: "text-page-title",
@@ -233,40 +275,51 @@ const CONTENT_HEADER_CONTENT_CLASSES = {
   compact: "gap-4",
 } as const satisfies Record<ContentHeaderVariant, string>;
 
+const CONTENT_HEADER_ICON_CLASSES = {
+  default:
+    "size-12 rounded-2xl *:[svg:not([class*='size-'])]:size-5 sm:size-14 sm:*:[svg:not([class*='size-'])]:size-6",
+  hero: "size-14 rounded-2xl *:[svg:not([class*='size-'])]:size-6 sm:size-16 sm:*:[svg:not([class*='size-'])]:size-7",
+  compact: "size-10 rounded-xl *:[svg:not([class*='size-'])]:size-5 sm:size-11",
+} as const satisfies Record<ContentHeaderVariant, string>;
+
 const CONTENT_GRID_CLASSES = {
   single: "grid-cols-1",
-  two: "grid-cols-1 xl:grid-cols-2",
-  three: "grid-cols-1 lg:grid-cols-2 2xl:grid-cols-3",
-  four: "grid-cols-1 sm:grid-cols-2 xl:grid-cols-4",
-  metrics: "grid-cols-1 sm:grid-cols-2 xl:grid-cols-4",
-  "main-aside": "grid-cols-1 xl:grid-cols-[minmax(0,1fr)_minmax(20rem,26rem)]",
-  "aside-main": "grid-cols-1 xl:grid-cols-[minmax(20rem,26rem)_minmax(0,1fr)]",
+  two: "grid-cols-1 @4xl/content-grid:grid-cols-2",
+  three:
+    "grid-cols-1 @3xl/content-grid:grid-cols-2 @6xl/content-grid:grid-cols-3",
+  four: "grid-cols-1 @xl/content-grid:grid-cols-2 @5xl/content-grid:grid-cols-4",
+  metrics:
+    "grid-cols-[repeat(auto-fit,minmax(min(100%,15rem),1fr))] auto-rows-fr",
+  "main-aside":
+    "grid-cols-1 @5xl/content-grid:grid-cols-[minmax(0,1fr)_minmax(18rem,24rem)]",
+  "aside-main":
+    "grid-cols-1 @5xl/content-grid:grid-cols-[minmax(18rem,24rem)_minmax(0,1fr)]",
   workbench:
-    "grid-cols-1 2xl:grid-cols-[minmax(18rem,24rem)_minmax(0,1fr)_minmax(18rem,24rem)]",
+    "grid-cols-1 @6xl/content-grid:grid-cols-[minmax(16rem,22rem)_minmax(0,1fr)_minmax(16rem,22rem)]",
 } as const satisfies Record<ContentGridVariant, string>;
 
 const CONTENT_SPLIT_CLASSES = {
-  equal: "grid-cols-1 xl:grid-cols-2",
+  equal: "grid-cols-1 @4xl/content-split:grid-cols-2",
   "master-detail":
-    "grid-cols-1 xl:grid-cols-[minmax(18rem,26rem)_minmax(0,1fr)]",
+    "grid-cols-1 @5xl/content-split:grid-cols-[minmax(18rem,26rem)_minmax(0,1fr)]",
   "detail-master":
-    "grid-cols-1 xl:grid-cols-[minmax(0,1fr)_minmax(18rem,26rem)]",
+    "grid-cols-1 @5xl/content-split:grid-cols-[minmax(0,1fr)_minmax(18rem,26rem)]",
   "main-context":
-    "grid-cols-1 2xl:grid-cols-[minmax(0,1fr)_minmax(24rem,34rem)]",
+    "grid-cols-1 @6xl/content-split:grid-cols-[minmax(0,1fr)_minmax(22rem,32rem)]",
 } as const satisfies Record<ContentSplitVariant, string>;
 
 const CONTENT_TOOLBAR_VARIANT_CLASSES = {
   default:
-    "border border-border/70 bg-card/85 shadow-xs shadow-foreground/5 supports-[backdrop-filter]:bg-card/75 supports-[backdrop-filter]:backdrop-blur-xl",
-  subtle:
-    "border border-border/70 bg-muted/45 shadow-xs shadow-foreground/5 supports-[backdrop-filter]:bg-muted/35 supports-[backdrop-filter]:backdrop-blur-xl",
-  ghost: "border border-transparent bg-transparent",
+    "border border-border/70 bg-card p-2.5 shadow-xs shadow-foreground/5",
+  subtle: "border border-transparent bg-muted/45 p-2.5",
+  ghost: "border border-transparent bg-transparent p-0",
 } as const satisfies Record<ContentToolbarVariant, string>;
 
 const CONTENT_TOOLBAR_ALIGN_CLASSES = {
-  between: "sm:items-center sm:justify-between",
-  start: "sm:items-center sm:justify-start",
-  end: "sm:items-center sm:justify-end",
+  between:
+    "@sm/content-toolbar:items-center @sm/content-toolbar:justify-between",
+  start: "@sm/content-toolbar:items-center @sm/content-toolbar:justify-start",
+  end: "@sm/content-toolbar:items-center @sm/content-toolbar:justify-end",
 } as const satisfies Record<ContentToolbarAlign, string>;
 
 const CONTENT_TONE_ICON_CLASSES = {
@@ -279,16 +332,37 @@ const CONTENT_TONE_ICON_CLASSES = {
   info: "border-info/25 bg-info/5 text-info",
 } as const satisfies Record<ContentTone, string>;
 
+const CONTENT_STATUS_ICON_CLASSES = {
+  default: "text-muted-readable",
+  destructive: "text-destructive",
+  success: "text-success",
+  warning: "text-warning-foreground dark:text-warning",
+  info: "text-info",
+} as const satisfies Record<ContentStatusVariant, string>;
+
+const CONTENT_ANNOUNCEMENT_ROLES = {
+  off: "note",
+  polite: "status",
+  assertive: "alert",
+} as const satisfies Record<ContentAnnouncement, React.AriaRole>;
+
 const CONTENT_DESCRIPTION_COLUMNS_CLASSES = {
   one: "grid-cols-1",
-  two: "grid-cols-1 md:grid-cols-2",
-  three: "grid-cols-1 md:grid-cols-2 2xl:grid-cols-3",
+  two: "grid-cols-1 @2xl/content-description-list:grid-cols-2",
+  three:
+    "grid-cols-1 @xl/content-description-list:grid-cols-2 @5xl/content-description-list:grid-cols-3",
 } as const satisfies Record<ContentDescriptionColumns, string>;
 
 const CONTENT_LIST_DENSITY_CLASSES = {
-  comfortable: "gap-3",
-  compact: "gap-2",
+  comfortable: "gap-3 data-[variant=divided]:gap-0",
+  compact: "gap-2 data-[variant=divided]:gap-0",
 } as const satisfies Record<ContentListDensity, string>;
+
+const CONTENT_LIST_VARIANT_CLASSES = {
+  separated: "",
+  divided:
+    "overflow-hidden rounded-2xl border border-border/70 bg-card divide-y divide-border/70",
+} as const satisfies Record<ContentListVariant, string>;
 
 const DEFAULT_SKELETON_ROWS = 4;
 const MAX_SKELETON_ROWS = 12;
@@ -311,8 +385,30 @@ function hasHeader(
   );
 }
 
+type ContentHeadingProps = Readonly<{
+  level: ContentHeadingLevel;
+  className?: string;
+  children: React.ReactNode;
+}>;
+
+function ContentHeading({
+  level,
+  className,
+  children,
+}: ContentHeadingProps): React.ReactElement {
+  switch (level) {
+    case 2:
+      return <h2 className={className}>{children}</h2>;
+    case 3:
+      return <h3 className={className}>{children}</h3>;
+    case 4:
+      return <h4 className={className}>{children}</h4>;
+  }
+}
+
 export function ContentRoot({
-  width = "wide",
+  width = "full",
+  gutter = "none",
   density = "comfortable",
   className,
   ...props
@@ -321,10 +417,12 @@ export function ContentRoot({
     <div
       data-slot="content-root"
       data-width={width}
+      data-gutter={gutter}
       data-density={density}
       className={cn(
-        "@container/content-root mx-auto flex w-full min-w-0 flex-col",
+        "@container/content-root mx-auto flex w-full min-w-0 flex-col gap-[var(--content-gap)]",
         CONTENT_WIDTH_CLASSES[width],
+        CONTENT_GUTTER_CLASSES[gutter],
         CONTENT_DENSITY_CLASSES[density],
         className,
       )}
@@ -335,11 +433,14 @@ export function ContentRoot({
 
 export function ContentHeader({
   eyebrow,
+  icon,
+  iconTone = "primary",
   title,
   description,
   actions,
   meta,
   variant = "default",
+  surface = "subtle",
   cardClassName,
   className,
   children,
@@ -348,59 +449,81 @@ export function ContentHeader({
   return (
     <header
       data-slot="content-header"
+      data-variant={variant}
+      data-surface={surface}
       className={cn("min-w-0", className)}
       {...props}
     >
       <Card
+        data-translucent={surface === "glass" ? "true" : undefined}
         className={cn(
-          "shadow-xs shadow-foreground/5",
-          CONTENT_HEADER_CARD_CLASSES[variant],
+          "@container/content-header min-w-0",
+          CONTENT_HEADER_SURFACE_CLASSES[surface],
           cardClassName,
         )}
       >
         <CardContent
           className={cn(
-            "grid min-w-0 lg:grid-cols-[minmax(0,1fr)_auto]",
+            "grid min-w-0 @3xl/content-header:grid-cols-[minmax(0,1fr)_auto] @3xl/content-header:items-center",
             CONTENT_HEADER_CONTENT_CLASSES[variant],
           )}
         >
-          <div className="min-w-0">
-            {eyebrow !== undefined ? (
-              <div className="mb-2 text-overline text-muted-readable">
-                {eyebrow}
+          <div className="flex min-w-0 items-start gap-3 sm:gap-4">
+            {icon !== undefined ? (
+              <div
+                data-slot="content-header-icon"
+                data-tone={iconTone}
+                className={cn(
+                  "flex shrink-0 items-center justify-center border shadow-xs ring-1 ring-foreground/5",
+                  CONTENT_HEADER_ICON_CLASSES[variant],
+                  CONTENT_TONE_ICON_CLASSES[iconTone],
+                )}
+                aria-hidden="true"
+              >
+                {icon}
               </div>
             ) : null}
 
-            <h1
-              className={cn(
-                CONTENT_HEADER_TITLE_CLASSES[variant],
-                "text-foreground",
-              )}
-            >
-              {title}
-            </h1>
+            <div className="flex min-w-0 flex-1 flex-col justify-center">
+              {eyebrow !== undefined ? (
+                <div className="mb-1 text-overline text-muted-readable">
+                  {eyebrow}
+                </div>
+              ) : null}
 
-            {description !== undefined ? (
-              <p className="mt-3 max-w-3xl text-body-sm text-muted-readable text-pretty">
-                {description}
-              </p>
-            ) : null}
+              <h1
+                className={cn(
+                  CONTENT_HEADER_TITLE_CLASSES[variant],
+                  "text-balance text-foreground",
+                )}
+              >
+                {title}
+              </h1>
 
-            {meta !== undefined ? (
-              <div className="mt-4 flex flex-wrap items-center gap-2 text-caption text-muted-readable">
-                {meta}
-              </div>
-            ) : null}
+              {description !== undefined ? (
+                <div className="mt-1.5 max-w-3xl text-pretty text-body-sm text-muted-readable">
+                  {description}
+                </div>
+              ) : null}
+
+              {meta !== undefined ? (
+                <div className="mt-3 flex flex-wrap items-center gap-2 text-caption text-muted-readable">
+                  {meta}
+                </div>
+              ) : null}
+            </div>
           </div>
 
           {actions !== undefined ? (
-            <div className="flex min-w-0 flex-wrap items-center gap-2 lg:justify-end">
+            <div className="flex min-w-0 flex-wrap items-center gap-2 @3xl/content-header:justify-end">
               {actions}
             </div>
           ) : null}
 
           {children !== undefined ? (
-            <div className="min-w-0 lg:col-span-2">{children}</div>
+            <div className="min-w-0 @3xl/content-header:col-span-2">
+              {children}
+            </div>
           ) : null}
         </CardContent>
       </Card>
@@ -411,38 +534,54 @@ export function ContentHeader({
 export function ContentGrid({
   variant = "single",
   className,
+  children,
   ...props
 }: ContentGridProps): React.ReactElement {
   return (
     <div
-      data-slot="content-grid"
-      data-variant={variant}
-      className={cn(
-        "grid min-w-0 gap-4 sm:gap-5",
-        CONTENT_GRID_CLASSES[variant],
-        className,
-      )}
-      {...props}
-    />
+      data-slot="content-grid-container"
+      className="@container/content-grid min-w-0"
+    >
+      <div
+        data-slot="content-grid"
+        data-variant={variant}
+        className={cn(
+          "grid min-w-0 gap-[var(--content-item-gap,1.25rem)]",
+          CONTENT_GRID_CLASSES[variant],
+          className,
+        )}
+        {...props}
+      >
+        {children}
+      </div>
+    </div>
   );
 }
 
 export function ContentSplit({
   variant = "master-detail",
   className,
+  children,
   ...props
 }: ContentSplitProps): React.ReactElement {
   return (
     <div
-      data-slot="content-split"
-      data-variant={variant}
-      className={cn(
-        "grid min-w-0 gap-4 sm:gap-5",
-        CONTENT_SPLIT_CLASSES[variant],
-        className,
-      )}
-      {...props}
-    />
+      data-slot="content-split-container"
+      className="@container/content-split min-w-0"
+    >
+      <div
+        data-slot="content-split"
+        data-variant={variant}
+        className={cn(
+          "grid min-w-0 gap-[var(--content-item-gap,1.25rem)]",
+          CONTENT_SPLIT_CLASSES[variant],
+          className,
+        )}
+        {...props}
+      >
+        {children}
+      </div>
+    </div>
   );
 }
 
@@ -453,7 +592,10 @@ export function ContentStack({
   return (
     <div
       data-slot="content-stack"
-      className={cn("flex min-w-0 flex-col gap-4 sm:gap-5", className)}
+      className={cn(
+        "flex min-w-0 flex-col gap-[var(--content-item-gap,1.25rem)]",
+        className,
+      )}
       {...props}
     />
   );
@@ -464,38 +606,39 @@ export function ContentToolbar({
   variant = "default",
   align = "between",
   className,
+  children,
   ...props
 }: ContentToolbarProps): React.ReactElement {
   return (
-    <section
+    <div
       data-slot="content-toolbar"
       data-variant={variant}
+      data-sticky={sticky ? "true" : "false"}
       className={cn(
-        "flex min-w-0 flex-col gap-3 rounded-2xl p-3",
+        "@container/content-toolbar min-w-0 rounded-xl",
         CONTENT_TOOLBAR_VARIANT_CLASSES[variant],
-        CONTENT_TOOLBAR_ALIGN_CLASSES[align],
-        sticky ? "sticky top-3 z-20" : undefined,
+        sticky &&
+          "sticky top-[var(--content-sticky-top,0.75rem)] z-30 isolate border-border/80 bg-card shadow-sm",
         className,
       )}
       {...props}
-    />
+    >
+      <div
+        className={cn(
+          "flex min-w-0 flex-col gap-[var(--content-control-gap,0.75rem)] @sm/content-toolbar:flex-row",
+          CONTENT_TOOLBAR_ALIGN_CLASSES[align],
+        )}
+      >
+        {children}
+      </div>
+    </div>
   );
 }
 
-export function ContentMetrics({
-  className,
-  ...props
-}: React.ComponentProps<"div">): React.ReactElement {
-  return (
-    <div
-      data-slot="content-metrics"
-      className={cn(
-        "grid min-w-0 grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4",
-        className,
-      )}
-      {...props}
-    />
-  );
+export function ContentMetrics(
+  props: React.ComponentProps<"div">,
+): React.ReactElement {
+  return <ContentGrid variant="metrics" {...props} />;
 }
 
 export function ContentSection({
@@ -503,6 +646,7 @@ export function ContentSection({
   description,
   actions,
   footer,
+  headingLevel = 2,
   padded = true,
   contentClassName,
   className,
@@ -510,23 +654,36 @@ export function ContentSection({
   ...props
 }: ContentSectionProps): React.ReactElement {
   const renderHeader = hasHeader(title, description, actions);
-
   return (
     <Card
       data-slot="content-section"
-      className={cn("min-w-0", className)}
+      className={cn(
+        "@container/content-section min-w-0 shadow-none",
+        className,
+      )}
       {...props}
     >
       {renderHeader ? (
-        <CardHeader>
+        <CardHeader className="gap-3 @md/content-section:grid-cols-[minmax(0,1fr)_auto]">
           <div className="min-w-0">
-            {title !== undefined ? <CardTitle>{title}</CardTitle> : null}
+            {title !== undefined ? (
+              <ContentHeading
+                level={headingLevel}
+                className="text-card-title text-balance"
+              >
+                {title}
+              </ContentHeading>
+            ) : null}
             {description !== undefined ? (
               <CardDescription>{description}</CardDescription>
             ) : null}
           </div>
 
-          {actions !== undefined ? <CardAction>{actions}</CardAction> : null}
+          {actions !== undefined ? (
+            <div className="flex min-w-0 flex-wrap items-center gap-2 @md/content-section:col-start-2 @md/content-section:row-span-2 @md/content-section:row-start-1 @md/content-section:justify-self-end">
+              {actions}
+            </div>
+          ) : null}
         </CardHeader>
       ) : null}
 
@@ -552,38 +709,58 @@ export function ContentDataSurface({
   actions,
   toolbar,
   footer,
+  headingLevel = 2,
   padded = false,
   scrollable = false,
+  scrollAreaLabel,
   contentClassName,
   className,
   children,
   ...props
 }: ContentDataSurfaceProps): React.ReactElement {
   const renderHeader = hasHeader(title, description, actions);
-
   return (
     <Card
       data-slot="content-data-surface"
-      className={cn("min-w-0", className)}
+      className={cn(
+        "@container/content-data-surface min-w-0 gap-0 py-0 shadow-none",
+        className,
+      )}
       {...props}
     >
       {renderHeader ? (
-        <CardHeader>
+        <CardHeader className="gap-3 py-[var(--card-spacing)] @md/content-data-surface:grid-cols-[minmax(0,1fr)_auto]">
           <div className="min-w-0">
-            {title !== undefined ? <CardTitle>{title}</CardTitle> : null}
+            {title !== undefined ? (
+              <ContentHeading
+                level={headingLevel}
+                className="text-card-title text-balance"
+              >
+                {title}
+              </ContentHeading>
+            ) : null}
             {description !== undefined ? (
               <CardDescription>{description}</CardDescription>
             ) : null}
           </div>
 
-          {actions !== undefined ? <CardAction>{actions}</CardAction> : null}
+          {actions !== undefined ? (
+            <div className="flex min-w-0 flex-wrap items-center gap-2 @md/content-data-surface:col-start-2 @md/content-data-surface:row-span-2 @md/content-data-surface:row-start-1 @md/content-data-surface:justify-self-end">
+              {actions}
+            </div>
+          ) : null}
         </CardHeader>
       ) : null}
 
       {toolbar !== undefined ? (
         <div
           data-slot="content-data-surface-toolbar"
-          className="border-y border-border/70 bg-muted/35 px-[var(--card-spacing)] py-3"
+          className={cn(
+            "bg-muted/35 px-[var(--card-spacing)] py-3",
+            renderHeader
+              ? "border-y border-border/70"
+              : "border-b border-border/70",
+          )}
         >
           {toolbar}
         </div>
@@ -591,10 +768,16 @@ export function ContentDataSurface({
 
       <div
         data-slot="content-data-surface-content"
+        data-scrollable={scrollable ? "true" : "false"}
+        role={scrollable ? "region" : undefined}
+        aria-label={scrollable ? scrollAreaLabel : undefined}
+        tabIndex={scrollable ? 0 : undefined}
         className={cn(
           "min-w-0",
-          padded ? "px-[var(--card-spacing)]" : undefined,
-          scrollable ? "overflow-auto scrollbar-stable" : "overflow-hidden",
+          padded ? "p-[var(--card-spacing)]" : undefined,
+          scrollable
+            ? "scrollbar-compact max-w-full overflow-auto overscroll-contain outline-none focus-visible:ring-3 focus-visible:ring-inset focus-visible:ring-ring/45"
+            : undefined,
           contentClassName,
         )}
       >
@@ -614,8 +797,10 @@ export function ContentMetricCard({
   trend,
   tone = "default",
   href,
+  linkProps,
   active = false,
   ariaLabel,
+  ariaCurrent,
   size = "sm",
   className,
   ...props
@@ -627,10 +812,11 @@ export function ContentMetricCard({
       data-active={active ? "true" : "false"}
       size={size}
       className={cn(
-        "group/metric relative h-full min-w-0 overflow-hidden border-border/75 bg-card/90 py-0 shadow-sm shadow-foreground/5 transition-[border-color,background-color,box-shadow,transform] duration-200 ease-out motion-reduce:transform-none motion-reduce:transition-none",
+        "group/metric relative h-full min-w-0 overflow-hidden border-border/75 bg-card py-0 shadow-none transition-[border-color,background-color,box-shadow] duration-[var(--motion-duration-fast)] ease-[var(--motion-ease-standard)] motion-reduce:transition-none",
         href !== undefined &&
-          "hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-md",
-        active && "border-primary/45 bg-primary/[0.055] shadow-primary/10",
+          "hover:border-foreground/20 hover:bg-muted/15 hover:shadow-sm",
+        active &&
+          "border-primary/45 bg-primary/[0.055] shadow-sm shadow-primary/10",
         className,
       )}
       {...props}
@@ -638,19 +824,22 @@ export function ContentMetricCard({
       <span
         aria-hidden="true"
         className={cn(
-          "absolute inset-x-0 top-0 h-0.5 bg-transparent transition-colors motion-reduce:transition-none",
+          "absolute inset-x-0 top-0 h-0.5 bg-transparent transition-colors duration-[var(--motion-duration-fast)] ease-[var(--motion-ease-standard)] motion-reduce:transition-none",
           active && "bg-primary",
         )}
       />
+
       <CardContent className="grid min-w-0 gap-3 p-4">
         <div className="flex min-w-0 items-start justify-between gap-3">
-          <div className="min-w-0 truncate text-overline text-muted-readable">
+          <div className="min-w-0 whitespace-normal break-words text-overline text-muted-readable">
             {label}
           </div>
+
           {icon !== undefined ? (
             <div
+              aria-hidden="true"
               className={cn(
-                "flex size-9 shrink-0 items-center justify-center rounded-2xl border transition-[background-color,border-color,color] duration-200 motion-reduce:transition-none [&_svg]:size-4",
+                "flex size-9 shrink-0 items-center justify-center rounded-xl border transition-[background-color,border-color,color] duration-[var(--motion-duration-fast)] ease-[var(--motion-ease-standard)] motion-reduce:transition-none [&_svg]:size-4",
                 CONTENT_TONE_ICON_CLASSES[tone],
                 href !== undefined &&
                   "group-hover/metric:border-primary/25 group-hover/metric:bg-primary/10 group-hover/metric:text-primary",
@@ -662,12 +851,12 @@ export function ContentMetricCard({
           ) : null}
         </div>
 
-        <div className="text-metric text-foreground text-tabular">{value}</div>
+        <div className="text-metric text-tabular text-foreground">{value}</div>
 
         {description !== undefined || trend !== undefined ? (
           <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-caption text-muted-readable">
             {description !== undefined ? (
-              <span className="min-w-0 truncate">{description}</span>
+              <span className="min-w-0 text-pretty">{description}</span>
             ) : null}
             {trend !== undefined ? (
               <span className="text-tabular">{trend}</span>
@@ -683,14 +872,15 @@ export function ContentMetricCard({
   }
 
   return (
-    <a
+    <Link
+      {...linkProps}
       href={href}
-      aria-current={active ? "page" : undefined}
+      aria-current={ariaCurrent ?? (active ? "page" : undefined)}
       aria-label={ariaLabel}
-      className="min-w-0 rounded-3xl outline-none focus-visible:ring-3 focus-visible:ring-ring/45"
+      className="block h-full min-w-0 rounded-2xl outline-none focus-visible:ring-3 focus-visible:ring-ring/45 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
     >
       {card}
-    </a>
+    </Link>
   );
 }
 
@@ -700,22 +890,66 @@ export function ContentStatus({
   description,
   icon,
   actions,
+  announce = "off",
+  role,
   className,
   ...props
 }: ContentStatusProps): React.ReactElement {
+  const resolvedRole = role ?? CONTENT_ANNOUNCEMENT_ROLES[announce];
+  const hasIcon = icon !== undefined;
+
   return (
     <Alert
       data-slot="content-status"
+      data-announcement={announce}
       variant={variant}
-      className={className}
+      role={resolvedRole}
+      aria-atomic={announce === "off" ? undefined : true}
+      className={cn(
+        hasIcon &&
+          "grid-cols-[auto_minmax(0,1fr)] gap-x-3 [&>[data-slot=content-status-icon]]:row-span-3",
+        variant !== "default" &&
+          "text-foreground! [&_[data-slot=alert-description]]:text-[var(--typography-muted-color)]!",
+        className,
+      )}
       {...props}
     >
-      {icon}
-      {title !== undefined ? <AlertTitle>{title}</AlertTitle> : null}
-      {description !== undefined ? (
-        <AlertDescription>{description}</AlertDescription>
+      {hasIcon ? (
+        <span
+          data-slot="content-status-icon"
+          aria-hidden="true"
+          className={cn(
+            "mt-0.5 flex size-4 shrink-0 items-center justify-center [&_svg]:size-4",
+            CONTENT_STATUS_ICON_CLASSES[variant],
+          )}
+        >
+          {icon}
+        </span>
       ) : null}
-      {actions !== undefined ? <AlertAction>{actions}</AlertAction> : null}
+
+      {title !== undefined ? (
+        <AlertTitle className={cn(hasIcon && "col-start-2")}>
+          {title}
+        </AlertTitle>
+      ) : null}
+
+      {description !== undefined ? (
+        <AlertDescription className={cn(hasIcon && "col-start-2")}>
+          {description}
+        </AlertDescription>
+      ) : null}
+
+      {actions !== undefined ? (
+        <div
+          data-slot="content-status-actions"
+          className={cn(
+            "mt-2 flex min-w-0 flex-wrap items-center gap-2",
+            hasIcon && "col-start-2",
+          )}
+        >
+          {actions}
+        </div>
+      ) : null}
     </Alert>
   );
 }
@@ -725,16 +959,30 @@ export function ContentEmptyState({
   title,
   description,
   actions,
+  headingLevel = 2,
   className,
   ...props
 }: ContentEmptyStateProps): React.ReactElement {
   return (
-    <Empty data-slot="content-empty-state" className={className} {...props}>
+    <Empty
+      data-slot="content-empty-state"
+      className={cn("min-h-56 py-10", className)}
+      {...props}
+    >
       <EmptyHeader>
         {icon !== undefined ? (
-          <EmptyMedia variant="icon">{icon}</EmptyMedia>
+          <EmptyMedia aria-hidden="true" variant="icon">
+            {icon}
+          </EmptyMedia>
         ) : null}
-        <EmptyTitle>{title}</EmptyTitle>
+
+        <ContentHeading
+          level={headingLevel}
+          className="text-card-title text-balance"
+        >
+          {title}
+        </ContentHeading>
+
         {description !== undefined ? (
           <EmptyDescription>{description}</EmptyDescription>
         ) : null}
@@ -753,25 +1001,33 @@ export function ContentSkeleton({
   ...props
 }: ContentSkeletonProps): React.ReactElement {
   const rowCount = resolveSkeletonRows(rows);
+  const statusProps = {
+    "aria-atomic": true,
+    "aria-busy": true,
+    "aria-live": "polite",
+    role: "status",
+  } as const;
 
   if (variant === "page") {
     return (
       <div
         data-slot="content-skeleton"
         data-variant={variant}
-        role="status"
-        aria-live="polite"
-        className={cn("grid min-w-0 gap-5 sm:gap-6", className)}
+        className={cn(
+          "grid min-w-0 gap-[var(--content-gap,1.5rem)]",
+          className,
+        )}
+        {...statusProps}
         {...props}
       >
         <span className="sr-only">{label}</span>
-        <Skeleton className="h-40 w-full rounded-3xl" />
-        <div className="grid min-w-0 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <Skeleton className="h-36 w-full rounded-2xl" />
+        <div className="grid min-w-0 grid-cols-1 gap-4 @xl/content-root:grid-cols-2 @5xl/content-root:grid-cols-4">
           {Array.from({ length: 4 }, (_, index) => (
             <Skeleton key={index} className="h-32 w-full rounded-2xl" />
           ))}
         </div>
-        <Skeleton className="h-96 w-full rounded-3xl" />
+        <Skeleton className="h-96 w-full rounded-2xl" />
       </div>
     );
   }
@@ -781,13 +1037,12 @@ export function ContentSkeleton({
       <div
         data-slot="content-skeleton"
         data-variant={variant}
-        role="status"
-        aria-live="polite"
         className={cn("grid min-w-0 gap-3", className)}
+        {...statusProps}
         {...props}
       >
         <span className="sr-only">{label}</span>
-        <Skeleton className="h-12 w-full rounded-2xl" />
+        <Skeleton className="h-12 w-full rounded-xl" />
         {Array.from({ length: rowCount }, (_, index) => (
           <Skeleton key={index} className="h-11 w-full rounded-xl" />
         ))}
@@ -800,19 +1055,18 @@ export function ContentSkeleton({
       <div
         data-slot="content-skeleton"
         data-variant={variant}
-        role="status"
-        aria-live="polite"
         className={cn("grid min-w-0 gap-4", className)}
+        {...statusProps}
         {...props}
       >
         <span className="sr-only">{label}</span>
         {Array.from({ length: rowCount }, (_, index) => (
           <div key={index} className="grid gap-2">
-            <Skeleton className="h-4 w-36 rounded-xl" />
-            <Skeleton className="h-10 w-full rounded-2xl" />
+            <Skeleton className="h-4 w-36 rounded-lg" />
+            <Skeleton className="h-10 w-full rounded-xl" />
           </div>
         ))}
-        <Skeleton className="h-14 w-full rounded-2xl" />
+        <Skeleton className="h-12 w-full rounded-xl" />
       </div>
     );
   }
@@ -821,9 +1075,8 @@ export function ContentSkeleton({
     <div
       data-slot="content-skeleton"
       data-variant={variant}
-      role="status"
-      aria-live="polite"
       className={cn("grid min-w-0 gap-4", className)}
+      {...statusProps}
       {...props}
     >
       <span className="sr-only">{label}</span>
@@ -845,7 +1098,7 @@ export function ContentForm({
   return (
     <form
       data-slot="content-form"
-      className={cn("grid min-w-0 gap-5 sm:gap-6", className)}
+      className={cn("grid min-w-0 gap-[var(--content-gap,1.5rem)]", className)}
       {...props}
     />
   );
@@ -854,38 +1107,52 @@ export function ContentForm({
 export function ContentFormActions({
   sticky = false,
   className,
+  children,
   ...props
 }: ContentFormActionsProps): React.ReactElement {
   return (
     <div
       data-slot="content-form-actions"
+      data-sticky={sticky ? "true" : "false"}
       className={cn(
-        "flex min-w-0 flex-col-reverse gap-2 rounded-2xl border border-border/70 bg-card/90 p-3 shadow-xs shadow-foreground/5 sm:flex-row sm:items-center sm:justify-end",
-        "supports-[backdrop-filter]:bg-card/80 supports-[backdrop-filter]:backdrop-blur-xl",
-        sticky ? "sticky bottom-3 z-20" : undefined,
+        "@container/content-form-actions min-w-0 rounded-xl border border-border/70 bg-card p-3 shadow-xs shadow-foreground/5",
+        sticky &&
+          "sticky bottom-[calc(var(--content-sticky-bottom,0.75rem)+env(safe-area-inset-bottom))] z-30 isolate bg-card shadow-sm",
         className,
       )}
       {...props}
-    />
+    >
+      <div className="flex min-w-0 flex-col gap-2 [&>[data-slot=button]]:w-full @sm/content-form-actions:flex-row @sm/content-form-actions:items-center @sm/content-form-actions:justify-end @sm/content-form-actions:[&>[data-slot=button]]:w-auto">
+        {children}
+      </div>
+    </div>
   );
 }
 
 export function ContentDescriptionList({
   columns = "two",
   className,
+  children,
   ...props
 }: ContentDescriptionListProps): React.ReactElement {
   return (
-    <dl
-      data-slot="content-description-list"
-      data-columns={columns}
-      className={cn(
-        "grid min-w-0 gap-3",
-        CONTENT_DESCRIPTION_COLUMNS_CLASSES[columns],
-        className,
-      )}
-      {...props}
-    />
+    <div
+      data-slot="content-description-list-container"
+      className="@container/content-description-list min-w-0"
+    >
+      <dl
+        data-slot="content-description-list"
+        data-columns={columns}
+        className={cn(
+          "grid min-w-0 gap-3",
+          CONTENT_DESCRIPTION_COLUMNS_CLASSES[columns],
+          className,
+        )}
+        {...props}
+      >
+        {children}
+      </dl>
+    </div>
   );
 }
 
@@ -902,7 +1169,7 @@ export function ContentDescriptionItem({
     <div
       data-slot="content-description-item"
       className={cn(
-        "grid min-w-0 gap-1 rounded-2xl border border-border/70 bg-muted/35 p-3",
+        "grid min-w-0 gap-1 rounded-xl border border-border/70 bg-muted/35 p-3",
         className,
       )}
       {...props}
@@ -913,7 +1180,7 @@ export function ContentDescriptionItem({
       <dd
         className={cn(
           "min-w-0 text-body-sm text-foreground",
-          numeric ? "text-tabular" : undefined,
+          numeric && "text-tabular",
           valueClassName,
         )}
       >
@@ -925,6 +1192,7 @@ export function ContentDescriptionItem({
 
 export function ContentList({
   density = "comfortable",
+  variant = "separated",
   className,
   ...props
 }: ContentListProps): React.ReactElement {
@@ -932,9 +1200,11 @@ export function ContentList({
     <ul
       data-slot="content-list"
       data-density={density}
+      data-variant={variant}
       className={cn(
-        "grid min-w-0",
+        "group/content-list grid min-w-0",
         CONTENT_LIST_DENSITY_CLASSES[density],
+        CONTENT_LIST_VARIANT_CLASSES[variant],
         className,
       )}
       {...props}
@@ -948,6 +1218,7 @@ export function ContentListItem({
   description,
   meta,
   actions,
+  headingLevel = 3,
   className,
   children,
   ...props
@@ -956,13 +1227,14 @@ export function ContentListItem({
     <li
       data-slot="content-list-item"
       className={cn(
-        "flex min-w-0 flex-col gap-3 rounded-2xl border border-border/70 bg-card/75 p-4 shadow-xs shadow-foreground/5 sm:flex-row sm:items-start",
+        "flex min-w-0 flex-col gap-3 rounded-xl border border-border/70 bg-card p-4 shadow-none sm:flex-row sm:items-start",
+        "group-data-[variant=divided]/content-list:rounded-none group-data-[variant=divided]/content-list:border-0 group-data-[variant=divided]/content-list:bg-transparent",
         className,
       )}
       {...props}
     >
       {media !== undefined ? (
-        <div className="flex size-10 shrink-0 items-center justify-center rounded-2xl border border-border/70 bg-muted/60 text-muted-readable">
+        <div className="flex size-10 shrink-0 items-center justify-center rounded-xl border border-border/70 bg-muted/60 text-muted-readable">
           {media}
         </div>
       ) : null}
@@ -975,13 +1247,16 @@ export function ContentListItem({
         ) : null}
 
         {title !== undefined ? (
-          <div className="text-card-title text-foreground text-pretty">
+          <ContentHeading
+            level={headingLevel}
+            className="text-card-title text-pretty text-foreground"
+          >
             {title}
-          </div>
+          </ContentHeading>
         ) : null}
 
         {description !== undefined ? (
-          <div className="text-body-sm text-muted-readable text-pretty">
+          <div className="text-pretty text-body-sm text-muted-readable">
             {description}
           </div>
         ) : null}
@@ -1014,13 +1289,22 @@ export function ContentProse({
 }
 
 export function ContentScrollArea({
+  label,
+  role,
+  tabIndex = 0,
   className,
   ...props
 }: ContentScrollAreaProps): React.ReactElement {
   return (
     <div
       data-slot="content-scroll-area"
-      className={cn("min-w-0 overflow-auto scrollbar-stable", className)}
+      role={role ?? (label !== undefined ? "region" : undefined)}
+      aria-label={label}
+      tabIndex={tabIndex}
+      className={cn(
+        "scrollbar-compact min-w-0 overflow-auto overscroll-contain outline-none focus-visible:ring-3 focus-visible:ring-inset focus-visible:ring-ring/45",
+        className,
+      )}
       {...props}
     />
   );

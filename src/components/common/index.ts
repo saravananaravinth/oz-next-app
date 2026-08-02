@@ -7,3 +7,5 @@ export {
 export * from "@/components/common/content-shell";
 export * from "@/components/common/feedback";
 export * from "@/components/common/guards";
+
+export * from "@/components/common/operation-workflow";

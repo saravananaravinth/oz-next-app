@@ -134,10 +134,10 @@ function ToggleGroupItem({
         [
           "shrink-0 focus:z-10 focus-visible:z-10",
           "group-data-[spacing=0]/toggle-group:rounded-none group-data-[spacing=0]/toggle-group:px-2",
-          "group-data-[spacing=0]/toggle-group:has-data-[icon=inline-end]:pr-1.5 group-data-[spacing=0]/toggle-group:has-data-[icon=inline-start]:pl-1.5",
-          "group-data-[orientation=horizontal]/toggle-group:data-[spacing=0]:first:rounded-l-2xl group-data-[orientation=horizontal]/toggle-group:data-[spacing=0]:last:rounded-r-2xl",
+          "group-data-[spacing=0]/toggle-group:has-data-[icon=inline-end]:pe-1.5 group-data-[spacing=0]/toggle-group:has-data-[icon=inline-start]:ps-1.5",
+          "group-data-[orientation=horizontal]/toggle-group:data-[spacing=0]:first:rounded-s-2xl group-data-[orientation=horizontal]/toggle-group:data-[spacing=0]:last:rounded-e-2xl",
           "group-data-[orientation=vertical]/toggle-group:data-[spacing=0]:first:rounded-t-2xl group-data-[orientation=vertical]/toggle-group:data-[spacing=0]:last:rounded-b-2xl",
-          "group-data-[orientation=horizontal]/toggle-group:data-[spacing=0]:data-[variant=outline]:border-l-0 group-data-[orientation=horizontal]/toggle-group:data-[spacing=0]:data-[variant=outline]:first:border-l",
+          "group-data-[orientation=horizontal]/toggle-group:data-[spacing=0]:data-[variant=outline]:border-s-0 group-data-[orientation=horizontal]/toggle-group:data-[spacing=0]:data-[variant=outline]:first:border-s",
           "group-data-[orientation=vertical]/toggle-group:data-[spacing=0]:data-[variant=outline]:border-t-0 group-data-[orientation=vertical]/toggle-group:data-[spacing=0]:data-[variant=outline]:first:border-t",
         ].join(" "),
         toggleVariants({ variant: resolvedVariant, size: resolvedSize }),

@@ -38,7 +38,10 @@ import {
   formatDashboardPercentage,
   titleCaseDashboardToken,
 } from "@/features/engagement/operations-dashboard/utils/engagement-dashboard-format";
-import { engagementDashboardHref } from "@/features/engagement/operations-dashboard/utils/engagement-dashboard-url";
+import {
+  ENGAGEMENT_DASHBOARD_ROUTES,
+  engagementWorkspaceHref,
+} from "@/features/engagement/operations-dashboard/utils/engagement-dashboard-url";
 
 export type EngagementDealerDetailPageProps = Readonly<{
   dealer: EngagementDealerDetail;
@@ -86,30 +89,34 @@ export function EngagementDealerDetailPage({
   query,
   access,
 }: EngagementDealerDetailPageProps): React.ReactElement {
-  const flows = [
-    dealer.supportsVehicleEnquiries ? "Vehicle" : null,
-    dealer.supportsServiceEnquiries ? "Service" : null,
-    dealer.supportsWarranty ? "Warranty" : null,
-  ].filter((value): value is string => value !== null);
+  const vehicleSalesReadiness = dealer.supportsVehicleEnquiries
+    ? "Vehicle enquiries enabled"
+    : "Vehicle enquiries disabled";
   const hours = businessHoursRows(dealer.settings.businessHours);
 
   return (
     <ContentRoot width="full" density="compact">
       <ContentHeader
-        eyebrow="Dealer engagement workspace"
+        icon={<Building2 aria-hidden="true" />}
+        iconTone="primary"
+        eyebrow="Vehicle sales engagement"
         title={dealer.dealerName}
         description={`${dealer.dealerCode} · ${[dealer.district, dealer.city].filter(Boolean).join(" · ") || "Location not classified"}`}
         actions={
           <div className="flex flex-wrap gap-2">
             <Button variant="outline" asChild>
-              <Link href={engagementDashboardHref(query, {}, "dealers")}>
+              <Link
+                href={engagementWorkspaceHref(
+                  ENGAGEMENT_DASHBOARD_ROUTES.dealers,
+                  query,
+                )}
+              >
                 <ArrowLeft aria-hidden="true" className="size-4" /> Back to
-                dashboard
+                dealers
               </Link>
             </Button>
             <DealerConfigurationSheet
               dealer={dealer}
-              tenantId={query.tenantId}
               canUpdateSettings={access.capabilities.canUpdateDealerSettings}
               canUpdateLocation={access.capabilities.canUpdateDealerLocation}
             />
@@ -197,8 +204,8 @@ export function EngagementDealerDetailPage({
                 <ContentDescriptionItem term="Health">
                   {titleCaseDashboardToken(dealer.health.status)}
                 </ContentDescriptionItem>
-                <ContentDescriptionItem term="Supported flows">
-                  {flows.length > 0 ? flows.join(", ") : "None"}
+                <ContentDescriptionItem term="Vehicle-sales readiness">
+                  {vehicleSalesReadiness}
                 </ContentDescriptionItem>
                 <ContentDescriptionItem term="Last activity">
                   {formatDashboardDateTime(dealer.lastActivityAt)}
@@ -334,7 +341,6 @@ export function EngagementDealerDetailPage({
           >
             <DealerConfigurationSheet
               dealer={dealer}
-              tenantId={query.tenantId}
               canUpdateSettings={access.capabilities.canUpdateDealerSettings}
               canUpdateLocation={access.capabilities.canUpdateDealerLocation}
               triggerLabel="Open configuration"

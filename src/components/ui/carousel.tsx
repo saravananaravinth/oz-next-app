@@ -38,6 +38,19 @@ type CarouselContextProps = Readonly<{
 
 const CarouselContext = React.createContext<CarouselContextProps | null>(null);
 
+function isInteractiveCarouselTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) {
+    return false;
+  }
+
+  return (
+    target.isContentEditable ||
+    target.closest(
+      "a, button, input, select, textarea, [contenteditable='true'], [role='combobox'], [role='slider'], [role='textbox']",
+    ) !== null
+  );
+}
+
 function useCarousel(): CarouselContextProps {
   const context = React.useContext(CarouselContext);
 
@@ -55,6 +68,8 @@ function Carousel({
   plugins,
   className,
   children,
+  onKeyDownCapture,
+  "aria-label": ariaLabel = "Carousel",
   ...props
 }: React.ComponentProps<"div"> & CarouselProps): React.ReactElement {
   const [carouselRef, api] = useEmblaCarousel(
@@ -85,6 +100,12 @@ function Carousel({
 
   const handleKeyDown = React.useCallback(
     (event: React.KeyboardEvent<HTMLDivElement>): void => {
+      onKeyDownCapture?.(event);
+
+      if (event.defaultPrevented || isInteractiveCarouselTarget(event.target)) {
+        return;
+      }
+
       const previousKey =
         orientation === "horizontal" ? "ArrowLeft" : "ArrowUp";
       const nextKey = orientation === "horizontal" ? "ArrowRight" : "ArrowDown";
@@ -100,7 +121,7 @@ function Carousel({
         scrollNext();
       }
     },
-    [orientation, scrollNext, scrollPrev],
+    [onKeyDownCapture, orientation, scrollNext, scrollPrev],
   );
 
   React.useEffect(() => {
@@ -165,8 +186,10 @@ function Carousel({
         onKeyDownCapture={handleKeyDown}
         className={cn("relative", className)}
         role="region"
+        aria-label={ariaLabel}
         aria-roledescription="carousel"
         data-slot="carousel"
+        data-orientation={orientation}
         {...props}
       >
         {children}
@@ -184,13 +207,16 @@ function CarouselContent({
   return (
     <div
       ref={carouselRef}
-      className="overflow-hidden"
+      className={cn(
+        "overflow-hidden",
+        orientation === "horizontal" ? "touch-pan-y" : "touch-pan-x",
+      )}
       data-slot="carousel-content"
     >
       <div
         className={cn(
           "flex",
-          orientation === "horizontal" ? "-ml-4" : "-mt-4 flex-col",
+          orientation === "horizontal" ? "-ms-4" : "-mt-4 flex-col",
           className,
         )}
         {...props}
@@ -212,7 +238,7 @@ function CarouselItem({
       data-slot="carousel-item"
       className={cn(
         "min-w-0 shrink-0 grow-0 basis-full",
-        orientation === "horizontal" ? "pl-4" : "pt-4",
+        orientation === "horizontal" ? "ps-4" : "pt-4",
         className,
       )}
       {...props}
@@ -248,7 +274,7 @@ function CarouselPrevious({
       className={cn(
         "absolute touch-manipulation rounded-full",
         orientation === "horizontal"
-          ? "top-1/2 -left-12 -translate-y-1/2"
+          ? "top-1/2 start-2 -translate-y-1/2 sm:-start-12"
           : "-top-12 left-1/2 -translate-x-1/2 rotate-90",
         className,
       )}
@@ -256,7 +282,7 @@ function CarouselPrevious({
       onClick={handleClick}
       {...props}
     >
-      <ChevronLeftIcon aria-hidden="true" />
+      <ChevronLeftIcon aria-hidden="true" className="rtl:rotate-180" />
       <span className="sr-only">Previous slide</span>
     </Button>
   );
@@ -290,7 +316,7 @@ function CarouselNext({
       className={cn(
         "absolute touch-manipulation rounded-full",
         orientation === "horizontal"
-          ? "top-1/2 -right-12 -translate-y-1/2"
+          ? "top-1/2 end-2 -translate-y-1/2 sm:-end-12"
           : "-bottom-12 left-1/2 -translate-x-1/2 rotate-90",
         className,
       )}
@@ -298,7 +324,7 @@ function CarouselNext({
       onClick={handleClick}
       {...props}
     >
-      <ChevronRightIcon aria-hidden="true" />
+      <ChevronRightIcon aria-hidden="true" className="rtl:rotate-180" />
       <span className="sr-only">Next slide</span>
     </Button>
   );

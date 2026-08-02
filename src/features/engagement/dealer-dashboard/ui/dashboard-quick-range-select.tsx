@@ -63,7 +63,7 @@ export function DashboardQuickRangeSelect({
         ) : (
           <Clock3 aria-hidden="true" className="size-4" />
         )}
-        <SelectValue />
+        <SelectValue placeholder="Select activity range" />
       </SelectTrigger>
       <SelectContent align="end">
         {value === "custom" ? (

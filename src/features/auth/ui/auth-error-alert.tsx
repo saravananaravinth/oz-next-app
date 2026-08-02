@@ -1,5 +1,6 @@
 // oz-next-app/src/features/auth/ui/auth-error-alert.tsx
 import { TriangleAlert } from "lucide-react";
+import type { ReactElement } from "react";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
@@ -92,7 +93,7 @@ function safeReference(value: string | null | undefined): string | undefined {
 
 export function AuthErrorAlert({
   error,
-}: Readonly<{ error: UserFacingAuthError }>) {
+}: Readonly<{ error: UserFacingAuthError }>): ReactElement {
   const title = normalizeUserFacingText(
     error.title,
     MAX_AUTH_ERROR_TITLE_LENGTH,
@@ -106,12 +107,7 @@ export function AuthErrorAlert({
   const requestId = safeReference(error.requestId);
 
   return (
-    <Alert
-      variant="destructive"
-      role="alert"
-      aria-live="assertive"
-      aria-atomic="true"
-    >
+    <Alert variant="destructive" role="alert" aria-atomic="true">
       <TriangleAlert aria-hidden="true" />
       <AlertTitle className="text-card-title">{title}</AlertTitle>
       <AlertDescription className="text-body-sm">

@@ -71,7 +71,7 @@ function CommandInput({
 }: React.ComponentProps<typeof CommandPrimitive.Input>) {
   return (
     <div data-slot="command-input-wrapper" className="p-2 pb-0">
-      <InputGroup className="h-10 rounded-2xl border-input/60 bg-muted/50 shadow-none *:data-[slot=input-group-addon]:pl-3">
+      <InputGroup className="h-10 rounded-2xl border-input/60 bg-muted/50 shadow-none *:data-[slot=input-group-addon]:ps-3">
         <CommandPrimitive.Input
           data-slot="command-input"
           className={cn(
@@ -99,7 +99,7 @@ function CommandList({
     <CommandPrimitive.List
       data-slot="command-list"
       className={cn(
-        "scrollbar-stable max-h-80 scroll-py-2 overflow-x-hidden overflow-y-auto p-1 outline-none",
+        "scrollbar-stable max-h-80 scroll-py-2 overflow-x-hidden overflow-y-auto overscroll-contain p-1 outline-none",
         className,
       )}
       {...props}
@@ -163,7 +163,7 @@ function CommandItem({
       className={cn(
         [
           "group/command-item relative flex cursor-default items-center gap-2 rounded-xl px-2.5 py-2 text-body-sm outline-none select-none",
-          "transition-[background-color,color] duration-150 ease-out",
+          "transition-[background-color,color] duration-[var(--motion-duration-fast)] ease-enterprise motion-reduce:transition-none",
           "in-data-[slot=dialog-content]:rounded-xl data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50",
           "data-selected:bg-accent data-selected:text-accent-foreground data-selected:*:[svg]:text-accent-foreground",
           "[&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
@@ -175,7 +175,7 @@ function CommandItem({
       {children}
       <CheckIcon
         aria-hidden="true"
-        className="ml-auto opacity-0 group-has-data-[slot=command-shortcut]/command-item:hidden group-data-[checked=true]/command-item:opacity-100"
+        className="ms-auto opacity-0 group-has-data-[slot=command-shortcut]/command-item:hidden group-data-[checked=true]/command-item:opacity-100"
       />
     </CommandPrimitive.Item>
   );
@@ -189,7 +189,7 @@ function CommandShortcut({
     <span
       data-slot="command-shortcut"
       className={cn(
-        "ml-auto text-caption text-tabular text-muted-readable group-data-selected/command-item:text-accent-foreground",
+        "ms-auto text-caption text-tabular text-muted-readable group-data-selected/command-item:text-accent-foreground",
         className,
       )}
       {...props}

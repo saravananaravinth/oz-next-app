@@ -92,6 +92,9 @@ const DEFAULT_BRAND = {
 } as const satisfies NormalizedBrand;
 
 const MAX_MENU_COUNT = 700;
+const MAX_NAV_NODE_COUNT = 1_000;
+const MAX_MENU_DEPTH = 4;
+const MAX_CHILDREN_PER_MENU = 100;
 const MAX_TEXT_LENGTH = 160;
 const MAX_QUERY_LENGTH = 80;
 
@@ -161,7 +164,35 @@ function isVisibleMenu(menu: MenuItem): boolean {
   return menu.isvisible && menu.isactive;
 }
 
-function normalizeNavItem(menu: MenuItem): NavItem | null {
+function uniqueNavItems(items: readonly NavItem[]): readonly NavItem[] {
+  const unique: NavItem[] = [];
+  const seen = new Set<string>();
+
+  for (const item of items) {
+    if (seen.has(item.menuid)) {
+      continue;
+    }
+
+    seen.add(item.menuid);
+    unique.push(item);
+  }
+
+  return unique;
+}
+
+type NavigationBudget = {
+  remaining: number;
+};
+
+function normalizeNavItem(
+  menu: MenuItem,
+  depth: number,
+  budget: NavigationBudget,
+): NavItem | null {
+  if (depth > MAX_MENU_DEPTH || budget.remaining <= 0) {
+    return null;
+  }
+
   const title = cleanText(menu.title, "Untitled");
   const menuid = cleanText(menu.menuid);
 
@@ -169,16 +200,21 @@ function normalizeNavItem(menu: MenuItem): NavItem | null {
     return null;
   }
 
+  budget.remaining -= 1;
+
   const description = cleanText(menu.description ?? undefined);
   const icon = cleanText(menu.icon ?? undefined);
   const badgeText = cleanText(menu.badgeconfig?.text);
   const badgeColor = menu.badgeconfig?.color;
-  const children = Array.isArray(menu.children)
-    ? menu.children
-        .filter(isVisibleMenu)
-        .map(normalizeNavItem)
-        .filter((item): item is NavItem => item !== null)
-    : [];
+  const children = uniqueNavItems(
+    menu.children === undefined
+      ? []
+      : menu.children
+          .slice(0, MAX_CHILDREN_PER_MENU)
+          .filter(isVisibleMenu)
+          .map((child) => normalizeNavItem(child, depth + 1, budget))
+          .filter((item): item is NavItem => item !== null),
+  );
 
   return {
     menuid,
@@ -205,13 +241,18 @@ function normalizeNavItem(menu: MenuItem): NavItem | null {
 
 function buildGroups(menus: readonly MenuItem[]): readonly NavGroup[] {
   const groups = new Map<string, { order: number; items: NavItem[] }>();
+  const budget: NavigationBudget = { remaining: MAX_NAV_NODE_COUNT };
 
   for (const menu of menus.slice(0, MAX_MENU_COUNT)) {
+    if (budget.remaining <= 0) {
+      break;
+    }
+
     if (!isVisibleMenu(menu)) {
       continue;
     }
 
-    const item = normalizeNavItem(menu);
+    const item = normalizeNavItem(menu, 0, budget);
 
     if (item === null) {
       continue;
@@ -228,7 +269,9 @@ function buildGroups(menus: readonly MenuItem[]): readonly NavGroup[] {
       continue;
     }
 
-    existing.items.push(item);
+    if (!existing.items.some((candidate) => candidate.menuid === item.menuid)) {
+      existing.items.push(item);
+    }
     existing.order = Math.min(existing.order, safeSortOrder(menu.sortorder));
   }
 
@@ -257,16 +300,14 @@ function itemMatchesQuery(item: NavItem, query: string): boolean {
     "en-US",
   );
 
-  return haystack.includes(query.toLocaleLowerCase("en-US"));
+  return haystack.includes(query);
 }
 
 function filterNavItems(
   items: readonly NavItem[],
   query: string,
 ): readonly NavItem[] {
-  const normalizedQuery = cleanText(query).slice(0, MAX_QUERY_LENGTH);
-
-  if (normalizedQuery.length === 0) {
+  if (query.length === 0) {
     return items;
   }
 
@@ -275,8 +316,8 @@ function filterNavItems(
       const children =
         item.children === undefined
           ? undefined
-          : filterNavItems(item.children, normalizedQuery);
-      const ownMatch = itemMatchesQuery(item, normalizedQuery);
+          : filterNavItems(item.children, query);
+      const ownMatch = itemMatchesQuery(item, query);
 
       if (!ownMatch && (children === undefined || children.length === 0)) {
         return null;
@@ -321,7 +362,7 @@ function BrandLogo({
   const initial = brand.name.slice(0, 1).toLocaleUpperCase("en-US") || "O";
 
   return (
-    <span className="flex size-9 shrink-0 items-center justify-center rounded-2xl border border-sidebar-border/70 bg-background/75 text-card-title shadow-xs ring-1 ring-foreground/5 group-data-[collapsible=icon]:size-8 group-data-[collapsible=icon]:rounded-xl">
+    <span className="flex size-9 shrink-0 items-center justify-center rounded-xl border border-sidebar-border/70 bg-background text-card-title shadow-xs ring-1 ring-foreground/5 group-data-[collapsible=icon]:size-8">
       {lightFailed ? (
         <span className="block dark:hidden">{initial}</span>
       ) : (
@@ -334,7 +375,6 @@ function BrandLogo({
           onError={() => {
             setLightFailed(true);
           }}
-          priority
         />
       )}
 
@@ -350,7 +390,6 @@ function BrandLogo({
           onError={() => {
             setDarkFailed(true);
           }}
-          priority
         />
       )}
     </span>
@@ -389,6 +428,7 @@ export function AppSidebar({
   const pathname = usePathname();
   const sidebar = useSidebar();
   const [query, setQuery] = React.useState("");
+  const deferredQuery = React.useDeferredValue(query);
   const brand = normalizeBrand({
     brandName,
     brandTagline,
@@ -396,13 +436,19 @@ export function AppSidebar({
     brandLogoDark,
   });
   const normalizedAuth = normalizeAuth(auth);
-  const groups = buildGroups(menus);
-  const filteredGroups = groups
-    .map((group) => ({
-      ...group,
-      items: filterNavItems(group.items, query),
-    }))
-    .filter((group) => group.items.length > 0);
+  const groups = React.useMemo(() => buildGroups(menus), [menus]);
+  const filteredGroups = React.useMemo(() => {
+    const normalizedQuery = cleanText(deferredQuery)
+      .slice(0, MAX_QUERY_LENGTH)
+      .toLocaleLowerCase("en-US");
+
+    return groups
+      .map((group) => ({
+        ...group,
+        items: filterNavItems(group.items, normalizedQuery),
+      }))
+      .filter((group) => group.items.length > 0);
+  }, [deferredQuery, groups]);
 
   return (
     <Sidebar
@@ -426,7 +472,7 @@ export function AppSidebar({
               >
                 <BrandLogo brand={brand} />
 
-                <span className="grid min-w-0 flex-1 text-left group-data-[collapsible=icon]:hidden">
+                <span className="grid min-w-0 flex-1 text-start group-data-[collapsible=icon]:hidden">
                   <span className="truncate text-card-title text-sidebar-foreground">
                     {brand.name}
                   </span>
@@ -444,21 +490,29 @@ export function AppSidebar({
         <div className="relative">
           <Search
             aria-hidden="true"
-            className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-sidebar-foreground/45"
+            className="pointer-events-none absolute start-3 top-1/2 size-4 -translate-y-1/2 text-sidebar-foreground/45"
           />
           <SidebarInput
+            type="search"
             value={query}
             onChange={(event) => {
               setQuery(event.currentTarget.value.slice(0, MAX_QUERY_LENGTH));
             }}
             placeholder="Search navigation"
-            className="h-10 rounded-2xl border-sidebar-border/70 bg-background/55 pl-9 shadow-xs placeholder:text-sidebar-foreground/45 focus-visible:ring-sidebar-ring/35 dark:bg-background/20"
+            autoComplete="off"
+            enterKeyHint="search"
+            spellCheck={false}
+            className="h-10 rounded-xl border-sidebar-border/70 bg-background ps-9 shadow-xs placeholder:text-sidebar-foreground/45 focus-visible:ring-sidebar-ring/35"
             aria-label="Search navigation"
           />
         </div>
       </div>
 
-      <SidebarContent className="overflow-x-hidden px-0 py-2">
+      <SidebarContent
+        role="navigation"
+        aria-label="Primary navigation"
+        className="scrollbar-compact overflow-x-hidden overscroll-contain px-0 py-2"
+      >
         {isLoadingNav ? (
           <NavigationSkeleton />
         ) : filteredGroups.length === 0 ? (
@@ -467,8 +521,10 @@ export function AppSidebar({
               Workspace
             </SidebarGroupLabel>
             <SidebarGroupContent>
-              <p className="rounded-2xl border border-sidebar-border/70 bg-background/40 px-3 py-3 text-body-sm text-sidebar-foreground/65 group-data-[collapsible=icon]:hidden">
-                No navigation items available for this actor.
+              <p className="rounded-xl border border-sidebar-border/70 bg-background px-3 py-3 text-body-sm text-sidebar-foreground/65 group-data-[collapsible=icon]:hidden">
+                {query.trim().length > 0
+                  ? "No navigation items match your search."
+                  : "No navigation items are available for this account."}
               </p>
             </SidebarGroupContent>
           </SidebarGroup>

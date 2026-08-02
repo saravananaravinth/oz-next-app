@@ -46,7 +46,6 @@ type PendingOperation = "RESOLVE" | "REASSIGN" | "RETRY_OUTBOX" | "RETRY_VIDEO";
 
 export type EngagementIssueActionsProps = Readonly<{
   issue: EngagementDashboardIssue;
-  tenantId: string | undefined;
   capabilities: Pick<
     EngagementDashboardCapabilities,
     "canIntervene" | "canReassignLead" | "canRetryDelivery"
@@ -64,7 +63,6 @@ function resourceIdFromIssueKey(issueKey: string): string | null {
 
 export function EngagementIssueActions({
   issue,
-  tenantId,
   capabilities,
 }: EngagementIssueActionsProps): React.ReactElement | null {
   const router = useRouter();
@@ -101,7 +99,6 @@ export function EngagementIssueActions({
   const acknowledge = React.useCallback((): void => {
     startTransition(async () => {
       const result = await updateEngagementIssueAction({
-        ...(tenantId !== undefined ? { tenantId } : {}),
         values: {
           issueKey: issue.issueKey,
           state: "ACKNOWLEDGED",
@@ -113,7 +110,7 @@ export function EngagementIssueActions({
         acknowledgeIntentKeyRef.current = idempotencyKey();
       }
     });
-  }, [complete, issue.issueKey, issue.rowVersion, tenantId]);
+  }, [complete, issue.issueKey, issue.rowVersion]);
 
   const openOperation = React.useCallback(
     (nextOperation: PendingOperation): void => {
@@ -138,7 +135,6 @@ export function EngagementIssueActions({
 
       if (operation === "RESOLVE") {
         result = await updateEngagementIssueAction({
-          ...(tenantId !== undefined ? { tenantId } : {}),
           values: {
             issueKey: issue.issueKey,
             state: "RESOLVED",
@@ -149,7 +145,6 @@ export function EngagementIssueActions({
         });
       } else if (operation === "REASSIGN" && issue.leadId !== null) {
         result = await reassignEngagementLeadAction({
-          ...(tenantId !== undefined ? { tenantId } : {}),
           values: {
             resourceId: issue.leadId,
             reason,
@@ -158,13 +153,11 @@ export function EngagementIssueActions({
         });
       } else if (operation === "RETRY_OUTBOX" && resourceId !== null) {
         result = await retryEngagementDeliveryAction({
-          ...(tenantId !== undefined ? { tenantId } : {}),
           kind: "OUTBOX",
           values: { resourceId, reason, idempotencyKey: intentKey },
         });
       } else if (operation === "RETRY_VIDEO" && resourceId !== null) {
         result = await retryEngagementDeliveryAction({
-          ...(tenantId !== undefined ? { tenantId } : {}),
           kind: "VIDEO_MESSAGE",
           values: { resourceId, reason, idempotencyKey: intentKey },
         });
@@ -176,7 +169,7 @@ export function EngagementIssueActions({
         setOperation(null);
       }
     });
-  }, [complete, intentKey, issue, operation, reason, resourceId, tenantId]);
+  }, [complete, intentKey, issue, operation, reason, resourceId]);
 
   if (!capabilities.canIntervene) {
     return null;

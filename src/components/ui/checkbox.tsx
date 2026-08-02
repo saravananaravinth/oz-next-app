@@ -16,7 +16,7 @@ function Checkbox({ className, ...props }: CheckboxProps) {
       className={cn(
         [
           "peer relative flex size-4 shrink-0 items-center justify-center rounded-md border border-input bg-background text-primary-foreground shadow-xs outline-none",
-          "transition-[background-color,border-color,box-shadow,color] motion-reduce:transition-none",
+          "transition-[background-color,border-color,box-shadow,color] duration-[var(--motion-duration-fast)] ease-enterprise motion-reduce:transition-none",
           "after:absolute after:-inset-x-3 after:-inset-y-2",
           "focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50",
           "disabled:cursor-not-allowed disabled:opacity-50 group-has-disabled/field:opacity-50",

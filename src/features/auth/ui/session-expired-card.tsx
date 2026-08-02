@@ -1,4 +1,7 @@
 // oz-next-app/src/features/auth/ui/session-expired-card.tsx
+import { Info } from "lucide-react";
+import type { ReactElement } from "react";
+
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 import type { LoginNotice } from "@/features/auth/utils/auth-redirect";
@@ -61,7 +64,7 @@ function normalizeNoticeText(
 
 export function SessionExpiredCard({
   notice,
-}: Readonly<{ notice: LoginNotice }>) {
+}: Readonly<{ notice: LoginNotice }>): ReactElement {
   const title = normalizeNoticeText(
     notice.title,
     MAX_NOTICE_TITLE_LENGTH,
@@ -74,7 +77,8 @@ export function SessionExpiredCard({
   );
 
   return (
-    <Alert role="status" aria-live="polite" aria-atomic="true">
+    <Alert variant="info" role="status" aria-atomic="true">
+      <Info aria-hidden="true" />
       <AlertTitle className="text-card-title">{title}</AlertTitle>
       <AlertDescription className="text-body-sm text-muted-readable">
         {description}
