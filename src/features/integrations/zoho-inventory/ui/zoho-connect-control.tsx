@@ -2,7 +2,7 @@
 "use client";
 
 import * as React from "react";
-import { ExternalLink, Link2, LoaderCircle } from "lucide-react";
+import { Link2, LoaderCircle } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -31,7 +31,7 @@ const DATA_CENTER_LABELS = {
 export type ZohoConnectControlProps = Readonly<{
   defaultDataCenter?: ZohoInventoryDataCenter;
   fixedDataCenter?: ZohoInventoryDataCenter;
-  forceConsent?: boolean;
+  forceConsent?: true;
   label?: string;
   variant?: React.ComponentProps<typeof Button>["variant"];
 }>;
@@ -50,7 +50,7 @@ function failureDescription(
 export function ZohoConnectControl({
   defaultDataCenter = "IN",
   fixedDataCenter,
-  forceConsent = false,
+  forceConsent = true,
   label = "Connect Zoho",
   variant = "default",
 }: ZohoConnectControlProps): React.ReactElement {
@@ -121,10 +121,8 @@ export function ZohoConnectControl({
             aria-hidden="true"
             className="size-4 animate-spin motion-reduce:animate-none"
           />
-        ) : forceConsent ? (
-          <Link2 aria-hidden="true" className="size-4" />
         ) : (
-          <ExternalLink aria-hidden="true" className="size-4" />
+          <Link2 aria-hidden="true" className="size-4" />
         )}
         {isPending ? "Opening Zoho…" : label}
       </Button>

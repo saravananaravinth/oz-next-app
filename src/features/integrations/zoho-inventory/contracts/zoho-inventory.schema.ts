@@ -61,6 +61,55 @@ const safeIdempotencyKeySchema = z
   .max(256)
   .regex(/^[A-Za-z0-9._:/@+=-]+$/u);
 
+const zohoOAuthCodeSchema = z
+  .string()
+  .trim()
+  .min(8)
+  .max(8_192)
+  .regex(/^[A-Za-z0-9._-]+$/u);
+
+const zohoOAuthStateSchema = z
+  .string()
+  .trim()
+  .min(32)
+  .max(512)
+  .regex(/^[A-Za-z0-9_-]+$/u);
+
+export const zohoOAuthLocationSchema = z.enum(["us", "eu", "in", "au", "ca"]);
+
+export const zohoOAuthAccountsServerSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(256)
+  .pipe(z.url())
+  .refine(
+    (value) => {
+      const url = new URL(value);
+
+      return (
+        url.protocol === "https:" &&
+        url.username.length === 0 &&
+        url.password.length === 0 &&
+        url.pathname === "/" &&
+        url.search.length === 0 &&
+        url.hash.length === 0
+      );
+    },
+    { message: "Zoho Accounts server must be a bare HTTPS origin." },
+  );
+
+function hasCompleteProviderMetadata(
+  value: Readonly<{
+    location?: string | undefined;
+    accountsServer?: string | undefined;
+  }>,
+): boolean {
+  return (
+    (value.location === undefined) === (value.accountsServer === undefined)
+  );
+}
+
 export const zohoExternalConnectionSchema = z
   .object({
     connectionId: uuidSchema,
@@ -159,7 +208,7 @@ export const zohoSyncJobsSchema = z
 export const beginZohoAuthorizationActionInputSchema = z
   .object({
     dataCenter: zohoInventoryDataCenterSchema.default("IN"),
-    forceConsent: z.boolean().default(false),
+    forceConsent: z.literal(true).default(true),
   })
   .strict();
 
@@ -186,20 +235,17 @@ export const runZohoReconciliationActionInputSchema = z
 
 export const zohoOAuthCallbackQuerySchema = z
   .object({
-    code: z
-      .string()
-      .trim()
-      .min(8)
-      .max(8_192)
-      .regex(/^[A-Za-z0-9._-]+$/u),
-    state: z
-      .string()
-      .trim()
-      .min(32)
-      .max(512)
-      .regex(/^[A-Za-z0-9_-]+$/u),
+    code: zohoOAuthCodeSchema,
+    state: zohoOAuthStateSchema,
+    location: zohoOAuthLocationSchema.optional(),
+    accountsServer: zohoOAuthAccountsServerSchema.optional(),
   })
-  .strict();
+  .strict()
+  .refine(hasCompleteProviderMetadata, {
+    message:
+      "Zoho OAuth callback location and Accounts server must be supplied together.",
+    path: ["accountsServer"],
+  });
 
 export const zohoOAuthDeniedQuerySchema = z
   .object({
@@ -209,21 +255,25 @@ export const zohoOAuthDeniedQuerySchema = z
       .min(1)
       .max(256)
       .regex(/^[A-Za-z0-9._-]+$/u),
-    state: z
-      .string()
-      .trim()
-      .min(32)
-      .max(512)
-      .regex(/^[A-Za-z0-9_-]+$/u)
-      .optional(),
+    state: zohoOAuthStateSchema.optional(),
+    location: zohoOAuthLocationSchema.optional(),
+    accountsServer: zohoOAuthAccountsServerSchema.optional(),
+    errorDescription: z.string().trim().min(1).max(2_048).optional(),
+    errorUri: z.string().trim().min(1).max(2_048).pipe(z.url()).optional(),
   })
-  .strict();
+  .strict()
+  .refine(hasCompleteProviderMetadata, {
+    message:
+      "Zoho OAuth callback location and Accounts server must be supplied together.",
+    path: ["accountsServer"],
+  });
 
 export const zohoOAuthAttemptContextSchema = z
   .object({
     authorizationId: uuidSchema,
     tenantId: uuidSchema,
     actorContextTenantId: uuidSchema.nullable(),
+    dataCenter: zohoInventoryDataCenterSchema,
     stateHash: z
       .string()
       .trim()
@@ -283,6 +333,10 @@ export type ZohoAuthorizationExchangeResult = z.infer<
 >;
 export type ZohoVerifyResult = z.infer<typeof zohoVerifyResultSchema>;
 export type ZohoSyncJob = z.infer<typeof zohoSyncJobSchema>;
+export type ZohoOAuthCallbackQuery = z.infer<
+  typeof zohoOAuthCallbackQuerySchema
+>;
+export type ZohoOAuthDeniedQuery = z.infer<typeof zohoOAuthDeniedQuerySchema>;
 export type ZohoOAuthAttemptContext = z.infer<
   typeof zohoOAuthAttemptContextSchema
 >;

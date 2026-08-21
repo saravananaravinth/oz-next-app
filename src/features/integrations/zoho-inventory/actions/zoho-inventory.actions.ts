@@ -22,6 +22,7 @@ import {
   type ResolvedZohoInventoryAccess,
   type ZohoInventoryCapabilities,
 } from "@/features/integrations/zoho-inventory/policies/zoho-inventory.policy";
+import { assertZohoAuthorizationUrl } from "@/features/integrations/zoho-inventory/policies/zoho-oauth-provider.policy";
 import {
   beginZohoAuthorization,
   createZohoConnection,
@@ -40,14 +41,6 @@ import {
 } from "@/features/integrations/zoho-inventory/actions/zoho-inventory-action-failure";
 
 const INTEGRATION_PATH = "/settings/integrations/zoho-inventory";
-
-const ZOHO_ACCOUNTS_ORIGINS = {
-  US: "https://accounts.zoho.com",
-  EU: "https://accounts.zoho.eu",
-  IN: "https://accounts.zoho.in",
-  AU: "https://accounts.zoho.com.au",
-  CA: "https://accounts.zohocloud.ca",
-} as const;
 
 type ActionSuccess<TData> = Readonly<{ ok: true; data: TData }>;
 type ActionResult<TData> = ActionSuccess<TData> | ZohoInventoryActionFailure;
@@ -76,47 +69,6 @@ async function resolveActionAccess(
   return access;
 }
 
-function assertAuthorizationUrl(
-  authorizationUrl: string,
-  dataCenter: keyof typeof ZOHO_ACCOUNTS_ORIGINS,
-): string {
-  let url: URL;
-
-  try {
-    url = new URL(authorizationUrl);
-  } catch {
-    throw new TypeError("zoho_authorization_url_invalid");
-  }
-
-  const expectedRedirectUri = new URL(
-    "/api/integrations/zoho/callback",
-    API_CONFIG.appOrigin,
-  ).toString();
-
-  if (
-    url.origin !== ZOHO_ACCOUNTS_ORIGINS[dataCenter] ||
-    url.pathname !== "/oauth/v2/auth" ||
-    url.username.length > 0 ||
-    url.password.length > 0 ||
-    url.hash.length > 0 ||
-    url.searchParams.get("response_type") !== "code" ||
-    url.searchParams.get("access_type") !== "offline" ||
-    url.searchParams.get("redirect_uri") !== expectedRedirectUri ||
-    (url.searchParams.get("client_id")?.trim().length ?? 0) === 0 ||
-    (url.searchParams.get("state")?.trim().length ?? 0) < 32
-  ) {
-    throw new TypeError("zoho_authorization_url_invalid");
-  }
-
-  const state = url.searchParams.get("state");
-
-  if (state === null) {
-    throw new TypeError("zoho_authorization_url_invalid");
-  }
-
-  return state;
-}
-
 export async function beginZohoAuthorizationAction(
   input: unknown,
 ): Promise<BeginZohoAuthorizationActionResult> {
@@ -129,16 +81,23 @@ export async function beginZohoAuthorizationAction(
       forceConsent: body.forceConsent,
     });
 
-    const state = assertAuthorizationUrl(
-      data.authorizationUrl,
-      body.dataCenter,
-    );
+    const redirectUri = new URL(
+      "/api/integrations/zoho/callback",
+      API_CONFIG.appOrigin,
+    ).toString();
+    const state = assertZohoAuthorizationUrl({
+      authorizationUrl: data.authorizationUrl,
+      dataCenter: body.dataCenter,
+      redirectUri,
+    });
     const stateHash = await hashZohoOAuthState(state);
 
+    await clearZohoPendingGrant();
     await storeZohoOAuthAttemptContext({
       authorizationId: data.authorizationId,
       tenantId: access.tenantId,
       actorContextTenantId: access.actorContext?.tenantId ?? null,
+      dataCenter: body.dataCenter,
       stateHash,
       expiresAt: data.expiresAt,
     });

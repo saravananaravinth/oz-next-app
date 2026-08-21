@@ -7,6 +7,7 @@ import { z } from "zod";
 import { isProduction } from "@/lib/env/public-env";
 
 import {
+  ZOHO_INVENTORY_DATA_CENTERS,
   zohoOAuthAttemptContextSchema,
   zohoPendingGrantSchema,
   type ZohoOAuthAttemptContext,
@@ -32,6 +33,7 @@ const compactAttemptSchema = z
     a: z.uuid(),
     t: z.uuid(),
     c: z.uuid().nullable(),
+    d: z.enum(ZOHO_INVENTORY_DATA_CENTERS),
     s: z.string().regex(/^[a-f0-9]{64}$/u),
     e: z.string().min(1).max(64),
   })
@@ -220,6 +222,7 @@ export async function storeZohoOAuthAttemptContext(
     a: parsed.authorizationId,
     t: parsed.tenantId,
     c: parsed.actorContextTenantId,
+    d: parsed.dataCenter,
     s: parsed.stateHash,
     e: parsed.expiresAt,
   });
@@ -249,6 +252,7 @@ export async function readZohoOAuthAttemptContext(): Promise<ZohoOAuthAttemptCon
       authorizationId: compact.a,
       tenantId: compact.t,
       actorContextTenantId: compact.c,
+      dataCenter: compact.d,
       stateHash: compact.s,
       expiresAt: compact.e,
     });

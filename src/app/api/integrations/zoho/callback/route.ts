@@ -5,10 +5,9 @@ import { NextResponse } from "next/server";
 import { isApiHttpError } from "@/lib/api/problem";
 import { HTTP_STATUS } from "@/lib/api/http-contract";
 
-import {
-  zohoOAuthCallbackQuerySchema,
-  zohoOAuthDeniedQuerySchema,
-} from "@/features/integrations/zoho-inventory/contracts/zoho-inventory.schema";
+import { parseZohoOAuthCallbackSearchParams } from "@/features/integrations/zoho-inventory/contracts/zoho-oauth-callback";
+import type { ZohoOAuthAttemptContext } from "@/features/integrations/zoho-inventory/contracts/zoho-inventory.schema";
+import { isZohoOAuthCallbackProviderValid } from "@/features/integrations/zoho-inventory/policies/zoho-oauth-provider.policy";
 import { exchangeZohoAuthorization } from "@/features/integrations/zoho-inventory/server/zoho-inventory.server";
 import {
   clearZohoOAuthAttemptContext,
@@ -18,7 +17,6 @@ import {
 } from "@/features/integrations/zoho-inventory/server/zoho-oauth-session";
 
 const INTEGRATION_PATH = "/settings/integrations/zoho-inventory";
-const ALLOWED_QUERY_KEYS = new Set(["code", "state", "error"] as const);
 
 type CallbackStatus =
   | "authorized"
@@ -32,23 +30,6 @@ type CallbackStatus =
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 export const runtime = "nodejs";
-
-function hasDuplicateOrUnknownQuery(searchParams: URLSearchParams): boolean {
-  const seen = new Set<string>();
-
-  for (const key of searchParams.keys()) {
-    if (
-      !ALLOWED_QUERY_KEYS.has(key as "code" | "state" | "error") ||
-      seen.has(key)
-    ) {
-      return true;
-    }
-
-    seen.add(key);
-  }
-
-  return false;
-}
 
 function redirectToIntegration(
   request: NextRequest,
@@ -73,39 +54,79 @@ async function clearAttemptBestEffort(): Promise<void> {
   try {
     await clearZohoOAuthAttemptContext();
   } catch {
-    // The backend state remains the authority and expires independently.
+    // Backend OAuth state remains authoritative and expires independently.
   }
 }
 
+function stateHashesMatch(left: string, right: string): boolean {
+  if (left.length !== right.length || left.length === 0) {
+    return false;
+  }
+
+  let difference = 0;
+
+  for (let index = 0; index < left.length; index += 1) {
+    difference |= left.charCodeAt(index) ^ right.charCodeAt(index);
+  }
+
+  return difference === 0;
+}
+
+async function callbackMatchesAttempt(
+  input: Readonly<{
+    attempt: ZohoOAuthAttemptContext;
+    state: string;
+    location?: string;
+    accountsServer?: string;
+  }>,
+): Promise<boolean> {
+  const stateHash = await hashZohoOAuthState(input.state);
+
+  if (!stateHashesMatch(stateHash, input.attempt.stateHash)) {
+    return false;
+  }
+
+  return isZohoOAuthCallbackProviderValid({
+    dataCenter: input.attempt.dataCenter,
+    ...(input.location === undefined ? {} : { location: input.location }),
+    ...(input.accountsServer === undefined
+      ? {}
+      : { accountsServer: input.accountsServer }),
+  });
+}
+
 export async function GET(request: NextRequest): Promise<NextResponse> {
-  if (hasDuplicateOrUnknownQuery(request.nextUrl.searchParams)) {
+  const callback = parseZohoOAuthCallbackSearchParams(
+    request.nextUrl.searchParams,
+  );
+
+  if (callback === null) {
     return redirectToIntegration(request, "invalid-callback");
   }
 
-  const error = request.nextUrl.searchParams.get("error");
-  const state = request.nextUrl.searchParams.get("state");
   const attempt = await readZohoOAuthAttemptContext();
 
-  if (error !== null) {
-    const denied = zohoOAuthDeniedQuerySchema.safeParse({
-      error,
-      ...(state === null ? {} : { state }),
-    });
+  if (attempt === null) {
+    return redirectToIntegration(request, "context-lost");
+  }
 
-    if (
-      !denied.success ||
-      denied.data.state === undefined ||
-      attempt === null
-    ) {
-      return redirectToIntegration(
-        request,
-        attempt === null ? "context-lost" : "invalid-callback",
-      );
+  if (callback.kind === "denied") {
+    if (callback.data.state === undefined) {
+      return redirectToIntegration(request, "invalid-callback");
     }
 
-    const stateHash = await hashZohoOAuthState(denied.data.state);
+    const valid = await callbackMatchesAttempt({
+      attempt,
+      state: callback.data.state,
+      ...(callback.data.location === undefined
+        ? {}
+        : { location: callback.data.location }),
+      ...(callback.data.accountsServer === undefined
+        ? {}
+        : { accountsServer: callback.data.accountsServer }),
+    });
 
-    if (stateHash !== attempt.stateHash) {
+    if (!valid) {
       return redirectToIntegration(request, "invalid-callback");
     }
 
@@ -113,29 +134,25 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     return redirectToIntegration(request, "denied");
   }
 
-  const parsed = zohoOAuthCallbackQuerySchema.safeParse({
-    code: request.nextUrl.searchParams.get("code"),
-    state,
+  const valid = await callbackMatchesAttempt({
+    attempt,
+    state: callback.data.state,
+    ...(callback.data.location === undefined
+      ? {}
+      : { location: callback.data.location }),
+    ...(callback.data.accountsServer === undefined
+      ? {}
+      : { accountsServer: callback.data.accountsServer }),
   });
 
-  if (!parsed.success) {
-    return redirectToIntegration(request, "invalid-callback");
-  }
-
-  if (attempt === null) {
-    return redirectToIntegration(request, "context-lost");
-  }
-
-  const stateHash = await hashZohoOAuthState(parsed.data.state);
-
-  if (stateHash !== attempt.stateHash) {
+  if (!valid) {
     return redirectToIntegration(request, "invalid-callback");
   }
 
   try {
     const exchange = await exchangeZohoAuthorization({
-      code: parsed.data.code,
-      state: parsed.data.state,
+      code: callback.data.code,
+      state: callback.data.state,
       ...(attempt.actorContextTenantId === null
         ? {}
         : { actorContext: { tenantId: attempt.actorContextTenantId } }),
