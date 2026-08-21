@@ -35,12 +35,16 @@ export const REFRESH_ATTEMPT_COOKIE_VALUE = "1" as const;
 export const SESSION_COOKIE_OPTIONS = {
   httpOnly: true,
   secure: isProduction,
-  sameSite: "strict",
+  // Lax is required for top-level OAuth authorization redirects back to the
+  // ERP origin. Cookie-authenticated mutations remain protected by the
+  // application Origin/sec-fetch-site boundary and backend authorization.
+  sameSite: "lax",
   path: "/",
 } as const;
 
 export const REFRESH_ATTEMPT_COOKIE_OPTIONS = {
   ...SESSION_COOKIE_OPTIONS,
+  sameSite: "strict",
   maxAge: 60,
 } as const;
 

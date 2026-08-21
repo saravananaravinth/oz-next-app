@@ -9,19 +9,24 @@ import {
   Bell,
   Boxes,
   ChevronRight,
+  CircleHelp,
   ClipboardList,
   FileText,
+  Handshake,
   Headset,
   LayoutDashboard,
   Package,
+  Scooter,
   Settings,
   Shield,
   ShoppingCart,
   Store,
   Truck,
+  UserRoundPlus,
   Users,
   Warehouse,
   Wrench,
+  Component,
 } from "lucide-react";
 
 import { Badge, type BadgeProps } from "@/components/ui/badge";
@@ -47,12 +52,95 @@ export type NavigationBadge = Readonly<{
   variant?: "default" | "success" | "warning" | "error";
 }>;
 
+const NAV_ICON_COMPONENTS = {
+  Analytics: BarChart3,
+  BarChart3,
+  Bell,
+  Boxes,
+  CircleHelp,
+  Claims: Shield,
+  ClipboardList,
+  Customer: Users,
+  Customers: Users,
+  Dashboard: LayoutDashboard,
+  Dealer: Store,
+  Dealers: Store,
+  FileText,
+  Handshake,
+  Headset,
+  Inventory: Warehouse,
+  LayoutDashboard,
+  Orders: ShoppingCart,
+  Package,
+  Production: Boxes,
+  Reports: FileText,
+  Sales: ShoppingCart,
+  Scooter,
+  Service: Wrench,
+  Settings,
+  Shield,
+  Shipment: Truck,
+  ShoppingCart,
+  Store,
+  Truck,
+  UserRoundPlus,
+  Users,
+  Warehouse,
+  Warranty: Shield,
+  Wrench,
+  component: Component,
+
+  // Canonical persisted Lucide-style identifiers.
+  "bar-chart-3": BarChart3,
+  bell: Bell,
+  boxes: Boxes,
+  "clipboard-list": ClipboardList,
+  "file-text": FileText,
+  handshake: Handshake,
+  headset: Headset,
+  "layout-dashboard": LayoutDashboard,
+  package: Package,
+  scooter: Scooter,
+  settings: Settings,
+  shield: Shield,
+  "shopping-cart": ShoppingCart,
+  store: Store,
+  truck: Truck,
+  "user-round-plus": UserRoundPlus,
+  users: Users,
+  warehouse: Warehouse,
+  wrench: Wrench,
+} as const;
+
+export type NavigationIconKey = keyof typeof NAV_ICON_COMPONENTS;
+
+export function isNavigationIconKey(value: string): value is NavigationIconKey {
+  return Object.prototype.hasOwnProperty.call(NAV_ICON_COMPONENTS, value);
+}
+
+/**
+ * Resolves a persisted menu icon to an explicitly bundled Lucide component.
+ *
+ * Menu authorization and menu visibility must never depend on whether a
+ * particular frontend revision knows an icon identifier. An unknown icon is a
+ * presentation/configuration compatibility issue, not an authorization reason
+ * to remove the menu.
+ *
+ * The database remains authoritative: known identifiers are rendered exactly
+ * as configured. Unknown identifiers use a neutral fallback until the frontend
+ * registry is upgraded.
+ */
+export function resolveNavigationIconKey(value: string): NavigationIconKey {
+  return isNavigationIconKey(value) ? value : "CircleHelp";
+}
+
 export type NavCommon = Readonly<{
   menuid: string;
+  itemKey?: string;
   title: string;
   url: Route;
   description?: string;
-  icon?: string;
+  icon: NavigationIconKey;
   badge?: NavigationBadge;
 }>;
 
@@ -68,133 +156,15 @@ export type NavMainProps = Readonly<{
   collapsed?: boolean;
 }>;
 
-type NavIconKey =
-  | "Analytics"
-  | "Bell"
-  | "Boxes"
-  | "Claims"
-  | "ClipboardList"
-  | "Customer"
-  | "Customers"
-  | "Dashboard"
-  | "Dealer"
-  | "Dealers"
-  | "FileText"
-  | "Headset"
-  | "Inventory"
-  | "LayoutDashboard"
-  | "Orders"
-  | "Package"
-  | "Production"
-  | "Reports"
-  | "Sales"
-  | "Service"
-  | "Settings"
-  | "Shipment"
-  | "Users"
-  | "Warehouse"
-  | "Warranty"
-  | "Wrench";
-
 type NavIconProps = React.ComponentPropsWithoutRef<typeof LayoutDashboard> &
   Readonly<{
     item: Item;
   }>;
 
-const NAV_ICON_KEYS = {
-  Analytics: true,
-  Bell: true,
-  Boxes: true,
-  Claims: true,
-  ClipboardList: true,
-  Customer: true,
-  Customers: true,
-  Dashboard: true,
-  Dealer: true,
-  Dealers: true,
-  FileText: true,
-  Headset: true,
-  Inventory: true,
-  LayoutDashboard: true,
-  Orders: true,
-  Package: true,
-  Production: true,
-  Reports: true,
-  Sales: true,
-  Service: true,
-  Settings: true,
-  Shipment: true,
-  Users: true,
-  Warehouse: true,
-  Warranty: true,
-  Wrench: true,
-} as const satisfies Readonly<Record<NavIconKey, true>>;
-
-function isNavIconKey(value: string): value is NavIconKey {
-  return Object.prototype.hasOwnProperty.call(NAV_ICON_KEYS, value);
-}
-
-function navIconKeyFor(item: Item): NavIconKey {
-  const requested = item.icon?.trim();
-
-  if (
-    requested !== undefined &&
-    requested.length > 0 &&
-    isNavIconKey(requested)
-  ) {
-    return requested;
-  }
-
-  return isNavIconKey(item.title) ? item.title : "LayoutDashboard";
-}
-
 function NavIcon({ item, ...props }: NavIconProps): React.ReactElement {
-  const iconKey = navIconKeyFor(item);
+  const Icon = NAV_ICON_COMPONENTS[item.icon];
 
-  switch (iconKey) {
-    case "Analytics":
-      return <BarChart3 {...props} />;
-    case "Bell":
-      return <Bell {...props} />;
-    case "Boxes":
-    case "Production":
-      return <Boxes {...props} />;
-    case "Claims":
-    case "Warranty":
-      return <Shield {...props} />;
-    case "ClipboardList":
-      return <ClipboardList {...props} />;
-    case "Customer":
-    case "Customers":
-    case "Users":
-      return <Users {...props} />;
-    case "Dashboard":
-    case "LayoutDashboard":
-      return <LayoutDashboard {...props} />;
-    case "Dealer":
-    case "Dealers":
-      return <Store {...props} />;
-    case "FileText":
-    case "Reports":
-      return <FileText {...props} />;
-    case "Headset":
-      return <Headset {...props} />;
-    case "Inventory":
-    case "Warehouse":
-      return <Warehouse {...props} />;
-    case "Orders":
-    case "Sales":
-      return <ShoppingCart {...props} />;
-    case "Package":
-      return <Package {...props} />;
-    case "Service":
-    case "Wrench":
-      return <Wrench {...props} />;
-    case "Settings":
-      return <Settings {...props} />;
-    case "Shipment":
-      return <Truck {...props} />;
-  }
+  return <Icon {...props} />;
 }
 
 function normalizePath(value: string): string {

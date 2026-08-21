@@ -82,6 +82,7 @@ function parseWithSchema<T>(
   value: unknown,
   schema: ZodType<T>,
   code: string,
+  requestId?: string | null,
 ): T {
   const parsed = schema.safeParse(value);
 
@@ -90,6 +91,7 @@ function parseWithSchema<T>(
       message: "API response validation failed.",
       status: HTTP_STATUS.BAD_GATEWAY,
       code,
+      ...(requestId === undefined || requestId === null ? {} : { requestId }),
       details: validationDetails(parsed.error),
       cause: parsed.error,
     });
@@ -110,6 +112,7 @@ export function unwrapApiEnvelope<TData, TMeta = undefined>(
       canonical.data.data,
       dataSchema,
       "api_response_validation_failed",
+      canonical.data.request_id,
     );
     const meta =
       metaSchema === undefined
@@ -118,6 +121,7 @@ export function unwrapApiEnvelope<TData, TMeta = undefined>(
             canonical.data.meta,
             metaSchema,
             "api_response_metadata_validation_failed",
+            canonical.data.request_id,
           );
 
     return {
@@ -135,6 +139,7 @@ export function unwrapApiEnvelope<TData, TMeta = undefined>(
       legacy.data.data,
       dataSchema,
       "api_response_validation_failed",
+      legacy.data.request_id,
     );
     const meta =
       metaSchema === undefined
@@ -143,6 +148,7 @@ export function unwrapApiEnvelope<TData, TMeta = undefined>(
             legacy.data.metadata,
             metaSchema,
             "api_response_metadata_validation_failed",
+            legacy.data.request_id,
           );
 
     return {

@@ -20,6 +20,10 @@ export const AUTH_ENDPOINTS = {
 } as const;
 
 export const INVENTORY_ENDPOINTS = {
+  // The current API bootstrap mounts component routes under the dealer-inventory
+  // base. Keep that compatibility mapping centralized here until the backend
+  // component base path is migrated in a coordinated contract release.
+  componentInventoryBase: `${ERP_PREFIX}/dealer/inventory`,
   dealerInventoryBase: `${ERP_PREFIX}/dealer/inventory`,
   dealerContexts: `${ERP_PREFIX}/dealer/inventory/contexts/dealers`,
   vehicles: `${ERP_PREFIX}/dealer/inventory/vehicles`,
@@ -37,15 +41,6 @@ export const ENGAGEMENT_ENDPOINTS = {
   happyCustomerSettings: `${ERP_PREFIX}/engagement/dealer/happy-customer-settings`,
   warrantyDocumentDownload: (fileId: string) =>
     `${ERP_PREFIX}/engagement/dealer/warranty-documents/${encodeURIComponent(fileId)}/download` as const,
-  dealershipApplicationsBase: `${ERP_PREFIX}/engagement/dealership-applications`,
-  dealerOperationsBase: `${ERP_PREFIX}/engagement/dealer-operations`,
-  dealershipApplication: (applicationId: string) =>
-    `${ERP_PREFIX}/engagement/dealership-applications/${encodeURIComponent(applicationId)}` as const,
-  dealershipApplicationDocumentDownload: (
-    applicationId: string,
-    documentId: string,
-  ) =>
-    `${ERP_PREFIX}/engagement/dealership-applications/${encodeURIComponent(applicationId)}/documents/${encodeURIComponent(documentId)}/download` as const,
   operationsDashboardBase: `${ERP_PREFIX}/engagement/dashboard`,
   operationsDashboardSummary: `${ERP_PREFIX}/engagement/dashboard/summary`,
   operationsDashboardLeadSourceSeries: `${ERP_PREFIX}/engagement/dashboard/lead-sources/timeseries`,
@@ -72,6 +67,21 @@ export const ENGAGEMENT_ENDPOINTS = {
     `${ERP_PREFIX}/engagement/support/outbox/${encodeURIComponent(outboxEventId)}/retry` as const,
   supportVideoMessageRetry: (videoMessageId: string) =>
     `${ERP_PREFIX}/engagement/support/video-messages/${encodeURIComponent(videoMessageId)}/retry` as const,
+} as const;
+
+export const ZOHO_INVENTORY_ENDPOINTS = {
+  base: `${ERP_PREFIX}/integrations/zoho-inventory`,
+  authorizations: `${ERP_PREFIX}/integrations/zoho-inventory/authorizations`,
+  oauthExchange: `${ERP_PREFIX}/integrations/zoho-inventory/oauth/exchange`,
+  connections: `${ERP_PREFIX}/integrations/zoho-inventory/connections`,
+  verifyConnection: (connectionId: string) =>
+    `${ERP_PREFIX}/integrations/zoho-inventory/connections/${encodeURIComponent(connectionId)}/verify` as const,
+  disconnectConnection: (connectionId: string) =>
+    `${ERP_PREFIX}/integrations/zoho-inventory/connections/${encodeURIComponent(connectionId)}/disconnect` as const,
+  syncJobs: (connectionId: string) =>
+    `${ERP_PREFIX}/integrations/zoho-inventory/connections/${encodeURIComponent(connectionId)}/sync-jobs` as const,
+  syncs: (connectionId: string) =>
+    `${ERP_PREFIX}/integrations/zoho-inventory/connections/${encodeURIComponent(connectionId)}/syncs` as const,
 } as const;
 
 export type AuthStaticEndpoint = Exclude<

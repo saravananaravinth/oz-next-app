@@ -1,0 +1,67 @@
+// oz-next-app/src/features/inventory/components/index.ts
+export {
+  COMPONENT_CUSTODY_STATES,
+  COMPONENT_OPERATIONAL_STATES,
+  COMPONENT_STATUS_SOURCES,
+  COMPONENT_INTEGRITY_WARNINGS,
+  COMPONENT_INVENTORY_PAGE_SIZE,
+  COMPONENT_INVENTORY_TYPES,
+  COMPONENT_TYPES,
+  componentHistoryActionInputSchema,
+  componentHistoryItemSchema,
+  componentHistoryResultSchema,
+  componentInventoryContextSchema,
+  componentContextOptionsSchema,
+  componentInventoryOverviewSchema,
+  componentMetricTrendSchema,
+  componentInventoryFacetsSchema,
+  componentInventoryItemSchema,
+  componentInventoryListResultSchema,
+  componentInventorySearchParamsSchema,
+  componentStateMutationActionInputSchema,
+  componentStateMutationResultSchema,
+  parseComponentInventorySearchParams,
+  type ComponentCustodyState,
+  type ComponentOperationalState,
+  type ComponentStatusSource,
+  type ComponentDefinitionSummary,
+  type ComponentBatteryConfigurationInput,
+  type ComponentContextOptions,
+  type ComponentHistoryItem,
+  type ComponentHistoryResult,
+  type ComponentIntegrityWarning,
+  type ComponentInventoryContext,
+  type ComponentInventoryOverview,
+  type ComponentInventoryFacets,
+  type ComponentInventoryItem,
+  type ComponentInventoryType,
+  type ComponentInventoryListResult,
+  type ComponentInventoryRawSearchParams,
+  type ComponentMetricTrend,
+  type ComponentOrganizationOption,
+  type ComponentInventorySearchParams,
+  type ComponentInventoryWorkspaceData,
+  type ComponentJsonObject,
+  type ComponentStateMutationResult,
+  type ComponentStoreOption,
+  type ComponentType,
+} from "@/features/inventory/components/contracts/component-inventory.schema";
+
+export {
+  resolveComponentInventoryAccess,
+  type ComponentInventoryAccess,
+  type ComponentInventoryCapabilities,
+  type ResolvedComponentInventoryAccess,
+} from "@/features/inventory/components/policies/component-inventory.policy";
+
+export {
+  readComponentHistory,
+  readComponentInventoryWorkspace,
+} from "@/features/inventory/components/server/component-inventory.server";
+
+export {
+  ComponentInventoryAccessState,
+  ComponentInventoryInvalidQueryState,
+  ComponentInventoryPage,
+  ComponentInventoryRequestFailureState,
+} from "@/features/inventory/components/ui/component-inventory-page";

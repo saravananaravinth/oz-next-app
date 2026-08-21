@@ -31,18 +31,6 @@ export type SidebarWrapperProps = Readonly<{
   signOutDisabled?: boolean | undefined;
 }>;
 
-const FALLBACK_MENU_ITEM = {
-  menuid: "dashboard",
-  title: "Dashboard",
-  url: "/dashboard",
-  menugroup: "Workspace",
-  sortorder: 0,
-  isvisible: true,
-  isactive: true,
-  icon: "LayoutDashboard",
-  description: "Workspace overview",
-} satisfies MenuItem;
-
 const MAX_ID_LENGTH = 160;
 const MAX_TENANT_COUNT = 100;
 
@@ -78,6 +66,9 @@ function isMenuItem(value: unknown): value is MenuItem {
     typeof value["menuid"] === "string" &&
     typeof value["title"] === "string" &&
     typeof value["url"] === "string" &&
+    typeof value["icon"] === "string" &&
+    value["icon"].trim().length > 0 &&
+    (value["itemkey"] === undefined || typeof value["itemkey"] === "string") &&
     (value["menugroup"] === undefined ||
       value["menugroup"] === null ||
       typeof value["menugroup"] === "string") &&
@@ -101,15 +92,11 @@ function isTenantMembership(value: unknown): value is TenantMembership {
 function menusFromMe(me: MeResponse): readonly MenuItem[] {
   const rawMenus: unknown = me.menus;
 
-  if (Array.isArray(rawMenus) && rawMenus.length > 0) {
-    const menus = rawMenus.filter(isMenuItem);
-
-    if (menus.length > 0) {
-      return menus;
-    }
+  if (!Array.isArray(rawMenus)) {
+    return [];
   }
 
-  return [FALLBACK_MENU_ITEM];
+  return rawMenus.filter(isMenuItem);
 }
 
 function tenantsFromMe(me: MeResponse): readonly TenantMembership[] {
@@ -166,7 +153,7 @@ export function SidebarWrapper({
           id="main-content"
           tabIndex={-1}
           data-slot="app-shell-content"
-          className="scrollbar-compact min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-y-contain px-4 py-5 outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/35 print:overflow-visible sm:px-6 lg:px-8"
+          className="scrollbar-compact min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-y-contain px-4 py-4 outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/35 print:overflow-visible sm:px-6"
         >
           {children}
         </div>

@@ -13,10 +13,18 @@ import {
   vehicleInventoryFacetsResultSchema,
   vehicleInventoryDealerContextResultSchema,
   vehicleInventoryListResultSchema,
+  vehicleInventoryLiveSearchResultSchema,
+  vehicleInventoryPriceHistoryResultSchema,
+  vehicleInventoryTransferHistoryResultSchema,
   vehicleInventoryRemediationResultSchema,
   type VehicleInventoryArrivalUpdate,
+  type VehicleInventoryBatteryConfigurationSelection,
+  type VehicleInventoryChargerSelection,
   type VehicleInventoryDataQualityIssuesResult,
   type VehicleInventoryListResult,
+  type VehicleInventoryLiveSearchResult,
+  type VehicleInventoryPriceHistoryResult,
+  type VehicleInventoryTransferHistoryResult,
   type VehicleInventoryRemediationCategory,
   type VehicleInventoryRemediationResult,
   type VehicleInventoryDealerContextQuery,
@@ -76,6 +84,8 @@ function commonApiQuery(
     includeMyStock: query.includeMyStock,
     includeSubDealerStock: query.includeSubDealerStock,
     q: query.q,
+    unitId: query.unitId,
+    entryKey: query.entryKey,
     status: query.status,
     entryType: query.entryType,
     orgUnitId: query.orgUnitId,
@@ -206,6 +216,70 @@ export async function readVehicleInventoryWorkspace(
   };
 }
 
+export async function readVehicleInventoryPriceHistory(
+  input: Readonly<{
+    access: ResolvedVehicleInventoryAccess;
+    variantId: string;
+    storeId: string;
+  }>,
+): Promise<VehicleInventoryPriceHistoryResult> {
+  return await inventoryClient.request({
+    path: "/vehicles/price-history",
+    query: {
+      variantId: input.variantId,
+      storeId: input.storeId,
+      limit: 100,
+    },
+    schema: vehicleInventoryPriceHistoryResultSchema,
+    ...(input.access.kind === "contextual"
+      ? { actorContext: input.access.actorContext }
+      : {}),
+  });
+}
+
+export async function readVehicleInventoryTransferHistory(
+  input: Readonly<{
+    access: ResolvedVehicleInventoryAccess;
+    unitId: string;
+  }>,
+): Promise<VehicleInventoryTransferHistoryResult> {
+  return await inventoryClient.request({
+    path: "/vehicles/transfer-history",
+    query: {
+      unitId: input.unitId,
+      limit: 100,
+    },
+    schema: vehicleInventoryTransferHistoryResultSchema,
+    ...(input.access.kind === "contextual"
+      ? { actorContext: input.access.actorContext }
+      : {}),
+  });
+}
+
+export async function searchVehicleInventory(
+  input: Readonly<{
+    access: ResolvedVehicleInventoryAccess;
+    query: string;
+    includeMyStock: boolean;
+    includeSubDealerStock: boolean;
+    limit?: number;
+  }>,
+): Promise<VehicleInventoryLiveSearchResult> {
+  return await inventoryClient.request({
+    path: "/vehicles/search",
+    query: {
+      q: input.query,
+      includeMyStock: input.includeMyStock,
+      includeSubDealerStock: input.includeSubDealerStock,
+      limit: input.limit ?? 8,
+    },
+    schema: vehicleInventoryLiveSearchResultSchema,
+    ...(input.access.kind === "contextual"
+      ? { actorContext: input.access.actorContext }
+      : {}),
+  });
+}
+
 export async function readVehicleInventoryExportResponse(
   input: Readonly<{
     query: VehicleInventorySearchParams;
@@ -258,6 +332,8 @@ export async function runVehicleInventoryRemediation(
     category: VehicleInventoryRemediationCategory;
     idempotencyKey: string;
     arrivals?: readonly VehicleInventoryArrivalUpdate[];
+    chargerSelections?: readonly VehicleInventoryChargerSelection[];
+    batteryConfigurations?: readonly VehicleInventoryBatteryConfigurationSelection[];
   }>,
 ): Promise<VehicleInventoryRemediationResult> {
   return await inventoryClient.request({
@@ -271,6 +347,12 @@ export async function runVehicleInventoryRemediation(
       category: input.category,
       idempotencyKey: input.idempotencyKey,
       ...(input.arrivals === undefined ? {} : { arrivals: input.arrivals }),
+      ...(input.chargerSelections === undefined
+        ? {}
+        : { chargerSelections: input.chargerSelections }),
+      ...(input.batteryConfigurations === undefined
+        ? {}
+        : { batteryConfigurations: input.batteryConfigurations }),
     },
     schema: vehicleInventoryRemediationResultSchema,
     idempotencyKey: input.idempotencyKey,

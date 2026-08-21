@@ -8,6 +8,8 @@ const PHONE_RE = /^\+?[1-9]\d{9,14}$/u;
 const SAFE_SLUG_RE = /^[A-Za-z0-9._:-]+$/u;
 const SAFE_IDEMPOTENCY_KEY_RE = /^[A-Za-z0-9:_./@-]+$/u;
 const SAFE_PERMISSION_RE = /^[A-Za-z0-9:._/-]+$/u;
+const SAFE_MENU_ITEM_KEY_RE = /^[A-Za-z0-9][A-Za-z0-9._:/-]*$/u;
+const SAFE_MENU_ICON_RE = /^[A-Za-z][A-Za-z0-9_-]*$/u;
 const DEFAULT_OTP_LENGTH = 6;
 const DEFAULT_OTP_MAX_ATTEMPTS = 5;
 const MAX_ACCESS_TTL_SECONDS = 24 * 60 * 60;
@@ -634,7 +636,14 @@ const menuScopeSchema = z
 
 const menuBadgeSchema = z
   .object({
-    text: z.string().trim().min(1).max(32).optional(),
+    text: z.string().trim().min(1).max(64).optional(),
+    variant: z
+      .string()
+      .trim()
+      .min(1)
+      .max(32)
+      .regex(SAFE_MENU_ICON_RE)
+      .optional(),
     color: z.string().trim().min(1).max(32).optional(),
   })
   .loose();
@@ -642,13 +651,27 @@ const menuBadgeSchema = z
 const menuBaseSchema = z
   .object({
     menuid: z.string().trim().min(1).max(128),
+    itemkey: z
+      .string()
+      .trim()
+      .min(1)
+      .max(128)
+      .regex(SAFE_MENU_ITEM_KEY_RE)
+      .optional(),
     title: z.string().trim().min(1).max(160),
     url: z.string().trim().min(1).max(2_048),
-    menugroup: z.string().trim().min(1).max(160).nullable().optional(),
+    menugroup: z.string().trim().min(1).max(128).nullable().optional(),
     parentid: z.string().trim().min(1).max(128).nullable().optional(),
-    icon: z.string().trim().min(1).max(64).nullable().optional(),
-    description: z.string().trim().min(1).max(512).nullable().optional(),
-    sortorder: z.number().default(0),
+    icon: z
+      .string()
+      .trim()
+      .min(1)
+      .max(64)
+      .regex(SAFE_MENU_ICON_RE)
+      .nullable()
+      .optional(),
+    description: z.string().trim().min(1).max(1_024).nullable().optional(),
+    sortorder: z.number().int().default(0),
     isvisible: z.boolean().default(true),
     isactive: z.boolean().default(true),
     scope: menuScopeSchema.optional(),
@@ -752,9 +775,10 @@ export const authUserPermissionResolutionSchema = z
 export type AuthMenuItem = Readonly<{
   menuId: string;
   parentId: string | null;
+  itemKey: string;
   title: string;
   description: string | null;
-  icon: string | null;
+  icon: string;
   url: string;
   menuGroup: string | null;
   sortOrder: number;
@@ -767,26 +791,37 @@ export type AuthMenuItem = Readonly<{
   children: readonly AuthMenuItem[];
 }>;
 
+const authMenuBadgeSchema = z
+  .object({
+    text: z.string().trim().min(1).max(64).optional(),
+    variant: z
+      .string()
+      .trim()
+      .min(1)
+      .max(32)
+      .regex(SAFE_MENU_ICON_RE)
+      .optional(),
+  })
+  .strict()
+  .refine((value) => value.text !== undefined || value.variant !== undefined, {
+    message: "Menu badge configuration must define text or variant.",
+  });
+
 export const authMenuItemSchema: z.ZodType<AuthMenuItem> = z.lazy(() =>
   z
     .object({
       menuId: uuidSchema,
       parentId: nullableUuidSchema,
+      itemKey: z.string().trim().min(1).max(128).regex(SAFE_MENU_ITEM_KEY_RE),
       title: z.string().trim().min(1).max(160),
-      description: z.string().trim().min(1).max(512).nullable(),
-      icon: z.string().trim().min(1).max(64).nullable(),
+      description: z.string().trim().max(1_024).nullable(),
+      icon: z.string().trim().min(1).max(64).regex(SAFE_MENU_ICON_RE),
       url: z.string().trim().min(1).max(2_048),
-      menuGroup: z.string().trim().min(1).max(160).nullable(),
+      menuGroup: z.string().trim().min(1).max(128).nullable(),
       sortOrder: z.number().int(),
       isVisible: z.boolean(),
       isActive: z.boolean(),
-      badgeConfig: z
-        .object({
-          text: z.string().trim().min(1).max(32).optional(),
-          variant: z.string().trim().min(1).max(32).optional(),
-        })
-        .strict()
-        .nullable(),
+      badgeConfig: authMenuBadgeSchema.nullable(),
       children: z.array(authMenuItemSchema).readonly().default([]),
     })
     .strict(),
@@ -809,6 +844,7 @@ export const authMeResultSchema = z
 function menuItemFromAuthMenu(menu: AuthMenuItem): MenuItem {
   return {
     menuid: menu.menuId,
+    itemkey: menu.itemKey,
     title: menu.title,
     url: menu.url,
     menugroup: menu.menuGroup,
@@ -827,7 +863,7 @@ function menuItemFromAuthMenu(menu: AuthMenuItem): MenuItem {
               : { text: menu.badgeConfig.text }),
             ...(menu.badgeConfig.variant === undefined
               ? {}
-              : { color: menu.badgeConfig.variant }),
+              : { variant: menu.badgeConfig.variant }),
           },
     children: menu.children.map(menuItemFromAuthMenu),
   };

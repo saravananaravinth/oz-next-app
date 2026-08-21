@@ -135,6 +135,8 @@ export const BROWSER_SAME_ORIGIN_ALLOWED_EXACT_PATHS = [
   "/api/auth/refresh",
   "/api/inventory/dealer-contexts",
   "/api/inventory/vehicles/export",
+  "/api/inventory/vehicles/search",
+  "/api/inventory/components/search",
 ] as const;
 
 /**
@@ -145,6 +147,7 @@ export const SERVER_API_ALLOWED_PREFIXES = [
   "/erp/auth",
   "/erp/engagement",
   "/erp/dealer/inventory",
+  "/erp/integrations",
 ] as const;
 
 /**

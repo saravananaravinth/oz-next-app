@@ -1,9 +1,14 @@
 // oz-next-app/src/features/inventory/vehicles/policies/vehicle-inventory.policy.ts
 import type { ActorKind, MeResponse } from "@/lib/api/contracts";
 import type { ServerActorContextHeaders } from "@/server/api/request-context-headers";
+import {
+  canonicalErpRoleSet,
+  canonicalizeErpRoleName,
+  ERP_ROLE,
+} from "@/lib/auth/roles";
 
-import { erpActorScopeFromMe } from "@/features/erp-core/queries/erp-query-scope";
 import type { ErpActorScope } from "@/features/erp-core/contracts/erp-common.schema";
+import { erpActorScopeFromMe } from "@/features/erp-core/queries/erp-query-scope";
 
 import type { VehicleInventorySearchParams } from "@/features/inventory/vehicles/contracts/vehicle-inventory.schema";
 
@@ -14,9 +19,8 @@ const PERMISSION = {
 } as const;
 
 const ROLE = {
-  TENANT_ADMIN: "tenant_admin",
-  DEALER_ADMIN: "dealer_admin",
-  DEALER_STAFF: "dealer_staff",
+  DEALER_ADMIN: ERP_ROLE.DEALER_ADMIN,
+  DEALER_STAFF: ERP_ROLE.DEALER_STAFF,
 } as const;
 
 export type VehicleInventoryCapabilities = Readonly<{
@@ -27,7 +31,7 @@ export type VehicleInventoryCapabilities = Readonly<{
 
 export type VehicleInventoryContext = Readonly<{
   tenantId: string;
-  dealerOrgUnitId: string;
+  dealerOrgUnitId: string | null;
 }>;
 
 type VehicleInventoryResolvedAccessBase = Readonly<{
@@ -51,13 +55,6 @@ export type ResolvedVehicleInventoryAccess =
 
 export type VehicleInventoryAccess =
   | ResolvedVehicleInventoryAccess
-  | Readonly<{
-      kind: "context_required";
-      actorKind: Extract<ActorKind, "SUPER_ADMIN" | "ADMIN">;
-      role: string | null;
-      scope: ErpActorScope;
-      capabilities: VehicleInventoryCapabilities;
-    }>
   | Readonly<{
       kind: "forbidden";
       actorKind: ActorKind;
@@ -86,11 +83,13 @@ function effectivePermissions(me: MeResponse): ReadonlySet<string> {
 }
 
 function roles(me: MeResponse): ReadonlySet<string> {
-  return normalizeValues(me.auth?.actor.roles ?? me.roles);
+  return canonicalErpRoleSet(me.auth?.actor.roles ?? me.roles);
 }
 
 function primaryRole(me: MeResponse): string | null {
-  return me.primary_role ?? me.auth?.actor.roles[0] ?? me.roles[0] ?? null;
+  return canonicalizeErpRoleName(
+    me.primary_role ?? me.auth?.actor.roles[0] ?? me.roles[0],
+  );
 }
 
 function hasPermission(
@@ -161,7 +160,7 @@ export function resolveVehicleInventoryAccess(
         role,
         scope,
         reason:
-          "Dealer inventory requires a complete dealer actor scope and the dealer_admin or dealer_staff role.",
+          "Dealer inventory requires a complete dealer actor scope and the dealer or dealer_staff role.",
       });
     }
 
@@ -178,34 +177,24 @@ export function resolveVehicleInventoryAccess(
     };
   }
 
-  if (actorKind === "ADMIN") {
-    if (!effectiveRoles.has(ROLE.TENANT_ADMIN) || scope.tenantId === null) {
+  if (actorKind === "ADMIN" || actorKind === "STAFF") {
+    if (scope.tenantId === null) {
       return forbidden({
         actorKind,
         role,
         scope,
         reason:
-          "Tenant inventory context requires the tenant_admin role and a resolved tenant.",
+          "Tenant-wide vehicle inventory requires a resolved tenant scope.",
       });
     }
 
-    if (query.tenantId === undefined || query.dealerOrgUnitId === undefined) {
-      return {
-        kind: "context_required",
-        actorKind,
-        role,
-        scope,
-        capabilities,
-      };
-    }
-
-    if (query.tenantId !== scope.tenantId) {
+    if (query.tenantId !== undefined && query.tenantId !== scope.tenantId) {
       return forbidden({
         actorKind,
         role,
         scope,
         reason:
-          "The selected tenant does not match the authenticated tenant scope.",
+          "The requested tenant does not match the authenticated tenant scope.",
       });
     }
 
@@ -215,25 +204,25 @@ export function resolveVehicleInventoryAccess(
       role,
       scope,
       context: {
-        tenantId: query.tenantId,
-        dealerOrgUnitId: query.dealerOrgUnitId,
+        tenantId: scope.tenantId,
+        dealerOrgUnitId: null,
       },
-      actorContext: {
-        dealerOrgUnitId: query.dealerOrgUnitId,
-      },
+      actorContext: {},
       capabilities,
     };
   }
 
   if (actorKind === "SUPER_ADMIN") {
-    if (query.tenantId === undefined || query.dealerOrgUnitId === undefined) {
-      return {
-        kind: "context_required",
+    const tenantId = query.tenantId ?? scope.tenantId;
+
+    if (tenantId === null) {
+      return forbidden({
         actorKind,
         role,
         scope,
-        capabilities,
-      };
+        reason:
+          "Super administrator inventory access requires an active tenant context.",
+      });
     }
 
     return {
@@ -242,12 +231,11 @@ export function resolveVehicleInventoryAccess(
       role,
       scope,
       context: {
-        tenantId: query.tenantId,
-        dealerOrgUnitId: query.dealerOrgUnitId,
+        tenantId,
+        dealerOrgUnitId: null,
       },
       actorContext: {
-        tenantId: query.tenantId,
-        dealerOrgUnitId: query.dealerOrgUnitId,
+        tenantId,
       },
       capabilities,
     };

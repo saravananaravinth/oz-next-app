@@ -50,6 +50,14 @@ function serializeVehicleInventoryQuery(
     search.set("q", query.q);
   }
 
+  if (query.unitId !== undefined) {
+    search.set("unitId", query.unitId);
+  }
+
+  if (query.entryKey !== undefined) {
+    search.set("entryKey", query.entryKey);
+  }
+
   appendArray(search, "status", query.status);
   appendArray(search, "entryType", query.entryType);
   appendArray(search, "orgUnitId", query.orgUnitId);

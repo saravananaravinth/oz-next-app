@@ -5,11 +5,12 @@ import {
   erpIsoDateTimeSchema,
   erpUuidSchema,
 } from "@/features/erp-core/contracts/erp-common.schema";
+import { ERP_ROLE } from "@/lib/auth/roles";
 
 export const DEALER_DASHBOARD_ROLE = {
-  SUPER_ADMIN: "super_admin",
-  DEALER_ADMIN: "dealer_admin",
-  DEALER_STAFF: "dealer_staff",
+  SUPER_ADMIN: ERP_ROLE.SUPER_ADMIN,
+  DEALER_ADMIN: ERP_ROLE.DEALER_ADMIN,
+  DEALER_STAFF: ERP_ROLE.DEALER_STAFF,
 } as const;
 
 export type DealerDashboardRole =

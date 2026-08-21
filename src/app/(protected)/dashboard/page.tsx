@@ -13,7 +13,6 @@ import {
   type DealerDashboardContext,
   type DealerDashboardSearchParams,
 } from "@/features/engagement/dealer-dashboard";
-import { readDealerSelfServiceDetail } from "@/features/engagement/dealer-operations";
 
 const PAGE_TITLE = "Dashboard";
 const PAGE_DESCRIPTION =
@@ -99,27 +98,13 @@ export default async function DashboardPage({
     return <SuperAdminDealerContext />;
   }
 
-  const [data, staffDetail] = await Promise.all([
-    readDealerDashboardData({
-      query,
-      capabilities: access.capabilities,
-      ...(access.actorContext !== undefined
-        ? { actorContext: access.actorContext }
-        : {}),
-    }),
-    access.capabilities.canManageDealerStaff
-      ? readDealerSelfServiceDetail(access.context.dealerOrgUnitId).catch(
-          () => null,
-        )
-      : Promise.resolve(null),
-  ]);
+  const data = await readDealerDashboardData({
+    query,
+    capabilities: access.capabilities,
+    ...(access.actorContext !== undefined
+      ? { actorContext: access.actorContext }
+      : {}),
+  });
 
-  return (
-    <DealerDashboardPage
-      access={access}
-      data={data}
-      query={query}
-      staffDetail={staffDetail}
-    />
-  );
+  return <DealerDashboardPage access={access} data={data} query={query} />;
 }

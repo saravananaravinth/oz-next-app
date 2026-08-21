@@ -9,6 +9,7 @@ import { usePathname } from "next/navigation";
 
 import {
   NavMain,
+  resolveNavigationIconKey,
   type Item as NavItem,
 } from "@/features/app-shell/ui/nav-main";
 import { NavUser } from "@/features/app-shell/ui/nav-user";
@@ -93,7 +94,7 @@ const DEFAULT_BRAND = {
 
 const MAX_MENU_COUNT = 700;
 const MAX_NAV_NODE_COUNT = 1_000;
-const MAX_MENU_DEPTH = 4;
+const MAX_MENU_DEPTH = 8;
 const MAX_CHILDREN_PER_MENU = 100;
 const MAX_TEXT_LENGTH = 160;
 const MAX_QUERY_LENGTH = 80;
@@ -202,10 +203,13 @@ function normalizeNavItem(
 
   budget.remaining -= 1;
 
+  const itemKey = cleanText(menu.itemkey);
   const description = cleanText(menu.description ?? undefined);
-  const icon = cleanText(menu.icon ?? undefined);
+  const configuredIcon = cleanText(menu.icon ?? undefined);
+  const icon = resolveNavigationIconKey(configuredIcon);
+
   const badgeText = cleanText(menu.badgeconfig?.text);
-  const badgeColor = menu.badgeconfig?.color;
+  const badgeVariant = menu.badgeconfig?.variant ?? menu.badgeconfig?.color;
   const children = uniqueNavItems(
     menu.children === undefined
       ? []
@@ -218,20 +222,23 @@ function normalizeNavItem(
 
   return {
     menuid,
+    ...(itemKey.length > 0 ? { itemKey } : {}),
     title,
     url: safeInternalHref(menu.url),
     ...(description.length > 0 ? { description } : {}),
-    ...(icon.length > 0 ? { icon } : {}),
+    icon,
     ...(badgeText.length > 0
       ? {
           badge: {
             text: badgeText,
             variant:
-              badgeColor === "success" ||
-              badgeColor === "warning" ||
-              badgeColor === "error"
-                ? badgeColor
-                : "default",
+              badgeVariant === "success"
+                ? "success"
+                : badgeVariant === "warning"
+                  ? "warning"
+                  : badgeVariant === "error" || badgeVariant === "destructive"
+                    ? "error"
+                    : "default",
           },
         }
       : {}),
@@ -272,6 +279,7 @@ function buildGroups(menus: readonly MenuItem[]): readonly NavGroup[] {
     if (!existing.items.some((candidate) => candidate.menuid === item.menuid)) {
       existing.items.push(item);
     }
+
     existing.order = Math.min(existing.order, safeSortOrder(menu.sortorder));
   }
 

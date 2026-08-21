@@ -4,9 +4,10 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import {
-  ArrowDownAZ,
-  ArrowUpAZ,
+  ArrowDown,
+  ArrowUp,
   CalendarRange,
+  CarFront,
   Check,
   Database,
   Filter,
@@ -27,6 +28,7 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -46,7 +48,9 @@ import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
@@ -59,8 +63,6 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import { useDebounce } from "@/shared/hooks/use-debounce";
-
 import {
   VEHICLE_INVENTORY_DATA_QUALITY_FLAGS,
   VEHICLE_INVENTORY_SORT_DIRECTIONS,
@@ -76,10 +78,9 @@ import {
   vehicleInventoryResetHref,
 } from "@/features/inventory/vehicles/utils/vehicle-inventory-url";
 
-const MAX_RENDERED_FACET_OPTIONS = 200;
-const MIN_LIVE_SEARCH_CHARACTERS = 3;
-const LIVE_SEARCH_DELAY_MS = 350;
+const MAX_RENDERED_FACET_OPTIONS = 16;
 const FACET_SEARCH_THRESHOLD = 8;
+const SORT_OPTION_SEPARATOR = ":";
 
 const SORT_LABELS: Readonly<Record<VehicleInventorySortField, string>> = {
   VIN: "VIN",
@@ -93,6 +94,26 @@ const SORT_LABELS: Readonly<Record<VehicleInventorySortField, string>> = {
   TRANSFER_DATE: "Transfer date",
   LAST_UPDATE: "Last updated",
 };
+
+const SORT_GROUPS = [
+  {
+    label: "Activity dates",
+    fields: ["LAST_UPDATE", "ARRIVAL_DATE", "TRANSFER_DATE"],
+  },
+  {
+    label: "Vehicle details",
+    fields: ["VIN", "MODEL", "VARIANT", "STATUS", "ORG_UNIT"],
+  },
+  {
+    label: "Commercial and aging",
+    fields: ["MRP", "AGE"],
+  },
+] as const satisfies ReadonlyArray<
+  Readonly<{
+    label: string;
+    fields: readonly VehicleInventorySortField[];
+  }>
+>;
 
 const QUALITY_LABELS: Readonly<Record<string, string>> = {
   MISSING_VARIANT: "Missing variant",
@@ -208,6 +229,76 @@ function isSortDirection(
 
 function isScopeValue(value: string): value is ScopeValue {
   return SCOPE_VALUES.some((candidate) => candidate === value);
+}
+
+type SortDirectionPresentation = Readonly<{
+  ASC: string;
+  DESC: string;
+}>;
+
+function sortDirectionPresentation(
+  sortBy: VehicleInventorySortField,
+): SortDirectionPresentation {
+  switch (sortBy) {
+    case "ARRIVAL_DATE":
+    case "TRANSFER_DATE":
+    case "LAST_UPDATE":
+      return {
+        ASC: "Oldest first",
+        DESC: "Newest first",
+      };
+    case "AGE":
+    case "MRP":
+      return {
+        ASC: "Lowest first",
+        DESC: "Highest first",
+      };
+    case "MODEL":
+    case "ORG_UNIT":
+    case "STATUS":
+    case "VARIANT":
+    case "VIN":
+      return {
+        ASC: "A to Z",
+        DESC: "Z to A",
+      };
+  }
+}
+
+function sortOptionValue(
+  sortBy: VehicleInventorySortField,
+  sortDirection: VehicleInventorySortDirection,
+): string {
+  return `${sortBy}${SORT_OPTION_SEPARATOR}${sortDirection}`;
+}
+
+function parseSortOptionValue(value: string): Readonly<{
+  sortBy: VehicleInventorySortField;
+  sortDirection: VehicleInventorySortDirection;
+}> | null {
+  const parts = value.split(SORT_OPTION_SEPARATOR);
+  if (parts.length !== 2) {
+    return null;
+  }
+
+  const [sortBy, sortDirection] = parts;
+  if (
+    sortBy === undefined ||
+    sortDirection === undefined ||
+    !isSortField(sortBy) ||
+    !isSortDirection(sortDirection)
+  ) {
+    return null;
+  }
+
+  return { sortBy, sortDirection };
+}
+
+function sortOptionLabel(
+  sortBy: VehicleInventorySortField,
+  sortDirection: VehicleInventorySortDirection,
+): string {
+  return `${SORT_LABELS[sortBy]} · ${sortDirectionPresentation(sortBy)[sortDirection]}`;
 }
 
 function humanizeToken(value: string): string {
@@ -394,104 +485,6 @@ function FieldShell({
   );
 }
 
-function SearchInventoryControl({
-  query,
-  navigate,
-  pending,
-}: Readonly<{
-  query: VehicleInventorySearchParams;
-  navigate: (overrides: Partial<VehicleInventorySearchParams>) => void;
-  pending: boolean;
-}>): React.ReactElement {
-  const inputId = React.useId();
-  const [value, setValue] = React.useState(query.q ?? "");
-  const debouncedValue = useDebounce(value, LIVE_SEARCH_DELAY_MS, {
-    trailing: true,
-    maxWait: 800,
-  });
-  const normalizedValue = value.trim();
-  const waitingForMinimum =
-    normalizedValue.length > 0 &&
-    normalizedValue.length < MIN_LIVE_SEARCH_CHARACTERS;
-
-  React.useEffect(() => {
-    const normalized = debouncedValue.trim();
-
-    if (
-      normalized.length > 0 &&
-      normalized.length < MIN_LIVE_SEARCH_CHARACTERS
-    ) {
-      return;
-    }
-
-    const nextQuery = normalized.length === 0 ? undefined : normalized;
-    if (nextQuery === query.q) {
-      return;
-    }
-
-    navigate({ q: nextQuery, cursor: undefined });
-  }, [debouncedValue, navigate, query.q]);
-
-  return (
-    <FieldShell
-      id={inputId}
-      label="Search inventory"
-      hint={
-        waitingForMinimum
-          ? `Enter at least ${String(MIN_LIVE_SEARCH_CHARACTERS)} characters. Existing results remain visible.`
-          : "VIN, model, variant, color, store, or organization."
-      }
-      className="xl:min-w-[20rem]"
-    >
-      <div className="relative">
-        <Search
-          aria-hidden="true"
-          className="pointer-events-none absolute left-3 top-1/2 z-10 size-4 -translate-y-1/2 text-muted-readable"
-        />
-        <Input
-          id={inputId}
-          type="search"
-          value={value}
-          onChange={(event) => {
-            setValue(event.currentTarget.value.slice(0, 100));
-          }}
-          maxLength={100}
-          placeholder="Search authorized stock…"
-          className={cn(
-            "h-11 pl-9 pr-10",
-            waitingForMinimum && "border-warning/50",
-          )}
-          aria-describedby={`${inputId}-hint`}
-          autoComplete="off"
-          spellCheck={false}
-        />
-        {pending ? (
-          <Spinner
-            label="Updating inventory search"
-            className="absolute right-3 top-1/2 size-4 -translate-y-1/2"
-          />
-        ) : value.length > 0 ? (
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-xs"
-            className="absolute right-2 top-1/2 -translate-y-1/2"
-            aria-label="Clear inventory search"
-            onClick={() => {
-              setValue("");
-            }}
-          >
-            <X aria-hidden="true" className="size-3.5" />
-          </Button>
-        ) : null}
-      </div>
-      <span id={`${inputId}-hint`} className="sr-only">
-        Live search starts after three characters and updates automatically.
-      </span>
-    </FieldShell>
-  );
-}
-
 function InventoryScopeControl({
   query,
   canIncludeSubDealerStock,
@@ -504,22 +497,17 @@ function InventoryScopeControl({
   navigate: (overrides: Partial<VehicleInventorySearchParams>) => void;
 }>): React.ReactElement {
   const controlId = React.useId();
+  const descriptionId = `${controlId}-description`;
   const selected: ScopeValue[] = [
     ...(query.includeMyStock ? (["MY_STOCK"] as const) : []),
     ...(query.includeSubDealerStock ? (["SUB_DEALERS"] as const) : []),
   ];
+  const subDealerLabel = canIncludeSubDealerStock
+    ? `${eligibleSubDealerCount.toLocaleString("en-IN")} sub-dealer${eligibleSubDealerCount === 1 ? "" : "s"}`
+    : "Direct stock only";
 
   return (
-    <FieldShell
-      id={controlId}
-      label="Inventory scope"
-      hint={
-        canIncludeSubDealerStock
-          ? `${eligibleSubDealerCount.toLocaleString("en-IN")} authorized sub-dealer${eligibleSubDealerCount === 1 ? "" : "s"} available.`
-          : "Sub-dealer stock is unavailable for this dealer hierarchy."
-      }
-      className="xl:min-w-[20rem]"
-    >
+    <div className="flex shrink-0 items-center gap-2">
       <ToggleGroup
         id={controlId}
         type="multiple"
@@ -536,41 +524,51 @@ function InventoryScopeControl({
             cursor: undefined,
           });
         }}
-        variant="outline"
+        variant="default"
+        size="sm"
         spacing={1}
-        className="grid h-11 w-full grid-cols-2 rounded-2xl border border-border/70 bg-background/55 p-1"
-        aria-label="Inventory scope"
+        className="w-fit rounded-xl border border-border/70 bg-muted/45 p-0.5 shadow-xs dark:bg-muted/25"
+        aria-label="Inventory stock scope"
+        aria-describedby={descriptionId}
       >
         <ToggleGroupItem
           value="MY_STOCK"
-          className="h-9 min-w-0 justify-center rounded-xl px-3 data-[state=on]:border-primary/25 data-[state=on]:bg-primary/12 data-[state=on]:text-primary"
+          className="rounded-lg border border-transparent px-2.5 data-[state=on]:border-primary/45 data-[state=on]:bg-primary/15 data-[state=on]:text-primary data-[state=on]:shadow-sm data-[state=on]:ring-1 data-[state=on]:ring-primary/30 dark:data-[state=on]:border-primary/50 dark:data-[state=on]:bg-primary/15"
         >
-          <Layers3 aria-hidden="true" className="size-4" />
-          <span className="truncate">My stock</span>
+          <Layers3 aria-hidden="true" className="size-3.5" />
+          My stock
+          {query.includeMyStock ? (
+            <Check aria-hidden="true" className="size-3 text-primary" />
+          ) : null}
         </ToggleGroupItem>
         <ToggleGroupItem
           value="SUB_DEALERS"
           disabled={!canIncludeSubDealerStock}
-          className="h-9 min-w-0 justify-center rounded-xl px-3 data-[state=on]:border-primary/25 data-[state=on]:bg-primary/12 data-[state=on]:text-primary"
+          className="rounded-lg border border-transparent px-2.5 data-[state=on]:border-primary/45 data-[state=on]:bg-primary/15 data-[state=on]:text-primary data-[state=on]:shadow-sm data-[state=on]:ring-1 data-[state=on]:ring-primary/30 dark:data-[state=on]:border-primary/50 dark:data-[state=on]:bg-primary/15"
           aria-label={
             canIncludeSubDealerStock
               ? `Include stock from ${eligibleSubDealerCount.toLocaleString("en-IN")} authorized sub-dealers`
               : "Sub-dealer stock unavailable"
           }
-          title={
-            canIncludeSubDealerStock
-              ? `Include stock from ${eligibleSubDealerCount.toLocaleString("en-IN")} authorized sub-dealer${eligibleSubDealerCount === 1 ? "" : "s"}.`
-              : "No authorized sub-dealer inventory is available in this hierarchy."
-          }
         >
-          <Layers3 aria-hidden="true" className="size-4" />
-          <span className="truncate">Sub-dealers</span>
+          <Layers3 aria-hidden="true" className="size-3.5" />
+          Sub-dealers
+          {query.includeSubDealerStock ? (
+            <Check aria-hidden="true" className="size-3 text-primary" />
+          ) : null}
         </ToggleGroupItem>
       </ToggleGroup>
-    </FieldShell>
+
+      <Badge
+        id={descriptionId}
+        variant={canIncludeSubDealerStock ? "secondary" : "outline"}
+        className="h-7 shrink-0 rounded-xl px-2.5 text-tabular"
+      >
+        {subDealerLabel}
+      </Badge>
+    </div>
   );
 }
-
 function FilterOptionGroup({
   label,
   description,
@@ -632,20 +630,19 @@ function FilterOptionGroup({
   const rendered = filteredOptions.slice(0, MAX_RENDERED_FACET_OPTIONS);
   const truncated = filteredOptions.length > rendered.length;
   const selectionLimitReached = selected.length >= maximum;
+  const showSearch = searchable && options.length >= FACET_SEARCH_THRESHOLD;
 
   return (
-    <fieldset className="grid min-w-0 content-start gap-3 rounded-2xl border border-border/70 bg-background/55 p-3.5 shadow-xs">
+    <fieldset className="min-w-0 self-start rounded-2xl border border-border/60 bg-background/45 p-3.5">
       <legend className="sr-only">{label}</legend>
 
       <div className="flex min-w-0 items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            <h4 className="text-body-sm font-medium text-foreground">
-              {label}
-            </h4>
+            <h4 className="text-body-sm text-foreground">{label}</h4>
             {selected.length > 0 ? (
-              <Badge variant="secondary" className="text-tabular">
-                {selected.length.toLocaleString("en-IN")} selected
+              <Badge variant="secondary" className="h-5 px-2 text-tabular">
+                {selected.length.toLocaleString("en-IN")}
               </Badge>
             ) : null}
           </div>
@@ -660,8 +657,8 @@ function FilterOptionGroup({
           <Button
             type="button"
             variant="ghost"
-            size="sm"
-            className="h-8 shrink-0 px-2"
+            size="xs"
+            className="shrink-0"
             onClick={() => {
               onChange([]);
             }}
@@ -671,11 +668,11 @@ function FilterOptionGroup({
         ) : null}
       </div>
 
-      {searchable && options.length >= FACET_SEARCH_THRESHOLD ? (
-        <div className="relative">
+      {showSearch ? (
+        <div className="relative mt-3">
           <Search
             aria-hidden="true"
-            className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-readable"
+            className="pointer-events-none absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-muted-readable"
           />
           <Input
             type="search"
@@ -683,8 +680,8 @@ function FilterOptionGroup({
             onChange={(event) => {
               setSearchValue(event.currentTarget.value.slice(0, 100));
             }}
-            placeholder={`Search ${label.toLocaleLowerCase("en-US")}…`}
-            className="h-9 pl-9 pr-9"
+            placeholder={`Find ${label.toLocaleLowerCase("en-US")}…`}
+            className="h-9 rounded-xl pl-9 pr-9 text-caption"
             aria-label={`Search ${label.toLocaleLowerCase("en-US")}`}
             autoComplete="off"
             spellCheck={false}
@@ -694,7 +691,7 @@ function FilterOptionGroup({
               type="button"
               variant="ghost"
               size="icon-xs"
-              className="absolute right-2 top-1/2 -translate-y-1/2"
+              className="absolute right-1.5 top-1/2 -translate-y-1/2"
               aria-label={`Clear ${label.toLocaleLowerCase("en-US")} search`}
               onClick={() => {
                 setSearchValue("");
@@ -706,10 +703,10 @@ function FilterOptionGroup({
         </div>
       ) : null}
 
-      <div className="max-h-56 space-y-1 overflow-y-auto overscroll-contain pr-1">
+      <div className="mt-3 grid gap-1">
         {rendered.length === 0 ? (
-          <div className="grid place-items-center gap-2 rounded-xl border border-dashed border-border/70 px-3 py-7 text-center">
-            <Search aria-hidden="true" className="size-5 text-muted-readable" />
+          <div className="grid place-items-center gap-1.5 rounded-xl border border-dashed border-border/70 px-3 py-6 text-center">
+            <Search aria-hidden="true" className="size-4 text-muted-readable" />
             <p className="text-caption text-muted-readable">
               No authorized options match this search.
             </p>
@@ -725,8 +722,8 @@ function FilterOptionGroup({
                 key={option.value}
                 htmlFor={id}
                 className={cn(
-                  "group flex min-h-10 items-center gap-2.5 rounded-xl border border-transparent px-2.5 py-2 text-body-sm transition-colors hover:border-border/70 hover:bg-muted/55 motion-reduce:transition-none",
-                  checked && "border-primary/15 bg-primary/[0.055]",
+                  "group flex min-h-9 items-center gap-2.5 rounded-xl border border-transparent px-2.5 py-1.5 text-body-sm transition-colors hover:bg-muted/55 motion-reduce:transition-none",
+                  checked && "border-primary/20 bg-primary/[0.07]",
                   disabled && "cursor-not-allowed opacity-50",
                   option.active === false && "opacity-60",
                 )}
@@ -750,7 +747,10 @@ function FilterOptionGroup({
                   {humanizeToken(option.label)}
                 </span>
                 {option.active === false ? (
-                  <Badge variant="outline" className="shrink-0 text-[0.625rem]">
+                  <Badge
+                    variant="outline"
+                    className="h-5 shrink-0 px-1.5 text-[0.625rem]"
+                  >
                     Inactive
                   </Badge>
                 ) : null}
@@ -759,54 +759,44 @@ function FilterOptionGroup({
                     {option.count.toLocaleString("en-IN")}
                   </span>
                 )}
-                {checked ? (
-                  <Check
-                    aria-hidden="true"
-                    className="size-3.5 shrink-0 text-primary"
-                  />
-                ) : null}
               </label>
             );
           })
         )}
       </div>
 
-      <div className="flex flex-wrap items-center justify-between gap-2 text-caption text-muted-readable">
-        <span>
+      {normalizedSearch.length > 0 ? (
+        <p className="mt-2 text-caption text-muted-readable">
           {filteredOptions.length.toLocaleString("en-IN")} matching option
-          {filteredOptions.length === 1 ? "" : "s"}
-        </span>
-        <span>
-          Maximum {maximum.toLocaleString("en-IN")} selection
-          {maximum === 1 ? "" : "s"}
-        </span>
-      </div>
-
-      {selectionLimitReached ? (
-        <p className="rounded-xl border border-warning/25 bg-warning/10 px-3 py-2 text-caption text-warning-foreground">
-          The selection limit has been reached. Clear an existing value before
-          adding another.
-        </p>
-      ) : null}
-
-      {unavailableSelectionCount > 0 ? (
-        <p className="rounded-xl border border-info/25 bg-info/10 px-3 py-2 text-caption text-info">
-          {unavailableSelectionCount.toLocaleString("en-IN")} selected value
-          {unavailableSelectionCount === 1 ? " is" : "s are"} retained but
-          unavailable in the current facet snapshot.
+          {filteredOptions.length === 1 ? "" : "s"}.
         </p>
       ) : null}
 
       {truncated ? (
-        <p className="text-caption text-muted-readable">
-          Showing the first {MAX_RENDERED_FACET_OPTIONS.toLocaleString("en-IN")}{" "}
-          matching options. Use the local search to narrow the list.
+        <p className="mt-2 text-caption text-muted-readable">
+          Showing {MAX_RENDERED_FACET_OPTIONS.toLocaleString("en-IN")} of{" "}
+          {filteredOptions.length.toLocaleString("en-IN")} options. Search to
+          find additional values.
+        </p>
+      ) : null}
+
+      {selectionLimitReached ? (
+        <p className="mt-2 rounded-xl border border-warning/25 bg-warning/10 px-3 py-2 text-caption text-warning-foreground">
+          Selection limit reached. Clear an existing value before adding
+          another.
+        </p>
+      ) : null}
+
+      {unavailableSelectionCount > 0 ? (
+        <p className="mt-2 rounded-xl border border-info/25 bg-info/10 px-3 py-2 text-caption text-info">
+          {unavailableSelectionCount.toLocaleString("en-IN")} selected value
+          {unavailableSelectionCount === 1 ? " is" : "s are"} retained but
+          unavailable in the current authorized options.
         </p>
       ) : null}
     </fieldset>
   );
 }
-
 function TriStateSelect({
   id,
   label,
@@ -856,16 +846,23 @@ function SectionTrigger({
   const Icon = presentation.icon;
 
   return (
-    <AccordionTrigger className="rounded-2xl px-3 py-3 hover:bg-muted/45 hover:no-underline">
+    <AccordionTrigger className="rounded-2xl px-3.5 py-3 hover:bg-muted/45 hover:no-underline sm:px-4">
       <span className="flex min-w-0 items-center gap-3 pr-3">
-        <span className="grid size-9 shrink-0 place-items-center rounded-xl border border-border/70 bg-muted/55 text-muted-readable">
-          <Icon aria-hidden="true" className="size-4" />
+        <span
+          className={cn(
+            "grid size-8 shrink-0 place-items-center rounded-xl border",
+            count > 0
+              ? "border-primary/25 bg-primary/10 text-primary"
+              : "border-border/70 bg-muted/45 text-muted-readable",
+          )}
+        >
+          <Icon aria-hidden="true" className="size-3.5" />
         </span>
         <span className="min-w-0 text-left">
           <span className="flex flex-wrap items-center gap-2 text-card-title">
             {presentation.title}
             {count > 0 ? (
-              <Badge variant="secondary" className="text-tabular">
+              <Badge variant="secondary" className="h-5 px-2 text-tabular">
                 {count.toLocaleString("en-IN")}
               </Badge>
             ) : null}
@@ -878,7 +875,6 @@ function SectionTrigger({
     </AccordionTrigger>
   );
 }
-
 function AdvancedFiltersDialog({
   query,
   facets,
@@ -991,11 +987,19 @@ function AdvancedFiltersDialog({
       <Tooltip>
         <TooltipTrigger asChild>
           <DialogTrigger asChild>
-            <Button type="button" variant="outline" className="h-11 shrink-0">
-              <SlidersHorizontal aria-hidden="true" className="size-4" />
+            <Button
+              type="button"
+              variant={filterCount > 0 ? "secondary" : "outline"}
+              size="sm"
+              className="shrink-0 rounded-xl"
+            >
+              <SlidersHorizontal aria-hidden="true" className="size-3.5" />
               Filters
               {filterCount > 0 ? (
-                <Badge variant="secondary" className="ml-1 text-tabular">
+                <Badge
+                  variant="default"
+                  className="ml-0.5 h-5 min-w-5 px-1.5 text-tabular"
+                >
                   {filterCount.toLocaleString("en-IN")}
                 </Badge>
               ) : null}
@@ -1007,51 +1011,50 @@ function AdvancedFiltersDialog({
         </TooltipContent>
       </Tooltip>
 
-      <DialogContent height="viewport" className="sm:max-w-5xl">
-        <DialogHeader>
-          <div className="flex min-w-0 flex-wrap items-start justify-between gap-4 pr-8">
-            <div className="min-w-0">
-              <DialogTitle>Filter vehicle inventory</DialogTitle>
-              <DialogDescription className="mt-1 max-w-3xl">
-                Refine authorized stock using bounded, server-validated filters.
-                Quick controls remain unchanged; applying advanced filters
-                clears an active KPI shortcut.
+      <DialogContent height="default" className="sm:max-w-5xl">
+        <DialogHeader className="gap-0">
+          <div className="flex min-w-0 items-start gap-3 pr-8">
+            <span className="grid size-10 shrink-0 place-items-center rounded-2xl border border-primary/20 bg-primary/10 text-primary">
+              <SlidersHorizontal aria-hidden="true" className="size-4" />
+            </span>
+            <div className="min-w-0 flex-1">
+              <DialogTitle className="text-subsection-title">
+                Filter vehicle inventory
+              </DialogTitle>
+              <DialogDescription className="mt-1 max-w-2xl">
+                Narrow authorized stock by lifecycle, vehicle configuration,
+                location, commercial details, and data quality.
               </DialogDescription>
             </div>
-            <div className="flex shrink-0 items-center gap-2 rounded-2xl border border-border/70 bg-muted/40 px-3 py-2">
-              <Filter
-                aria-hidden="true"
-                className="size-4 text-muted-readable"
-              />
-              <span className="text-caption text-muted-readable">Draft</span>
-              <Badge
-                variant={draftFilterCount > 0 ? "default" : "secondary"}
-                className="text-tabular"
-              >
-                {draftFilterCount.toLocaleString("en-IN")}
-              </Badge>
-            </div>
+            <Badge
+              variant={draftFilterCount > 0 ? "secondary" : "outline"}
+              className="mt-0.5 h-7 shrink-0 rounded-xl px-2.5 text-tabular"
+            >
+              {draftFilterCount === 0
+                ? "No filters"
+                : `${draftFilterCount.toLocaleString("en-IN")} selected`}
+            </Badge>
           </div>
         </DialogHeader>
 
-        <DialogBody>
+        <DialogBody className="bg-background/35 px-4 py-4 sm:px-5">
           <form id="vehicle-inventory-advanced-filters" onSubmit={applyDraft}>
             <Accordion
               key={`${accordionKey}-${open ? "open" : "closed"}`}
               type="multiple"
               defaultValue={defaultExpandedSections(draft)}
-              className="grid gap-3"
+              className="grid gap-2.5"
             >
               <AccordionItem
                 value="lifecycle"
-                className="rounded-2xl border border-border/70 bg-card/65 px-1"
+                className="overflow-hidden rounded-2xl border border-border/70 bg-card/55 transition-colors data-[state=open]:border-border data-[state=open]:bg-card/80"
               >
                 <SectionTrigger
                   section="lifecycle"
                   count={sectionFilterCount("lifecycle", draft)}
                 />
-                <AccordionContent className="px-2 pb-4 sm:px-3">
-                  <div className="grid gap-3 lg:grid-cols-3">
+                <AccordionContent className="px-3 pb-3 sm:px-4 sm:pb-4">
+                  <div className="grid items-start gap-3 lg:grid-cols-3">
                     <FilterOptionGroup
                       label="Statuses"
                       description="Authoritative inventory lifecycle states."
@@ -1090,14 +1093,14 @@ function AdvancedFiltersDialog({
 
               <AccordionItem
                 value="product"
-                className="rounded-2xl border border-border/70 bg-card/65 px-1"
+                className="overflow-hidden rounded-2xl border border-border/70 bg-card/55 transition-colors data-[state=open]:border-border data-[state=open]:bg-card/80"
               >
                 <SectionTrigger
                   section="product"
                   count={sectionFilterCount("product", draft)}
                 />
-                <AccordionContent className="px-2 pb-4 sm:px-3">
-                  <div className="grid gap-3 lg:grid-cols-2 xl:grid-cols-3">
+                <AccordionContent className="px-3 pb-3 sm:px-4 sm:pb-4">
+                  <div className="grid items-start gap-3 lg:grid-cols-2 xl:grid-cols-3">
                     <FilterOptionGroup
                       label="Models"
                       options={facets.models}
@@ -1143,7 +1146,7 @@ function AdvancedFiltersDialog({
                         updateArray("segment", values);
                       }}
                     />
-                    <div className="grid content-start gap-4 rounded-2xl border border-border/70 bg-background/55 p-3.5 shadow-xs">
+                    <div className="grid content-start gap-3 rounded-2xl border border-border/60 bg-background/45 p-3.5">
                       <div>
                         <h4 className="text-body-sm font-medium text-foreground">
                           Vehicle attributes
@@ -1187,14 +1190,14 @@ function AdvancedFiltersDialog({
 
               <AccordionItem
                 value="location"
-                className="rounded-2xl border border-border/70 bg-card/65 px-1"
+                className="overflow-hidden rounded-2xl border border-border/70 bg-card/55 transition-colors data-[state=open]:border-border data-[state=open]:bg-card/80"
               >
                 <SectionTrigger
                   section="location"
                   count={sectionFilterCount("location", draft)}
                 />
-                <AccordionContent className="px-2 pb-4 sm:px-3">
-                  <div className="grid gap-3 lg:grid-cols-2">
+                <AccordionContent className="px-3 pb-3 sm:px-4 sm:pb-4">
+                  <div className="grid items-start gap-3 lg:grid-cols-2">
                     <FilterOptionGroup
                       label="Organization units"
                       options={facets.orgUnits}
@@ -1413,13 +1416,13 @@ function AdvancedFiltersDialog({
 
               <AccordionItem
                 value="quality"
-                className="rounded-2xl border border-border/70 bg-card/65 px-1"
+                className="overflow-hidden rounded-2xl border border-border/70 bg-card/55 transition-colors data-[state=open]:border-border data-[state=open]:bg-card/80"
               >
                 <SectionTrigger
                   section="quality"
                   count={sectionFilterCount("quality", draft)}
                 />
-                <AccordionContent className="px-2 pb-4 sm:px-3">
+                <AccordionContent className="px-3 pb-3 sm:px-4 sm:pb-4">
                   <FilterOptionGroup
                     label="Warnings"
                     description="Show records requiring controlled configuration or reconciliation."
@@ -1441,39 +1444,43 @@ function AdvancedFiltersDialog({
             </Accordion>
 
             {validationError === null ? null : (
-              <p
-                role="alert"
-                className="mt-4 rounded-2xl border border-destructive/25 bg-destructive/10 px-4 py-3 text-body-sm text-destructive"
-              >
-                {validationError}
-              </p>
+              <Alert variant="destructive" className="mt-3">
+                <ShieldAlert aria-hidden="true" />
+                <AlertDescription>{validationError}</AlertDescription>
+              </Alert>
             )}
           </form>
         </DialogBody>
 
-        <DialogFooter className="flex-row flex-wrap items-center sm:justify-between">
-          <div className="mr-auto flex min-w-0 items-center gap-2 text-caption text-muted-readable">
-            <Filter aria-hidden="true" className="size-4 shrink-0" />
+        <DialogFooter className="items-center sm:justify-between">
+          <div
+            className="mr-auto hidden min-w-0 items-center gap-2 text-caption text-muted-readable sm:flex"
+            aria-live="polite"
+          >
+            <Filter aria-hidden="true" className="size-3.5 shrink-0" />
             <span>
               {draftFilterCount === 0
                 ? "No advanced filters selected"
-                : `${draftFilterCount.toLocaleString("en-IN")} advanced filter${draftFilterCount === 1 ? "" : "s"} ready`}
+                : `${draftFilterCount.toLocaleString("en-IN")} filter${draftFilterCount === 1 ? "" : "s"} selected`}
             </span>
           </div>
 
-          <div className="flex flex-wrap items-center justify-end gap-2">
-            <Button
-              type="button"
-              variant="ghost"
-              disabled={draftFilterCount === 0}
-              onClick={() => {
-                setDraft(createEmptyAdvancedDraft());
-                setValidationError(null);
-              }}
-            >
-              <RotateCcw aria-hidden="true" className="size-4" />
-              Clear advanced
-            </Button>
+          <div className="flex w-full items-center justify-end gap-2 sm:w-auto">
+            {draftFilterCount > 0 ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="mr-auto sm:mr-0"
+                onClick={() => {
+                  setDraft(createEmptyAdvancedDraft());
+                  setValidationError(null);
+                }}
+              >
+                <RotateCcw aria-hidden="true" className="size-3.5" />
+                Clear all
+              </Button>
+            ) : null}
             <DialogClose asChild>
               <Button type="button" variant="outline">
                 Cancel
@@ -1498,6 +1505,58 @@ function AdvancedFiltersDialog({
   );
 }
 
+function InventorySortControl({
+  query,
+  navigate,
+}: Readonly<{
+  query: VehicleInventorySearchParams;
+  navigate: (overrides: Partial<VehicleInventorySearchParams>) => void;
+}>): React.ReactElement {
+  const value = sortOptionValue(query.sortBy, query.sortDirection);
+
+  return (
+    <Select
+      value={value}
+      onValueChange={(nextValue) => {
+        const parsed = parseSortOptionValue(nextValue);
+        if (parsed !== null) {
+          navigate(parsed);
+        }
+      }}
+    >
+      <SelectTrigger
+        size="sm"
+        aria-label="Sort vehicle inventory"
+        className="h-9 w-[min(18rem,calc(100vw-3rem))] shrink-0 rounded-xl border-input/80 bg-background/80 shadow-xs dark:bg-input/20"
+      >
+        <SelectValue placeholder="Sort inventory" />
+      </SelectTrigger>
+      <SelectContent position="popper" align="start" className="min-w-[18rem]">
+        {SORT_GROUPS.map((group) => (
+          <SelectGroup key={group.label}>
+            <SelectLabel>{group.label}</SelectLabel>
+            {group.fields.flatMap((sortBy) =>
+              VEHICLE_INVENTORY_SORT_DIRECTIONS.map((sortDirection) => (
+                <SelectItem
+                  key={sortOptionValue(sortBy, sortDirection)}
+                  value={sortOptionValue(sortBy, sortDirection)}
+                >
+                  {sortDirection === "ASC" ? (
+                    <ArrowUp aria-hidden="true" className="size-3.5" />
+                  ) : (
+                    <ArrowDown aria-hidden="true" className="size-3.5" />
+                  )}
+                  {sortOptionLabel(sortBy, sortDirection)}
+                </SelectItem>
+              )),
+            )}
+          </SelectGroup>
+        ))}
+      </SelectContent>
+    </Select>
+  );
+}
+
 function ActiveFilterSummary({
   query,
   draft,
@@ -1512,23 +1571,40 @@ function ActiveFilterSummary({
     }))
     .filter((item) => item.count > 0);
 
-  if (sectionCounts.length === 0 && query.kpi === undefined) {
+  if (
+    sectionCounts.length === 0 &&
+    query.kpi === undefined &&
+    query.q === undefined
+  ) {
     return null;
   }
 
   return (
     <div
-      className="mt-4 flex flex-wrap items-center gap-2 border-t border-border/65 pt-3"
+      className="flex max-w-[28rem] shrink-0 items-center gap-1.5 overflow-x-auto no-scrollbar"
       aria-label="Active inventory filter summary"
     >
-      <span className="mr-1 text-caption font-medium text-muted-readable">
-        Active:
+      <span className="inline-flex shrink-0 items-center gap-1 text-caption font-medium text-muted-readable">
+        <Filter aria-hidden="true" className="size-3.5" />
+        Applied
       </span>
+      {query.q === undefined ? null : (
+        <Badge variant="secondary" className="max-w-48 shrink-0">
+          <Search aria-hidden="true" className="size-3" />
+          <span className="truncate">{query.q}</span>
+        </Badge>
+      )}
       {query.kpi === undefined ? null : (
-        <Badge variant="default">KPI · {humanizeToken(query.kpi)}</Badge>
+        <Badge variant="default" className="shrink-0">
+          {humanizeToken(query.kpi)}
+        </Badge>
       )}
       {sectionCounts.map(({ section, count }) => (
-        <Badge key={section} variant="outline" className="text-tabular">
+        <Badge
+          key={section}
+          variant="outline"
+          className="shrink-0 text-tabular"
+        >
           {SECTION_PRESENTATION[section].title} ·{" "}
           {count.toLocaleString("en-IN")}
         </Badge>
@@ -1536,7 +1612,6 @@ function ActiveFilterSummary({
     </div>
   );
 }
-
 export function VehicleInventoryFilters({
   query,
   facets,
@@ -1565,116 +1640,107 @@ export function VehicleInventoryFilters({
 
   return (
     <section
-      aria-label="Vehicle inventory controls"
+      aria-labelledby="vehicle-inventory-title"
+      aria-describedby="vehicle-inventory-description"
       aria-busy={pending}
-      className="relative rounded-3xl border border-border/75 bg-card/90 p-4 shadow-sm shadow-foreground/5 supports-[backdrop-filter]:bg-card/80 supports-[backdrop-filter]:backdrop-blur-xl sm:p-5"
+      className="relative h-[60px] min-h-[60px] max-h-[60px] overflow-hidden rounded-2xl border border-border/70 bg-card shadow-xs shadow-foreground/5"
     >
-      <div className="grid items-start gap-4 md:grid-cols-2 xl:grid-cols-[minmax(20rem,2fr)_minmax(10rem,0.85fr)_minmax(10rem,0.85fr)_minmax(20rem,1.45fr)_auto]">
-        <SearchInventoryControl
-          key={query.q ?? ""}
-          query={query}
-          navigate={navigate}
-          pending={pending}
-        />
+      <div className="no-scrollbar h-full overflow-x-auto overflow-y-hidden overscroll-x-contain">
+        <div
+          className="flex h-full min-w-max w-full items-center gap-3 px-4 sm:px-5"
+          role="group"
+          aria-label="Vehicle inventory controls"
+        >
+          <div className="flex shrink-0 items-center gap-3">
+            <span className="grid size-9 shrink-0 place-items-center rounded-xl border border-primary/20 bg-primary/10 text-primary shadow-xs dark:bg-primary/10">
+              <CarFront aria-hidden="true" className="size-4" />
+            </span>
 
-        <FieldShell id="vehicle-inventory-sort-field" label="Sort field">
-          <Select
-            value={query.sortBy}
-            onValueChange={(value) => {
-              if (isSortField(value)) {
-                navigate({ sortBy: value });
-              }
-            }}
-          >
-            <SelectTrigger
-              id="vehicle-inventory-sort-field"
-              className="h-11 w-full"
-            >
-              <SelectValue placeholder="Select inventory sort field" />
-            </SelectTrigger>
-            <SelectContent position="popper" align="start">
-              {VEHICLE_INVENTORY_SORT_FIELDS.map((value) => (
-                <SelectItem key={value} value={value}>
-                  {SORT_LABELS[value]}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </FieldShell>
+            <div className="flex shrink-0 flex-col justify-center gap-0.5">
+              <h1
+                id="vehicle-inventory-title"
+                className="whitespace-nowrap text-card-title leading-tight"
+              >
+                Vehicle inventory
+              </h1>
+              <p
+                id="vehicle-inventory-description"
+                className="max-w-[25rem] truncate whitespace-nowrap text-caption leading-tight text-muted-readable"
+              >
+                {facets.scope.mode === "TENANT_NETWORK"
+                  ? "All authorized dealer and sub-dealer stock in this tenant."
+                  : "Authorized dealer stock, availability, location, aging, and pricing."}
+              </p>
+            </div>
+          </div>
 
-        <FieldShell id="vehicle-inventory-sort-direction" label="Direction">
-          <Select
-            value={query.sortDirection}
-            onValueChange={(value) => {
-              if (isSortDirection(value)) {
-                navigate({ sortDirection: value });
-              }
-            }}
-          >
-            <SelectTrigger
-              id="vehicle-inventory-sort-direction"
-              className="h-11 w-full"
-            >
-              <SelectValue placeholder="Select sort direction" />
-            </SelectTrigger>
-            <SelectContent position="popper" align="start">
-              <SelectItem value="ASC">
-                <ArrowUpAZ aria-hidden="true" className="size-4" />
-                Ascending
-              </SelectItem>
-              <SelectItem value="DESC">
-                <ArrowDownAZ aria-hidden="true" className="size-4" />
-                Descending
-              </SelectItem>
-            </SelectContent>
-          </Select>
-        </FieldShell>
+          <div className="ms-auto flex shrink-0 items-center justify-end gap-2 ps-6">
+            <InventorySortControl query={query} navigate={navigate} />
 
-        <InventoryScopeControl
-          query={query}
-          canIncludeSubDealerStock={facets.scope.canIncludeSubDealerStock}
-          eligibleSubDealerCount={facets.scope.eligibleSubDealerCount}
-          navigate={navigate}
-        />
+            {facets.scope.mode === "TENANT_NETWORK" ? (
+              <Badge
+                variant="secondary"
+                className="h-8 shrink-0 gap-1.5 rounded-xl border border-primary/20 bg-primary/10 px-3 text-primary"
+              >
+                <Database aria-hidden="true" className="size-3.5" />
+                All dealers & sub-dealers
+              </Badge>
+            ) : (
+              <InventoryScopeControl
+                query={query}
+                canIncludeSubDealerStock={facets.scope.canIncludeSubDealerStock}
+                eligibleSubDealerCount={facets.scope.eligibleSubDealerCount}
+                navigate={navigate}
+              />
+            )}
 
-        <div className="flex h-full items-start justify-end gap-2 pt-[1.375rem] md:col-span-2 xl:col-span-1">
-          <AdvancedFiltersDialog
-            query={query}
-            facets={facets}
-            filterCount={filterCount}
-            pending={pending}
-            onApply={(nextQuery) => {
-              navigate(nextQuery);
-            }}
-          />
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button variant="ghost" size="icon" className="size-11" asChild>
-                <a
-                  href={vehicleInventoryResetHref(query)}
-                  aria-label="Reset all vehicle inventory controls"
+            <ActiveFilterSummary query={query} draft={advancedDraft} />
+
+            <AdvancedFiltersDialog
+              query={query}
+              facets={facets}
+              filterCount={filterCount}
+              pending={pending}
+              onApply={(nextQuery) => {
+                navigate(nextQuery);
+              }}
+            />
+
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  className="rounded-xl"
+                  asChild
                 >
-                  <RotateCcw aria-hidden="true" className="size-4" />
-                </a>
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>
-              Reset search, sort, scope, KPI, and advanced filters.
-            </TooltipContent>
-          </Tooltip>
+                  <a
+                    href={vehicleInventoryResetHref(query)}
+                    aria-label="Reset vehicle inventory controls"
+                  >
+                    <RotateCcw aria-hidden="true" className="size-3.5" />
+                  </a>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent className="max-w-xs">
+                Restore the default global search, sort, stock scope, KPI, and
+                advanced filters.
+              </TooltipContent>
+            </Tooltip>
+
+            {pending ? (
+              <span
+                role="status"
+                aria-live="polite"
+                className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-xl px-2 text-caption text-muted-readable"
+              >
+                <Spinner decorative />
+                <span>Updating…</span>
+              </span>
+            ) : null}
+          </div>
         </div>
       </div>
-
-      <ActiveFilterSummary query={query} draft={advancedDraft} />
-
-      {pending ? (
-        <div
-          aria-live="polite"
-          className="pointer-events-none absolute inset-x-4 bottom-1 flex justify-end text-caption text-muted-readable"
-        >
-          Updating inventory…
-        </div>
-      ) : null}
     </section>
   );
 }

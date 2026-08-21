@@ -1,6 +1,7 @@
 // oz-next-app/src/features/engagement/dealer-dashboard/policies/dealer-dashboard.policy.ts
 import type { ActorKind, MeResponse } from "@/lib/api/contracts";
 import type { ServerActorContextHeaders } from "@/server/api/request-context-headers";
+import { canonicalErpRoleSet, canonicalizeErpRoleName } from "@/lib/auth/roles";
 import { erpActorScopeFromMe } from "@/features/erp-core/queries/erp-query-scope";
 import type { ErpActorScope } from "@/features/erp-core/contracts/erp-common.schema";
 
@@ -27,7 +28,6 @@ export type DealerDashboardCapabilities = Readonly<{
   canSendOwnerGuideAppLink: boolean;
   canReadOwnerGuideSettings: boolean;
   canUpdateOwnerGuideSettings: boolean;
-  canManageDealerStaff: boolean;
 }>;
 
 export type ResolvedDealerDashboardAccess = Readonly<{
@@ -66,7 +66,6 @@ const NO_CAPABILITIES = {
   canSendOwnerGuideAppLink: false,
   canReadOwnerGuideSettings: false,
   canUpdateOwnerGuideSettings: false,
-  canManageDealerStaff: false,
 } as const satisfies DealerDashboardCapabilities;
 
 const DEALER_STAFF_CAPABILITIES = {
@@ -81,7 +80,6 @@ const DEALER_ADMIN_CAPABILITIES = {
   canUpdateOwnerGuide: true,
   canDisableOwnerGuide: true,
   canSendOwnerGuideAppLink: true,
-  canManageDealerStaff: true,
 } as const satisfies DealerDashboardCapabilities;
 
 const SUPER_ADMIN_CAPABILITIES = {
@@ -93,13 +91,10 @@ const SUPER_ADMIN_CAPABILITIES = {
   canSendOwnerGuideAppLink: true,
   canReadOwnerGuideSettings: true,
   canUpdateOwnerGuideSettings: true,
-  canManageDealerStaff: false,
 } as const satisfies DealerDashboardCapabilities;
 
 function normalizedRoles(me: MeResponse): ReadonlySet<string> {
-  const roles = me.auth?.actor.roles ?? me.roles;
-
-  return new Set(roles.map((role) => role.trim().toLowerCase()));
+  return canonicalErpRoleSet(me.auth?.actor.roles ?? me.roles);
 }
 
 function effectivePermissions(me: MeResponse): ReadonlySet<string> {
@@ -118,7 +113,9 @@ function actorKind(me: MeResponse, scope: ErpActorScope): ActorKind {
 }
 
 function primaryRole(me: MeResponse): string | null {
-  return me.primary_role ?? me.roles[0] ?? me.auth?.actor.roles[0] ?? null;
+  return canonicalizeErpRoleName(
+    me.primary_role ?? me.roles[0] ?? me.auth?.actor.roles[0],
+  );
 }
 
 function hasPermission(
@@ -157,7 +154,6 @@ function permissionCapabilities(
       PERMISSION.HAPPY_CUSTOMER_READ,
     ),
     canUpdateOwnerGuideSettings: canUpdateOwnerGuide,
-    canManageDealerStaff: false,
   };
 }
 

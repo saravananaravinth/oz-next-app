@@ -2,6 +2,7 @@
 "use client";
 
 import * as React from "react";
+import { useRouter } from "next/navigation";
 import { ThemeProvider } from "next-themes";
 import { NuqsAdapter } from "nuqs/adapters/next/app";
 import { ErrorBoundary, type FallbackProps } from "react-error-boundary";
@@ -301,6 +302,7 @@ function ErrorFallback({
   resetErrorBoundary,
   showDiagnostics,
 }: ErrorFallbackProps): React.ReactElement {
+  const router = useRouter();
   const [errorId] = React.useState(createErrorId);
   const printable = React.useMemo(() => normalizeError(error), [error]);
 
@@ -309,10 +311,9 @@ function ErrorFallback({
   }, [resetErrorBoundary]);
 
   const handleGoHome = React.useCallback((): void => {
-    if (typeof window !== "undefined") {
-      window.location.assign("/");
-    }
-  }, []);
+    router.replace("/");
+    resetErrorBoundary();
+  }, [resetErrorBoundary, router]);
 
   return (
     <main

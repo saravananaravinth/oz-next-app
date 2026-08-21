@@ -2,6 +2,11 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 
+import {
+  evaluateUserAgentSupport,
+  SUPPORTED_BROWSER_FALLBACK_PATH,
+} from "./src/lib/runtime/browser-support";
+
 const HDR = {
   REQUEST_ID: "x-request-id",
   CORRELATION_ID: "x-correlation-id",
@@ -10,6 +15,8 @@ const HDR = {
   CACHE_CONTROL: "cache-control",
   ORIGIN: "origin",
   CONTENT_TYPE: "content-type",
+  ACCEPT: "accept",
+  USER_AGENT: "user-agent",
 } as const;
 
 const CT = {
@@ -138,6 +145,7 @@ const PUBLIC_EXACT_PATHS = new Set<string>([
   LOGIN_PATH,
   "/forgot-password",
   "/reset-password",
+  SUPPORTED_BROWSER_FALLBACK_PATH,
 ]);
 
 const PUBLIC_PREFIXES = [
@@ -410,6 +418,29 @@ function isPublicPath(pathname: string): boolean {
     matchesPublicTokenRoute(pathname) ||
     isPublicApiPath(pathname) ||
     isStaticAssetPath(pathname)
+  );
+}
+
+function acceptsHtmlDocument(request: NextRequest): boolean {
+  const accept = request.headers.get(HDR.ACCEPT)?.toLowerCase() ?? "";
+
+  return (
+    accept.includes("text/html") || accept.includes("application/xhtml+xml")
+  );
+}
+
+function shouldEvaluateBrowserSupport(
+  request: NextRequest,
+  pathname: string,
+): boolean {
+  const method = request.method.toUpperCase();
+
+  return (
+    (method === "GET" || method === "HEAD") &&
+    pathname !== SUPPORTED_BROWSER_FALLBACK_PATH &&
+    !isApiPath(pathname) &&
+    !isStaticAssetPath(pathname) &&
+    acceptsHtmlDocument(request)
   );
 }
 
@@ -710,6 +741,28 @@ function problemResponse(input: ProblemInput): NextResponse {
   });
 }
 
+function unsupportedBrowserRedirect(
+  request: NextRequest,
+  context: RequestContext,
+): NextResponse {
+  const url = request.nextUrl.clone();
+
+  url.pathname = SUPPORTED_BROWSER_FALLBACK_PATH;
+  url.search = "";
+
+  const response = finalizeResponse(NextResponse.redirect(url, 307), {
+    request,
+    context,
+    privateCache: true,
+    varyCookie: false,
+  });
+
+  appendVary(response.headers, "Accept");
+  appendVary(response.headers, "User-Agent");
+
+  return response;
+}
+
 function loginRedirect(
   request: NextRequest,
   context: RequestContext,
@@ -801,6 +854,14 @@ export function middleware(request: NextRequest): NextResponse {
     });
   }
 
+  if (
+    shouldEvaluateBrowserSupport(request, pathname) &&
+    evaluateUserAgentSupport(request.headers.get(HDR.USER_AGENT)).status ===
+      "unsupported"
+  ) {
+    return unsupportedBrowserRedirect(request, context);
+  }
+
   if (requiresSameOrigin(request) && !isSameOriginRequest(request)) {
     return problemResponse({
       request,
@@ -826,10 +887,17 @@ export function middleware(request: NextRequest): NextResponse {
     return loginRedirect(request, context);
   }
 
-  return nextResponse(request, context, {
+  const response = nextResponse(request, context, {
     privateCache: shouldUsePrivateCache(pathname, publicPath),
     varyCookie: shouldVaryOnCookie(pathname, publicPath),
   });
+
+  if (shouldEvaluateBrowserSupport(request, pathname)) {
+    appendVary(response.headers, "Accept");
+    appendVary(response.headers, "User-Agent");
+  }
+
+  return response;
 }
 
 export const config = {

@@ -114,15 +114,12 @@ export async function GET(request: NextRequest): Promise<Response> {
 
   const access = resolveVehicleInventoryAccess(me, parsedQuery.data);
 
-  if (access.kind !== "dealer" && access.kind !== "contextual") {
+  if (access.kind === "forbidden") {
     return problemResponse({
       status: HTTP_STATUS.FORBIDDEN,
       code: "INVENTORY_FORBIDDEN",
       title: "Inventory export forbidden",
-      detail:
-        access.kind === "forbidden"
-          ? access.reason
-          : "An explicit authorized tenant and dealer context is required.",
+      detail: access.reason,
     });
   }
 

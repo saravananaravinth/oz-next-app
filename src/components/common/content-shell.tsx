@@ -45,6 +45,7 @@ export type ContentToolbarVariant = "default" | "subtle" | "ghost";
 export type ContentToolbarAlign = "between" | "start" | "end";
 export type ContentTone =
   "default" | "primary" | "success" | "warning" | "destructive" | "info";
+export type ContentMetricPresentation = "default" | "dashboard";
 export type ContentStatusVariant = NonNullable<AlertProps["variant"]>;
 export type ContentAnnouncement = "off" | "polite" | "assertive";
 export type ContentSkeletonVariant = "page" | "section" | "table" | "form";
@@ -154,6 +155,7 @@ export type ContentMetricCardProps = Omit<
     active?: boolean;
     ariaLabel?: string;
     ariaCurrent?: React.AriaAttributes["aria-current"];
+    presentation?: ContentMetricPresentation;
   }>;
 
 export type ContentStatusProps = Omit<
@@ -289,7 +291,7 @@ const CONTENT_GRID_CLASSES = {
     "grid-cols-1 @3xl/content-grid:grid-cols-2 @6xl/content-grid:grid-cols-3",
   four: "grid-cols-1 @xl/content-grid:grid-cols-2 @5xl/content-grid:grid-cols-4",
   metrics:
-    "grid-cols-[repeat(auto-fit,minmax(min(100%,15rem),1fr))] auto-rows-fr",
+    "grid-cols-1 @xl/content-grid:grid-cols-2 @5xl/content-grid:grid-cols-4",
   "main-aside":
     "grid-cols-1 @5xl/content-grid:grid-cols-[minmax(0,1fr)_minmax(18rem,24rem)]",
   "aside-main":
@@ -330,6 +332,33 @@ const CONTENT_TONE_ICON_CLASSES = {
     "border-warning/30 bg-warning/10 text-warning-foreground dark:text-warning",
   destructive: "border-destructive/25 bg-destructive/5 text-destructive",
   info: "border-info/25 bg-info/5 text-info",
+} as const satisfies Record<ContentTone, string>;
+
+const CONTENT_TONE_ACCENT_CLASSES = {
+  default: "bg-border",
+  primary: "bg-primary/75",
+  success: "bg-success/75",
+  warning: "bg-warning/80",
+  destructive: "bg-destructive/75",
+  info: "bg-info/75",
+} as const satisfies Record<ContentTone, string>;
+
+const CONTENT_TONE_DASHBOARD_SURFACE_CLASSES = {
+  default: "border-border/75 bg-card",
+  primary: "border-primary/20 bg-primary/[0.025]",
+  success: "border-success/20 bg-success/[0.03]",
+  warning: "border-warning/25 bg-warning/[0.035]",
+  destructive: "border-destructive/20 bg-destructive/[0.025]",
+  info: "border-info/20 bg-info/[0.03]",
+} as const satisfies Record<ContentTone, string>;
+
+const CONTENT_TONE_DASHBOARD_ACTIVE_CLASSES = {
+  default: "border-foreground/70 bg-foreground text-background",
+  primary: "border-primary bg-primary text-primary-foreground",
+  success: "border-success bg-success text-success-foreground",
+  warning: "border-warning bg-warning text-warning-foreground",
+  destructive: "border-destructive bg-destructive text-destructive-foreground",
+  info: "border-info bg-info text-info-foreground",
 } as const satisfies Record<ContentTone, string>;
 
 const CONTENT_STATUS_ICON_CLASSES = {
@@ -801,69 +830,188 @@ export function ContentMetricCard({
   active = false,
   ariaLabel,
   ariaCurrent,
+  presentation = "default",
   size = "sm",
   className,
   ...props
 }: ContentMetricCardProps): React.ReactElement {
+  const hasSupportingContent = description !== undefined || trend !== undefined;
+  const dashboardPresentation = presentation === "dashboard";
   const card = (
     <Card
       data-slot="content-metric-card"
       data-tone={tone}
       data-active={active ? "true" : "false"}
+      data-presentation={presentation}
       size={size}
       className={cn(
-        "group/metric relative h-full min-w-0 overflow-hidden border-border/75 bg-card py-0 shadow-none transition-[border-color,background-color,box-shadow] duration-[var(--motion-duration-fast)] ease-[var(--motion-ease-standard)] motion-reduce:transition-none",
+        "group/metric relative isolate h-full min-w-0 overflow-hidden py-0 shadow-none ring-0 transition-[border-color,background-color,box-shadow,color,filter] duration-[var(--motion-duration-fast)] ease-[var(--motion-ease-standard)] motion-reduce:transition-none",
+        dashboardPresentation
+          ? [
+              "min-h-[6.75rem]",
+              active
+                ? CONTENT_TONE_DASHBOARD_ACTIVE_CLASSES[tone]
+                : CONTENT_TONE_DASHBOARD_SURFACE_CLASSES[tone],
+            ]
+          : [
+              "border-border/75 bg-card",
+              hasSupportingContent ? "min-h-[7.25rem]" : "min-h-[6.25rem]",
+            ],
         href !== undefined &&
-          "hover:border-foreground/20 hover:bg-muted/15 hover:shadow-sm",
-        active &&
-          "border-primary/45 bg-primary/[0.055] shadow-sm shadow-primary/10",
+          (dashboardPresentation
+            ? active
+              ? "cursor-pointer hover:brightness-[0.98] hover:shadow-sm"
+              : "cursor-pointer hover:border-foreground/25 hover:bg-muted/35 hover:shadow-xs hover:shadow-foreground/5"
+            : "cursor-pointer hover:border-foreground/25 hover:bg-card hover:shadow-xs hover:shadow-foreground/5"),
+        !dashboardPresentation &&
+          active &&
+          "border-primary/50 bg-primary/[0.035] shadow-xs shadow-primary/5 ring-1 ring-inset ring-primary/15",
+        dashboardPresentation &&
+          active &&
+          "shadow-sm shadow-foreground/10 ring-1 ring-inset ring-background/10",
         className,
       )}
       {...props}
     >
-      <span
-        aria-hidden="true"
-        className={cn(
-          "absolute inset-x-0 top-0 h-0.5 bg-transparent transition-colors duration-[var(--motion-duration-fast)] ease-[var(--motion-ease-standard)] motion-reduce:transition-none",
-          active && "bg-primary",
-        )}
-      />
+      {dashboardPresentation ? null : (
+        <span
+          data-slot="content-metric-card-accent"
+          aria-hidden="true"
+          className={cn(
+            "absolute inset-x-0 top-0 h-0.5 opacity-80",
+            CONTENT_TONE_ACCENT_CLASSES[tone],
+            active && "h-[3px] opacity-100",
+          )}
+        />
+      )}
 
-      <CardContent className="grid min-w-0 gap-3 p-4">
-        <div className="flex min-w-0 items-start justify-between gap-3">
-          <div className="min-w-0 whitespace-normal break-words text-overline text-muted-readable">
-            {label}
-          </div>
-
-          {icon !== undefined ? (
+      {dashboardPresentation ? (
+        <CardContent className="flex h-full min-w-0 flex-col justify-between gap-2.5 p-3.5 sm:p-4">
+          <div className="flex min-w-0 items-start justify-between gap-3">
             <div
-              aria-hidden="true"
+              data-slot="content-metric-card-label"
               className={cn(
-                "flex size-9 shrink-0 items-center justify-center rounded-xl border transition-[background-color,border-color,color] duration-[var(--motion-duration-fast)] ease-[var(--motion-ease-standard)] motion-reduce:transition-none [&_svg]:size-4",
-                CONTENT_TONE_ICON_CLASSES[tone],
-                href !== undefined &&
-                  "group-hover/metric:border-primary/25 group-hover/metric:bg-primary/10 group-hover/metric:text-primary",
-                active && "border-primary/25 bg-primary/12 text-primary",
+                "min-w-0 truncate text-caption font-medium",
+                active ? "text-inherit opacity-90" : "text-foreground/80",
               )}
             >
-              {icon}
+              {label}
             </div>
-          ) : null}
-        </div>
 
-        <div className="text-metric text-tabular text-foreground">{value}</div>
-
-        {description !== undefined || trend !== undefined ? (
-          <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-caption text-muted-readable">
-            {description !== undefined ? (
-              <span className="min-w-0 text-pretty">{description}</span>
-            ) : null}
-            {trend !== undefined ? (
-              <span className="text-tabular">{trend}</span>
+            {icon !== undefined ? (
+              <div
+                data-slot="content-metric-card-icon"
+                aria-hidden="true"
+                className={cn(
+                  "flex size-7 shrink-0 items-center justify-center rounded-lg border shadow-none [&_svg]:size-3.5",
+                  active
+                    ? "border-current/20 bg-background/15 text-inherit"
+                    : CONTENT_TONE_ICON_CLASSES[tone],
+                )}
+              >
+                {icon}
+              </div>
             ) : null}
           </div>
-        ) : null}
-      </CardContent>
+
+          <div className="flex min-w-0 items-end justify-between gap-3">
+            <div
+              data-slot="content-metric-card-value"
+              className={cn(
+                "min-w-0 text-[clamp(1.875rem,2.25vw,2.5rem)] font-semibold leading-[0.96] tracking-[-0.04em] text-tabular",
+                active ? "text-inherit" : "text-foreground",
+              )}
+            >
+              {value}
+            </div>
+
+            {hasSupportingContent ? (
+              <div
+                data-slot="content-metric-card-support"
+                className="flex min-w-0 max-w-[62%] shrink-0 items-stretch justify-end gap-1.5"
+              >
+                {description !== undefined ? (
+                  <span
+                    data-slot="content-metric-card-description"
+                    className={cn(
+                      "inline-flex h-6 min-w-0 items-center truncate rounded-md px-2 text-[0.6875rem] leading-none",
+                      active
+                        ? "bg-background/15 text-inherit opacity-90"
+                        : "bg-muted/55 text-muted-readable",
+                    )}
+                  >
+                    {description}
+                  </span>
+                ) : null}
+                {trend !== undefined ? (
+                  <span
+                    data-slot="content-metric-card-trend"
+                    className="inline-flex h-6 shrink-0 items-stretch"
+                  >
+                    {trend}
+                  </span>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
+        </CardContent>
+      ) : (
+        <CardContent className="grid min-w-0 gap-2.5 p-3.5 sm:p-4">
+          <div className="flex min-w-0 items-center justify-between gap-3">
+            <div
+              data-slot="content-metric-card-label"
+              className="min-w-0 truncate text-overline text-muted-readable"
+            >
+              {label}
+            </div>
+
+            {icon !== undefined ? (
+              <div
+                data-slot="content-metric-card-icon"
+                aria-hidden="true"
+                className={cn(
+                  "flex size-8 shrink-0 items-center justify-center rounded-lg border shadow-none [&_svg]:size-4",
+                  CONTENT_TONE_ICON_CLASSES[tone],
+                  active && "shadow-xs",
+                )}
+              >
+                {icon}
+              </div>
+            ) : null}
+          </div>
+
+          <div
+            data-slot="content-metric-card-value"
+            className="text-metric text-tabular leading-none text-foreground"
+          >
+            {value}
+          </div>
+
+          {hasSupportingContent ? (
+            <div
+              data-slot="content-metric-card-support"
+              className="mt-0.5 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 border-t border-border/55 pt-2 text-caption text-muted-readable"
+            >
+              {description !== undefined ? (
+                <span
+                  data-slot="content-metric-card-description"
+                  className="min-w-0 flex-1 text-pretty"
+                >
+                  {description}
+                </span>
+              ) : null}
+              {trend !== undefined ? (
+                <span
+                  data-slot="content-metric-card-trend"
+                  className="shrink-0 text-tabular font-medium text-foreground/75"
+                >
+                  {trend}
+                </span>
+              ) : null}
+            </div>
+          ) : null}
+        </CardContent>
+      )}
     </Card>
   );
 
@@ -877,7 +1025,10 @@ export function ContentMetricCard({
       href={href}
       aria-current={ariaCurrent ?? (active ? "page" : undefined)}
       aria-label={ariaLabel}
-      className="block h-full min-w-0 rounded-2xl outline-none focus-visible:ring-3 focus-visible:ring-ring/45 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+      className={cn(
+        "block h-full min-w-0 outline-none focus-visible:ring-3 focus-visible:ring-ring/45 focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+        size === "sm" ? "rounded-xl" : "rounded-2xl",
+      )}
     >
       {card}
     </Link>

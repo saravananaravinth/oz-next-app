@@ -666,4 +666,4 @@ export function useToast(): ToastApi {
   return toastApi;
 }
 
-export { sonnerToast as toast };
+export { toastApi as toast };

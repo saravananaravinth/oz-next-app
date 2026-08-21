@@ -3,14 +3,28 @@ import type * as React from "react";
 
 import { cn } from "@/lib/utils";
 
+export type TableScrollMode = "self" | "parent";
+
+type TableProps = React.ComponentProps<"table"> &
+  Readonly<{
+    scrollMode?: TableScrollMode;
+  }>;
+
 function Table({
   className,
+  scrollMode = "self",
   ...props
-}: React.ComponentProps<"table">): React.ReactElement {
+}: TableProps): React.ReactElement {
   return (
     <div
       data-slot="table-container"
-      className="relative w-full overflow-x-auto overscroll-x-contain scrollbar-stable"
+      data-scroll-mode={scrollMode}
+      className={cn(
+        "relative w-full scrollbar-stable",
+        scrollMode === "self"
+          ? "overflow-x-auto overscroll-x-contain"
+          : "overflow-visible",
+      )}
     >
       <table
         data-slot="table"

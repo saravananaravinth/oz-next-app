@@ -9,11 +9,13 @@ export {
   type HeaderBarProps,
 } from "@/features/app-shell/ui/header-bar";
 export {
+  isNavigationIconKey,
   NavMain,
   type Item,
   type NavCommon,
   type NavMainProps,
   type NavigationBadge,
+  type NavigationIconKey,
 } from "@/features/app-shell/ui/nav-main";
 export {
   GlobalSearch,

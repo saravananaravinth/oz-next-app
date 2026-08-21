@@ -9,3 +9,7 @@ export {
   default as UnsupportedDeviceDefault,
   type UnsupportedDeviceProps,
 } from "@/components/common/feedback/unsupported-device";
+export {
+  UnsupportedBrowser,
+  default as UnsupportedBrowserDefault,
+} from "@/components/common/feedback/unsupported-browser";

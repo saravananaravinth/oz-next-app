@@ -25,29 +25,29 @@ export function VehicleVin({
 
   if (vin === null) {
     return (
-      <span className="font-mono text-caption text-muted-readable">
+      <span className="inline-flex min-h-7 items-center rounded-lg border border-border/60 bg-muted/30 px-2 font-mono text-[0.6875rem] text-muted-readable">
         VIN not available
       </span>
     );
   }
 
-  const actionLabel = revealed ? "Hide full VIN" : "Reveal full VIN";
+  const actionLabel = revealed ? "Hide full VIN" : "Show full VIN";
 
   return (
-    <span className="flex min-w-0 items-center gap-1.5">
-      <span
-        className="min-w-0 truncate font-mono text-caption text-muted-readable"
+    <span className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-1.5">
+      <code
+        className="block min-w-0 truncate rounded-lg border border-border/60 bg-muted/30 px-2 py-1 font-mono text-[0.6875rem] tracking-[0.035em] text-foreground"
         aria-live="polite"
       >
         {revealed ? vin : maskVin(vin)}
-      </span>
+      </code>
       <Tooltip>
         <TooltipTrigger asChild>
           <Button
             type="button"
             variant="ghost"
             size="icon-xs"
-            className="shrink-0"
+            className="size-7 shrink-0 rounded-lg"
             aria-pressed={revealed}
             aria-label={actionLabel}
             onClick={() => {

@@ -17,7 +17,7 @@ import { isApiHttpError } from "@/lib/api/problem";
 
 const PAGE_TITLE = "Vehicle inventory";
 const PAGE_DESCRIPTION =
-  "Dealer-scoped Ozotec vehicle inventory, pricing, transfer, and data-quality workspace.";
+  "Authorized Ozotec dealer and sub-dealer vehicle inventory, pricing, transfer, and data-quality workspace.";
 
 type VehicleInventoryPageProps = Readonly<{
   searchParams: Promise<VehicleInventoryRawSearchParams>;
@@ -58,8 +58,8 @@ export default async function VehicleInventoryRoutePage({
 
   const access = resolveVehicleInventoryAccess(me, parsedQuery.data);
 
-  if (access.kind !== "dealer" && access.kind !== "contextual") {
-    return <VehicleInventoryAccessState access={access} tenants={me.tenants} />;
+  if (access.kind === "forbidden") {
+    return <VehicleInventoryAccessState access={access} />;
   }
 
   let data;

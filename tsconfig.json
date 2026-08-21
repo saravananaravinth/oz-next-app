@@ -66,6 +66,7 @@
     "open-next.config.mts",
     "src/types/cloudflare-bindings.d.ts",
     ".next/cache",
+    ".next/dev/types",
     ".open-next",
     ".wrangler",
     ".wrangler-state",

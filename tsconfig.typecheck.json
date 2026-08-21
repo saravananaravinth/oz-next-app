@@ -1,0 +1,36 @@
+{
+  "extends": "./tsconfig.json",
+  "include": [
+    "next-env.d.ts",
+    "middleware.ts",
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "src/**/*.d.ts",
+    "next.config.ts",
+    "next.config.mts",
+    ".next/types/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "cloudflare-env.d.ts",
+    "worker-configuration.d.ts",
+    "open-next.config.ts",
+    "open-next.config.mts",
+    "src/types/cloudflare-bindings.d.ts",
+    ".next/cache",
+    ".next/dev/types",
+    ".open-next",
+    ".wrangler",
+    ".wrangler-state",
+    ".vercel",
+    ".turbo",
+    ".mf",
+    "dist",
+    "build",
+    "out",
+    "coverage",
+    "test-results",
+    "playwright-report",
+    "bundles"
+  ]
+}
