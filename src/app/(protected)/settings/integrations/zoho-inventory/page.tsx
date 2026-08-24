@@ -205,6 +205,12 @@ export default async function ZohoInventoryIntegrationRoutePage({
             ...(parsedQuery.data.itemStatus === undefined
               ? {}
               : { itemStatus: parsedQuery.data.itemStatus }),
+            ...(parsedQuery.data.entity === undefined
+              ? {}
+              : { entityKind: parsedQuery.data.entity }),
+            ...(parsedQuery.data.category === undefined
+              ? {}
+              : { categoryId: parsedQuery.data.category }),
           }),
           readZohoWebhookEndpoints({
             access,

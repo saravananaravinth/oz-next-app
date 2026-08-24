@@ -30,7 +30,10 @@ function requestId(value: string | undefined): string | undefined {
     : undefined;
 }
 
-function apiMessage(status: number, code: string): string {
+export function dealerOnboardingApiMessage(
+  status: number,
+  code: string,
+): string {
   if (code === "GSTIN_LOOKUP_NOT_CONFIGURED") {
     return "GSTIN lookup is not configured. Continue with the permission-controlled manual tax workflow.";
   }
@@ -42,6 +45,9 @@ function apiMessage(status: number, code: string): string {
   }
   if (code === "DEALER_ONBOARDING_COMMERCIAL_COVERAGE_INCOMPLETE") {
     return "The selected price book or margin template does not cover every required active variant.";
+  }
+  if (code === "DEALER_DIRECT_FLOW_NOT_CONFIGURED") {
+    return "Direct dealer onboarding is not configured for the active tenant. Contact the platform administrator.";
   }
   if (PREFLIGHT_RESTART_CODES.has(code)) {
     return "The onboarding identity or preflight is no longer valid. Retry the submission so the automatic existing-record check can run again.";
@@ -120,7 +126,7 @@ export function dealerOnboardingActionFailure(
         message: item.message,
       }));
 
-    const baseMessage = apiMessage(error.status, error.code);
+    const baseMessage = dealerOnboardingApiMessage(error.status, error.code);
     const message =
       error.status === 429 && error.retryAfterSeconds !== undefined
         ? `${baseMessage} Retry after ${String(error.retryAfterSeconds)} seconds.`

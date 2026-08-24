@@ -53,15 +53,24 @@ export async function putPresignedUpload(
     });
   }
 
-  const response = await fetch(parsedUrl, {
-    method: HTTP_METHODS.PUT,
-    headers,
-    body,
-    cache: "no-store",
-    credentials: "omit",
-    redirect: "error",
-    referrerPolicy: "no-referrer",
-  });
+  let response: Response;
+  try {
+    response = await fetch(parsedUrl, {
+      method: HTTP_METHODS.PUT,
+      headers,
+      body,
+      cache: "no-store",
+      credentials: "omit",
+      redirect: "error",
+      referrerPolicy: "no-referrer",
+    });
+  } catch (error: unknown) {
+    throw new NetworkError(
+      "Presigned storage upload failed.",
+      "presigned_upload_failed",
+      error,
+    );
+  }
 
   if (!response.ok) {
     throw new NetworkError(

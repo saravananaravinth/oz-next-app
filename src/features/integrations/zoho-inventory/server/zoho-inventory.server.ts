@@ -13,6 +13,7 @@ import {
   zohoConnectionsSchema,
   zohoExternalConnectionSchema,
   zohoSyncJobSchema,
+  zohoSyncBatchResultSchema,
   zohoSyncJobsSchema,
   zohoVerifyResultSchema,
   zohoConnectionOverviewSchema,
@@ -26,6 +27,7 @@ import {
   type ZohoExternalConnection,
   type ZohoInventoryDataCenter,
   type ZohoSyncJob,
+  type ZohoSyncBatchResult,
   type ZohoVerifyResult,
   type ZohoConnectionOverview,
   type ZohoItemsResult,
@@ -79,6 +81,8 @@ export async function readZohoItems(
     membershipState?: string;
     mappingStatus?: string;
     itemStatus?: string;
+    entityKind?: "ITEM" | "COMPOSITE";
+    categoryId?: string;
   }>,
 ): Promise<ZohoItemsResult> {
   return await zohoInventoryClient.request({
@@ -97,6 +101,12 @@ export async function readZohoItems(
       ...(input.itemStatus === undefined
         ? {}
         : { itemStatus: input.itemStatus }),
+      ...(input.entityKind === undefined
+        ? {}
+        : { entityKind: input.entityKind }),
+      ...(input.categoryId === undefined
+        ? {}
+        : { categoryId: input.categoryId }),
     },
     schema: zohoItemsResultSchema,
     ...(input.access.actorContext === undefined
@@ -168,6 +178,26 @@ export async function enqueueZohoCatalogueSync(
     path: `/connections/${encodeURIComponent(input.connectionId)}/catalogue-syncs`,
     body: { scopeId: input.scopeId, idempotencyKey: input.idempotencyKey },
     schema: zohoSyncJobSchema,
+    idempotencyKey: input.idempotencyKey,
+    refreshOnUnauthorized: false,
+    ...(input.access.actorContext === undefined
+      ? {}
+      : { actorContext: input.access.actorContext }),
+  });
+}
+
+export async function enqueueZohoCatalogueSyncBatch(
+  input: Readonly<{
+    access: ResolvedZohoInventoryAccess;
+    connectionId: string;
+    idempotencyKey: string;
+  }>,
+): Promise<ZohoSyncBatchResult> {
+  return await zohoInventoryClient.request({
+    method: HTTP_METHODS.POST,
+    path: `/connections/${encodeURIComponent(input.connectionId)}/catalogue-sync-batches`,
+    body: { idempotencyKey: input.idempotencyKey },
+    schema: zohoSyncBatchResultSchema,
     idempotencyKey: input.idempotencyKey,
     refreshOnUnauthorized: false,
     ...(input.access.actorContext === undefined

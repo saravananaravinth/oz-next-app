@@ -9,6 +9,7 @@ import {
 } from "@/features/engagement/dealer-onboarding/actions/dealer-onboarding.actions";
 import type { DealerFileStatus } from "@/features/engagement/dealer-onboarding/contracts/dealer-onboarding.schema";
 import { putPresignedUpload } from "@/lib/api/browser-client";
+import { NetworkError } from "@/lib/api/network-error";
 
 const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
 const MAX_POLL_ATTEMPTS = 12;
@@ -94,6 +95,15 @@ export async function uploadDealerDocumentFile(
     if (!uploaded) {
       await cancelDealerUploadAction({ uploadId: intent.uploadId }).catch(
         () => undefined,
+      );
+    }
+    if (
+      error instanceof NetworkError &&
+      error.code === "presigned_upload_failed"
+    ) {
+      throw new DealerDocumentUploadError(
+        "Secure file upload could not reach storage. Try again.",
+        error.code,
       );
     }
     throw error;

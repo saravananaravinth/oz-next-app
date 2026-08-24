@@ -1,3 +1,4 @@
+// oz-next-app/src/features/integrations/zoho-inventory/ui/zoho-catalog-actions.tsx
 "use client";
 
 import * as React from "react";
@@ -18,6 +19,7 @@ import {
   disableZohoWebhookEndpointAction,
   rotateZohoWebhookEndpointAction,
   runZohoCatalogueSyncAction,
+  runZohoCatalogueSyncBatchAction,
 } from "@/features/integrations/zoho-inventory/actions/zoho-inventory.actions";
 import type { ZohoWebhookSecretResult } from "@/features/integrations/zoho-inventory/contracts/zoho-inventory.schema";
 
@@ -68,6 +70,38 @@ export function ZohoCatalogueSyncButton({
         <RefreshCw aria-hidden="true" />
       )}
       Sync now
+    </Button>
+  );
+}
+
+export function ZohoCatalogueSyncAllButton({
+  connectionId,
+}: Readonly<{ connectionId: string }>): React.ReactElement {
+  const router = useRouter();
+  const [pending, startTransition] = React.useTransition();
+  function sync(): void {
+    startTransition(async () => {
+      const result = await runZohoCatalogueSyncBatchAction({ connectionId });
+      if (!result.ok) {
+        notifyFailure("Category syncs could not be queued", result);
+        return;
+      }
+      toast.success({
+        title: "Category syncs queued",
+        description: `${result.data.jobs.length.toLocaleString("en-IN")} category syncs will refresh items, composites, and their dependencies.`,
+        replace: true,
+      });
+      router.refresh();
+    });
+  }
+  return (
+    <Button size="sm" onClick={sync} disabled={pending} aria-busy={pending}>
+      {pending ? (
+        <LoaderCircle className="animate-spin" aria-hidden="true" />
+      ) : (
+        <RefreshCw aria-hidden="true" />
+      )}
+      Sync all categories
     </Button>
   );
 }

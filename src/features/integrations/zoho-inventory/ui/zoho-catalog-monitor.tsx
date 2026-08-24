@@ -1,3 +1,4 @@
+// oz-next-app/src/features/integrations/zoho-inventory/ui/zoho-catalog-monitor.tsx
 import type { ReactElement } from "react";
 import Link from "next/link";
 import { AlertTriangle, Boxes, KeyRound, Webhook } from "lucide-react";
@@ -18,6 +19,8 @@ import {
 } from "@/components/ui/table";
 import type {
   ZohoConnectionOverview,
+  ZohoCompositionGraph,
+  ZohoItem,
   ZohoItemDetail,
   ZohoItemsResult,
   ZohoIntegrationSearchParams,
@@ -25,7 +28,7 @@ import type {
   ZohoWebhookReceipt,
 } from "@/features/integrations/zoho-inventory/contracts/zoho-inventory.schema";
 import {
-  ZohoCatalogueSyncButton,
+  ZohoCatalogueSyncAllButton,
   ZohoWebhookCreateButton,
   ZohoWebhookEndpointActions,
 } from "@/features/integrations/zoho-inventory/ui/zoho-catalog-actions";
@@ -37,6 +40,85 @@ function dateTime(value: string | null): string {
     timeStyle: "short",
     timeZone: "Asia/Kolkata",
   }).format(new Date(value));
+}
+
+function CompositionBranch({
+  graph,
+  itemId,
+  visited,
+  nodesById,
+  edgesByParent,
+}: Readonly<{
+  graph: ZohoCompositionGraph;
+  itemId: string;
+  visited: readonly string[];
+  nodesById: ReadonlyMap<string, ZohoItem>;
+  edgesByParent: ReadonlyMap<string, ZohoCompositionGraph["edges"]>;
+}>): ReactElement {
+  const node = nodesById.get(itemId);
+  const edges = edgesByParent.get(itemId) ?? [];
+  const cycle = visited.includes(itemId);
+  if (node === undefined) return <li>Unavailable Zoho item {itemId}</li>;
+  if (cycle) return <li>{node.name} (cycle blocked)</li>;
+  if (edges.length === 0) return <li>{node.name}</li>;
+  return (
+    <li>
+      <details open={itemId === graph.rootItemId}>
+        <summary className="cursor-pointer font-medium">
+          {node.name}{" "}
+          <span className="text-muted-readable">
+            ({node.sku ?? node.zohoItemId})
+          </span>
+        </summary>
+        <ul className="ml-5 mt-2 list-disc space-y-2">
+          {edges.map((edge) => (
+            <li key={`${edge.parentItemId}:${edge.lineItemId}`}>
+              <span className="text-caption text-muted-readable">
+                Quantity {edge.quantity}
+              </span>
+              <ul className="ml-5 mt-1 list-disc">
+                <CompositionBranch
+                  graph={graph}
+                  itemId={edge.childItemId}
+                  visited={[...visited, itemId]}
+                  nodesById={nodesById}
+                  edgesByParent={edgesByParent}
+                />
+              </ul>
+            </li>
+          ))}
+        </ul>
+      </details>
+    </li>
+  );
+}
+
+function CompositionTree({
+  graph,
+}: Readonly<{ graph: ZohoCompositionGraph }>): ReactElement {
+  const nodesById = new Map(
+    graph.nodes.map((node) => [node.zohoItemId, node] as const),
+  );
+  const groupedEdges = new Map<
+    string,
+    Array<ZohoCompositionGraph["edges"][number]>
+  >();
+  for (const edge of graph.edges) {
+    const existing = groupedEdges.get(edge.parentItemId);
+    if (existing === undefined) groupedEdges.set(edge.parentItemId, [edge]);
+    else existing.push(edge);
+  }
+  return (
+    <ul className="mt-3 list-disc pl-5 text-body-sm">
+      <CompositionBranch
+        graph={graph}
+        itemId={graph.rootItemId}
+        visited={[]}
+        nodesById={nodesById}
+        edgesByParent={groupedEdges}
+      />
+    </ul>
+  );
 }
 
 export function ZohoCatalogMonitor({
@@ -58,7 +140,7 @@ export function ZohoCatalogMonitor({
   canSync: boolean;
   canConfigure: boolean;
 }>): ReactElement {
-  const scope = overview.scopes.find((entry) => entry.isActive);
+  const scopes = overview.scopes.filter((entry) => entry.isActive);
   return (
     <>
       {!overview.itemReadScopeGranted ? (
@@ -66,7 +148,7 @@ export function ZohoCatalogMonitor({
           variant="warning"
           icon={<AlertTriangle aria-hidden="true" />}
           title="Reconnect Zoho to enable item sync"
-          description="The current authorization is missing ZohoInventory.items.READ. Reconnect before running manual, scheduled, or webhook item refreshes."
+          description="The current authorization is missing item or composite-item read access. Reconnect before running catalogue refreshes."
         />
       ) : null}
       <ContentDataSurface
@@ -74,10 +156,9 @@ export function ZohoCatalogMonitor({
         description="Monitoring mirrors Zoho data only. ERP components and manufacturing mappings remain authoritative and are never inferred."
         padded
         actions={
-          canSync && scope !== undefined && overview.itemReadScopeGranted ? (
-            <ZohoCatalogueSyncButton
+          canSync && scopes.length > 0 && overview.itemReadScopeGranted ? (
+            <ZohoCatalogueSyncAllButton
               connectionId={overview.connection.connectionId}
-              scopeId={scope.scopeId}
             />
           ) : undefined
         }
@@ -103,7 +184,9 @@ export function ZohoCatalogMonitor({
         <p className="mt-3 text-caption text-muted-readable">
           Daily full reconciliation: 02:00 Asia/Kolkata · Last successful sync:{" "}
           {dateTime(overview.overview.lastSuccessfulSyncAt)} · Scope:{" "}
-          {scope?.sourceCode ?? "Not configured"}
+          {scopes.length === 0
+            ? "Not configured"
+            : scopes.map((scope) => scope.categoryName).join(", ")}
         </p>
       </ContentDataSurface>
 
@@ -114,7 +197,7 @@ export function ZohoCatalogMonitor({
       >
         <form
           method="get"
-          className="mb-4 grid gap-2 rounded-xl border bg-muted/10 p-3 sm:grid-cols-2 lg:grid-cols-5"
+          className="mb-4 grid gap-2 rounded-xl border bg-muted/10 p-3 sm:grid-cols-2 lg:grid-cols-7"
         >
           <input
             type="hidden"
@@ -161,6 +244,35 @@ export function ZohoCatalogMonitor({
             </select>
           </label>
           <label className="grid gap-1 text-caption">
+            Entity kind
+            <select
+              className="h-9 rounded-lg border bg-background px-2 text-body-sm"
+              name="entity"
+              defaultValue={query.entity ?? ""}
+            >
+              <option value="">All</option>
+              <option value="ITEM">Item</option>
+              <option value="COMPOSITE">Composite</option>
+            </select>
+          </label>
+          <label className="grid gap-1 text-caption">
+            Category
+            <select
+              className="h-9 rounded-lg border bg-background px-2 text-body-sm"
+              name="category"
+              defaultValue={query.category ?? ""}
+            >
+              <option value="">All</option>
+              {scopes
+                .filter((scope) => scope.categoryId !== null)
+                .map((scope) => (
+                  <option key={scope.scopeId} value={scope.categoryId ?? ""}>
+                    {scope.categoryName}
+                  </option>
+                ))}
+            </select>
+          </label>
+          <label className="grid gap-1 text-caption">
             Item status
             <input
               className="h-9 rounded-lg border bg-background px-3 text-body-sm"
@@ -203,6 +315,7 @@ export function ZohoCatalogMonitor({
               <TableHeader>
                 <TableRow>
                   <TableHead>Item</TableHead>
+                  <TableHead>Kind</TableHead>
                   <TableHead>Stock</TableHead>
                   <TableHead>Membership</TableHead>
                   <TableHead>Mapping</TableHead>
@@ -222,6 +335,16 @@ export function ZohoCatalogMonitor({
                       </Link>
                       <div className="text-caption text-muted-readable">
                         {item.sku ?? item.zohoItemId}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="outline">
+                        {item.entityKind === "COMPOSITE"
+                          ? (item.comboType ?? "COMPOSITE")
+                          : "ITEM"}
+                      </Badge>
+                      <div className="mt-1 text-caption text-muted-readable">
+                        {item.scopeRole}
                       </div>
                     </TableCell>
                     <TableCell className="text-tabular">
@@ -282,6 +405,12 @@ export function ZohoCatalogMonitor({
                   ...(query.itemStatus === undefined
                     ? {}
                     : { itemStatus: query.itemStatus }),
+                  ...(query.entity === undefined
+                    ? {}
+                    : { entity: query.entity }),
+                  ...(query.category === undefined
+                    ? {}
+                    : { category: query.category }),
                 },
               }}
             >
@@ -328,6 +457,22 @@ export function ZohoCatalogMonitor({
               </span>
             </p>
           )}
+          {itemDetail.composition === null ? null : (
+            <div className="mt-4 rounded-xl border p-4">
+              <h3 className="font-semibold">Composite bill of materials</h3>
+              <p className="mt-1 text-caption text-muted-readable">
+                Direct Zoho relationships are preserved; nested composites
+                remain expandable.
+              </p>
+              {itemDetail.composition.truncated ? (
+                <p className="mt-2 text-caption text-warning">
+                  This display reached the 1,000-edge safety limit. Use the API
+                  sync history to investigate an unexpectedly large graph.
+                </p>
+              ) : null}
+              <CompositionTree graph={itemDetail.composition} />
+            </div>
+          )}
           <h3 className="mt-4 font-semibold">
             Serials ({itemDetail.serials.length.toLocaleString("en-IN")})
           </h3>
@@ -366,7 +511,7 @@ export function ZohoCatalogMonitor({
 
       <ContentDataSurface
         title="Webhook configuration"
-        description={`Receipts in the last 24 hours: ${overview.overview.webhookReceipts24h.toLocaleString("en-IN")} (${overview.overview.failedWebhookReceipts24h.toLocaleString("en-IN")} failed or ignored). Payloads are notifications; ERP always re-fetches the authoritative item.`}
+        description={`Receipts in the last 24 hours: ${overview.overview.webhookReceipts24h.toLocaleString("en-IN")} (${overview.overview.failedWebhookReceipts24h.toLocaleString("en-IN")} failed or ignored). Payloads are notifications; ERP always re-fetches the authoritative item or composite graph.`}
         padded
         actions={
           canConfigure ? (
@@ -428,7 +573,8 @@ export function ZohoCatalogMonitor({
           <ol className="mt-3 list-decimal space-y-2 pl-5 text-body-sm">
             <li>
               Reconnect Zoho from ERP to grant{" "}
-              <code>ZohoInventory.items.READ</code>.
+              <code>ZohoInventory.items.READ</code> and{" "}
+              <code>ZohoInventory.compositeitems.READ</code>.
             </li>
             <li>
               In ERP, create a webhook endpoint and copy the displayed URL and
@@ -443,8 +589,9 @@ export function ZohoCatalogMonitor({
               .
             </li>
             <li>
-              Select the <strong>Items</strong> module, <code>POST</code>, the
-              ERP URL, and the default JSON payload.
+              Configure both <strong>Items</strong> and{" "}
+              <strong>Composite Items</strong> modules with <code>POST</code>,
+              the ERP URL, and their default JSON payloads.
             </li>
             <li>
               Add headers <code>Content-Type: application/json</code> and{" "}
@@ -491,6 +638,7 @@ export function ZohoCatalogMonitor({
                     <TableCell>
                       {receipt.eventName ?? "Unknown event"}
                       <div className="text-caption text-muted-readable">
+                        {receipt.resourceType}:{" "}
                         {receipt.resourceId ?? "No resource parsed"}
                       </div>
                     </TableCell>

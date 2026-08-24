@@ -245,6 +245,7 @@ export const zohoScopeSchema = z
     scopeId: uuidSchema,
     connectionId: uuidSchema,
     sourceCode: z.string().min(1).max(128),
+    scopeKind: z.enum(["CUSTOM_VIEW", "CATEGORY"]).default("CUSTOM_VIEW"),
     customViewId: safeProviderIdentifierSchema,
     customViewName: z.string().max(512).nullable(),
     categoryId: safeProviderIdentifierSchema.nullable(),
@@ -290,6 +291,9 @@ export const zohoItemSchema = z
     itemStatus: z.string().max(128).nullable(),
     itemType: z.string().max(128).nullable(),
     productType: z.string().max(128).nullable(),
+    entityKind: z.enum(["ITEM", "COMPOSITE"]).default("ITEM"),
+    comboType: z.enum(["assembly", "kit"]).nullable().default(null),
+    scopeRole: z.enum(["ROOT", "DEPENDENCY"]).default("ROOT"),
     unit: z.string().max(128).nullable(),
     categoryName: z.string().max(512).nullable(),
     salesRate: z.string().nullable(),
@@ -337,6 +341,36 @@ export const zohoSerialSchema = z
   })
   .strict();
 
+export const zohoScopeMembershipSchema = z
+  .object({
+    scopeId: uuidSchema,
+    sourceCode: z.string().min(1).max(128),
+    categoryId: safeProviderIdentifierSchema.nullable(),
+    categoryName: z.string().min(1).max(512),
+    inclusionKind: z.enum(["ROOT", "DEPENDENCY"]),
+    membershipState: z.enum(["IN_SCOPE", "OUT_OF_SCOPE", "DELETED"]),
+  })
+  .strict();
+
+export const zohoCompositionEdgeSchema = z
+  .object({
+    lineItemId: safeProviderIdentifierSchema,
+    parentItemId: safeProviderIdentifierSchema,
+    childItemId: safeProviderIdentifierSchema,
+    quantity: z.string().trim().min(1).max(128),
+    itemOrder: z.number().int().nonnegative(),
+  })
+  .strict();
+
+export const zohoCompositionGraphSchema = z
+  .object({
+    rootItemId: safeProviderIdentifierSchema,
+    nodes: z.array(zohoItemSchema).max(1_000).readonly(),
+    edges: z.array(zohoCompositionEdgeSchema).max(1_000).readonly(),
+    truncated: z.boolean(),
+  })
+  .strict();
+
 export const zohoItemDetailSchema = z
   .object({
     item: zohoItemSchema,
@@ -345,6 +379,12 @@ export const zohoItemDetailSchema = z
       .object({ url: z.url(), expiresAt: isoDateTimeSchema })
       .strict()
       .nullable(),
+    scopeMemberships: z
+      .array(zohoScopeMembershipSchema)
+      .max(100)
+      .readonly()
+      .default([]),
+    composition: zohoCompositionGraphSchema.nullable().default(null),
   })
   .strict();
 
@@ -377,6 +417,7 @@ export const zohoWebhookReceiptSchema = z
       "IGNORED",
     ]),
     resourceId: safeProviderIdentifierSchema.nullable(),
+    resourceType: z.enum(["item", "composite_item", "unknown"]).default("item"),
     eventName: z.string().max(256).nullable(),
     receivedAt: isoDateTimeSchema,
     lastErrorCode: z.string().max(256).nullable(),
@@ -397,6 +438,12 @@ export const zohoWebhookSecretResultSchema = z
 
 export const runZohoCatalogueSyncActionInputSchema = z
   .object({ connectionId: uuidSchema, scopeId: uuidSchema })
+  .strict();
+export const runZohoCatalogueSyncBatchActionInputSchema = z
+  .object({ connectionId: uuidSchema })
+  .strict();
+export const zohoSyncBatchResultSchema = z
+  .object({ jobs: z.array(zohoSyncJobSchema).max(100).readonly() })
   .strict();
 export const zohoWebhookActionInputSchema = z
   .object({ connectionId: uuidSchema })
@@ -495,6 +542,8 @@ export const zohoIntegrationSearchParamsSchema = z
       .enum(["MAPPED", "UNMAPPED", "CONFLICT", "INVALID_CONFIGURATION"])
       .optional(),
     itemStatus: z.string().trim().min(1).max(64).optional(),
+    entity: z.enum(["ITEM", "COMPOSITE"]).optional(),
+    category: safeProviderIdentifierSchema.optional(),
     cursor: z
       .string()
       .trim()
@@ -525,6 +574,8 @@ export type ZohoConnectionOverview = z.infer<
 export type ZohoItem = z.infer<typeof zohoItemSchema>;
 export type ZohoItemsResult = z.infer<typeof zohoItemsResultSchema>;
 export type ZohoItemDetail = z.infer<typeof zohoItemDetailSchema>;
+export type ZohoCompositionGraph = z.infer<typeof zohoCompositionGraphSchema>;
+export type ZohoSyncBatchResult = z.infer<typeof zohoSyncBatchResultSchema>;
 export type ZohoWebhookEndpoint = z.infer<typeof zohoWebhookEndpointSchema>;
 export type ZohoWebhookReceipt = z.infer<typeof zohoWebhookReceiptSchema>;
 export type ZohoWebhookSecretResult = z.infer<

@@ -13,11 +13,13 @@ import {
   runZohoReconciliationActionInputSchema,
   zohoConnectionActionInputSchema,
   runZohoCatalogueSyncActionInputSchema,
+  runZohoCatalogueSyncBatchActionInputSchema,
   zohoWebhookActionInputSchema,
   zohoWebhookEndpointActionInputSchema,
   type ZohoAuthorizationStartResult,
   type ZohoExternalConnection,
   type ZohoSyncJob,
+  type ZohoSyncBatchResult,
   type ZohoVerifyResult,
   type ZohoWebhookSecretResult,
 } from "@/features/integrations/zoho-inventory/contracts/zoho-inventory.schema";
@@ -36,6 +38,7 @@ import {
   createZohoWebhookEndpoint,
   disableZohoWebhookEndpoint,
   enqueueZohoCatalogueSync,
+  enqueueZohoCatalogueSyncBatch,
   rotateZohoWebhookEndpoint,
 } from "@/features/integrations/zoho-inventory/server/zoho-inventory.server";
 import {
@@ -90,6 +93,25 @@ export async function runZohoCatalogueSyncAction(
       access,
       connectionId: body.connectionId,
       scopeId: body.scopeId,
+      idempotencyKey,
+    });
+    revalidatePath(INTEGRATION_PATH);
+    return { ok: true, data };
+  } catch (error: unknown) {
+    return zohoInventoryActionFailure(error);
+  }
+}
+
+export async function runZohoCatalogueSyncBatchAction(
+  input: unknown,
+): Promise<ActionResult<ZohoSyncBatchResult>> {
+  try {
+    const body = runZohoCatalogueSyncBatchActionInputSchema.parse(input);
+    const access = await resolveActionAccess("canRunSync");
+    const idempotencyKey = `zoho:manual-batch:${body.connectionId}:${crypto.randomUUID()}`;
+    const data = await enqueueZohoCatalogueSyncBatch({
+      access,
+      connectionId: body.connectionId,
       idempotencyKey,
     });
     revalidatePath(INTEGRATION_PATH);
