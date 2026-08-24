@@ -191,7 +191,11 @@ export function ZohoCatalogMonitor({
           <ContentEmptyState
             icon={<Boxes aria-hidden="true" />}
             title="No synced items"
-            description="Run a manual full sync after reconnecting Zoho with item read access."
+            description={
+              overview.itemReadScopeGranted
+                ? "Run Sync now to mirror the authorized Zoho catalogue. If it fails, use the safe code in synchronization history when contacting support."
+                : "Reconnect Zoho with item read access before running a catalogue sync."
+            }
           />
         ) : (
           <div className="overflow-x-auto">
