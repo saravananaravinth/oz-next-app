@@ -5,6 +5,14 @@ import { erpUuidSchema } from "@/features/erp-core/contracts/erp-common.schema";
 
 export const DEALER_ONBOARDING_ORIGINS = ["APPLICATION", "DIRECT"] as const;
 export const DEALER_ONBOARDING_TYPES = ["DEALER", "SUB_DEALER"] as const;
+export const DEALER_DIRECTORY_SORT_FIELDS = [
+  "DISPLAY_NAME",
+  "DEALER_CODE",
+  "DEALER_TYPE",
+  "LOCATION",
+  "STATUS",
+] as const;
+export const DEALER_DIRECTORY_SORT_DIRECTIONS = ["ASC", "DESC"] as const;
 export const DEALER_ONBOARDING_PREFLIGHT_OUTCOMES = [
   "EXISTING_DEALER",
   "APPLICATION_FOUND",
@@ -200,7 +208,6 @@ export const dealerOnboardingShippingLocationSchema = z.discriminatedUnion(
 
 const communicationChannelsSchema = z
   .array(z.enum(DEALER_COMMUNICATION_CHANNELS))
-  .min(1)
   .max(DEALER_COMMUNICATION_CHANNELS.length)
   .superRefine((channels, context) => {
     if (new Set(channels).size !== channels.length) {
@@ -210,6 +217,11 @@ const communicationChannelsSchema = z
       });
     }
   });
+
+const requiredCommunicationChannelsSchema = communicationChannelsSchema.refine(
+  (channels) => channels.length > 0,
+  { message: "Choose at least one communication channel." },
+);
 
 const marginOverrideSchema = z
   .object({
@@ -237,7 +249,7 @@ export const dealerOnboardingProvisionBodySchema = z
         gstin: optionalTaxId(GSTIN_PATTERN, "GSTIN"),
         uin: optionalTaxId(UIN_PATTERN, "UIN"),
         pan: optionalTaxId(PAN_PATTERN, "PAN"),
-        placeOfSupplyStateId: erpUuidSchema,
+        placeOfSupplyStateId: erpUuidSchema.nullable(),
         taxPreference: z.enum(DEALER_TAX_PREFERENCES),
         currency: currencySchema.default("INR"),
       })
@@ -248,7 +260,7 @@ export const dealerOnboardingProvisionBodySchema = z
         email: z.email().trim().toLowerCase().max(254),
         phone: boundedText(8, 32),
         preferredLanguage: z.enum(DEALER_ONBOARDING_LANGUAGES).default("en"),
-        communicationChannels: communicationChannelsSchema,
+        communicationChannels: requiredCommunicationChannelsSchema,
       })
       .strict(),
     operatingLocation: dealerOnboardingOperatingLocationSchema,
@@ -568,6 +580,9 @@ export const dealerDirectoryListQuerySchema = z
     q: z.string().trim().min(1).max(100).optional(),
     dealerType: dealerOnboardingTypeSchema.optional(),
     active: z.boolean().optional(),
+    includeSummary: z.boolean().optional(),
+    sortBy: z.enum(DEALER_DIRECTORY_SORT_FIELDS).default("DISPLAY_NAME"),
+    sortDirection: z.enum(DEALER_DIRECTORY_SORT_DIRECTIONS).default("ASC"),
     limit: z.number().int().min(1).max(100).default(40),
     cursor: z.string().trim().min(1).max(2048).optional(),
   })
@@ -592,12 +607,18 @@ const dealerDirectoryWalletBalanceSchema = z
   })
   .strict();
 
+const dealerDicReadSchema = z
+  .string()
+  .trim()
+  .toUpperCase()
+  .regex(/^[A-Z0-9]{2,16}$/u, "Invalid dealer DIC code.");
+
 const dealerDirectoryListItemSchema = z
   .object({
     dealerOrgUnitId: erpUuidSchema,
     dealerType: dealerOnboardingTypeSchema,
     dealerCode: boundedText(1, 128),
-    dicCode: z.string().trim().length(2).nullable(),
+    dicCode: dealerDicReadSchema.nullable(),
     companyName: boundedText(1, 200),
     displayName: boundedText(1, 200),
     isActive: z.boolean(),
@@ -625,6 +646,17 @@ const dealerDirectoryListItemSchema = z
   })
   .strict();
 
+const dealerDirectorySummarySchema = z
+  .object({
+    total: z.number().int().nonnegative(),
+    active: z.number().int().nonnegative(),
+    inactive: z.number().int().nonnegative(),
+    dealers: z.number().int().nonnegative(),
+    subDealers: z.number().int().nonnegative(),
+    filtered: z.number().int().nonnegative(),
+  })
+  .strict();
+
 export const dealerDirectoryPageSchema = z
   .object({
     items: z.array(dealerDirectoryListItemSchema),
@@ -635,6 +667,7 @@ export const dealerDirectoryPageSchema = z
         nextCursor: z.string().trim().min(1).max(2048).nullable(),
       })
       .strict(),
+    summary: dealerDirectorySummarySchema.optional(),
   })
   .strict();
 
@@ -714,6 +747,79 @@ const dealerContactSchema = z
   })
   .strict();
 
+const dealerStaffSchema = z
+  .object({
+    userId: erpUuidSchema,
+    membershipId: erpUuidSchema,
+    membershipOrgUnitId: erpUuidSchema,
+    displayName: boundedText(1, 160),
+    email: z.string().trim().max(254).nullable(),
+    phone: z.string().trim().max(64).nullable(),
+    staffTitleId: erpUuidSchema.nullable(),
+    title: z.string().trim().max(160).nullable(),
+    relationshipType: z.enum([
+      "OWNER",
+      "ADMINISTRATOR",
+      "STAFF",
+      "MEMBER",
+      "CONTRACTOR",
+    ]),
+    status: z.enum(["ACTIVE", "INACTIVE", "SUSPENDED"]),
+    isPrimary: z.boolean(),
+    teamCodes: z.array(boundedText(1, 64)).max(32),
+    roleIds: z.array(erpUuidSchema).max(16),
+    roleNames: z.array(boundedText(1, 128)).max(64),
+    lastLoginAt: z.iso.datetime({ offset: true }).nullable(),
+    updatedAt: z.iso.datetime({ offset: true }),
+  })
+  .strict();
+
+export const dealerStaffOptionsSchema = z
+  .object({
+    titles: z
+      .array(
+        z
+          .object({
+            staffTitleId: erpUuidSchema,
+            code: boundedText(1, 128),
+            name: boundedText(1, 160),
+            description: z.string().trim().max(500).nullable(),
+          })
+          .strict(),
+      )
+      .max(200),
+    roles: z
+      .array(
+        z
+          .object({
+            roleId: erpUuidSchema,
+            name: z.enum(["dealer", "dealer_staff"]),
+            description: z.string().trim().max(500).nullable(),
+          })
+          .strict(),
+      )
+      .max(2),
+  })
+  .strict();
+
+const dealerDirectoryDataCompletenessSchema = z
+  .object({
+    status: z.enum(["COMPLETE", "PARTIAL"]),
+    missing: z
+      .array(
+        z.enum([
+          "PRIMARY_PRINCIPAL",
+          "LEGAL_ENTITY",
+          "TAX_REGISTRATION",
+          "OPERATING_LOCATION",
+          "BILLING_LOCATION",
+          "SHIPPING_LOCATION",
+        ]),
+      )
+      .max(6),
+  })
+  .strict();
+
 const dealerWelfareAccrualSchema = z
   .object({
     accrualId: erpUuidSchema,
@@ -756,7 +862,7 @@ export const dealerDirectoryDetailSchema = z
     dealerOrgUnitId: erpUuidSchema,
     dealerType: dealerOnboardingTypeSchema,
     dealerCode: boundedText(1, 128),
-    dicCode: z.string().trim().length(2).nullable(),
+    dicCode: dealerDicReadSchema.nullable(),
     companyName: boundedText(1, 200),
     displayName: boundedText(1, 200),
     isActive: z.boolean(),
@@ -775,28 +881,30 @@ export const dealerDirectoryDetailSchema = z
     currency: currencySchema,
     legalEntity: z
       .object({
-        legalEntityId: erpUuidSchema,
+        legalEntityId: erpUuidSchema.nullable(),
         legalName: boundedText(1, 240),
         tradeName: z.string().trim().max(240).nullable(),
         gstTreatment: z.enum(DEALER_GST_TREATMENTS),
         gstinMasked: z.string().trim().max(32).nullable(),
         panMasked: z.string().trim().max(32).nullable(),
-        placeOfSupplyStateId: erpUuidSchema,
+        placeOfSupplyStateId: erpUuidSchema.nullable(),
         taxPreference: z.enum(DEALER_TAX_PREFERENCES),
         verificationState: boundedText(1, 128),
-        placeOfSupply: boundedText(1, 160),
+        placeOfSupply: boundedText(1, 160).nullable(),
       })
       .strict(),
     source: dealerDirectorySourceSchema,
+    dataCompleteness: dealerDirectoryDataCompletenessSchema,
     financialAccess: z
       .object({ wallet: z.boolean(), welfare: z.boolean() })
       .strict(),
     wallets: z.array(dealerWalletSchema).max(100),
     welfare: dealerWelfareSummarySchema.nullable(),
+    staff: z.array(dealerStaffSchema).max(100),
     contacts: z.array(dealerContactSchema).max(100),
-    operatingLocation: dealerDirectoryLocationSchema,
-    billingLocation: dealerDirectoryLocationSchema,
-    shippingLocation: dealerDirectoryLocationSchema,
+    operatingLocation: dealerDirectoryLocationSchema.nullable(),
+    billingLocation: dealerDirectoryLocationSchema.nullable(),
+    shippingLocation: dealerDirectoryLocationSchema.nullable(),
     priceBook: z
       .object({ priceBookId: erpUuidSchema, name: boundedText(1, 180) })
       .strict()
@@ -813,6 +921,7 @@ export const dealerProfileUpdateBodySchema = z
     expectedUpdatedAt: z.iso.datetime({ offset: true }),
     companyName: boundedText(2, 200),
     displayName: boundedText(2, 200),
+    dealerType: dealerOnboardingTypeSchema,
     isActive: z.boolean(),
     parentOrgUnitId: erpUuidSchema.nullable(),
     primaryContact: z
@@ -821,9 +930,10 @@ export const dealerProfileUpdateBodySchema = z
         replacementEmail: z.email().trim().toLowerCase().max(254).optional(),
         replacementPhone: boundedText(8, 32).optional(),
         preferredLanguage: z.enum(DEALER_ONBOARDING_LANGUAGES),
-        communicationChannels: communicationChannelsSchema,
+        communicationChannels: requiredCommunicationChannelsSchema,
       })
-      .strict(),
+      .strict()
+      .optional(),
     business: z
       .object({
         legalName: boundedText(2, 240),
@@ -861,7 +971,23 @@ export const dealerProfileUpdateBodySchema = z
     priceBookId: erpUuidSchema.optional(),
     reason: boundedText(3, 500),
   })
-  .strict();
+  .strict()
+  .superRefine((value, context) => {
+    if (value.dealerType === "DEALER" && value.parentOrgUnitId !== null) {
+      context.addIssue({
+        code: "custom",
+        path: ["parentOrgUnitId"],
+        message: "A dealer cannot have another dealer as its parent.",
+      });
+    }
+    if (value.dealerType === "SUB_DEALER" && value.parentOrgUnitId === null) {
+      context.addIssue({
+        code: "custom",
+        path: ["parentOrgUnitId"],
+        message: "A sub-dealer requires an active parent dealer.",
+      });
+    }
+  });
 
 export const dealerMarginUpdateBodySchema = z
   .object({
@@ -880,6 +1006,40 @@ export const dealerMarginUpdateBodySchema = z
       )
       .min(1)
       .max(500),
+  })
+  .strict();
+
+const dealerStaffRoleIdsSchema = z
+  .array(erpUuidSchema)
+  .min(1, "Choose at least one dealer staff role.")
+  .max(2)
+  .superRefine((roleIds, context) => {
+    if (new Set(roleIds).size !== roleIds.length) {
+      context.addIssue({
+        code: "custom",
+        message: "Dealer staff roles must be unique.",
+      });
+    }
+  });
+
+export const dealerStaffCreateBodySchema = z
+  .object({
+    displayName: boundedText(2, 160),
+    email: z.email().trim().toLowerCase().max(254),
+    phone: boundedText(8, 32),
+    staffTitleId: erpUuidSchema,
+    roleIds: dealerStaffRoleIdsSchema,
+  })
+  .strict();
+
+export const dealerStaffUpdateBodySchema = z
+  .object({
+    expectedUpdatedAt: z.iso.datetime({ offset: true }),
+    displayName: boundedText(2, 160),
+    replacementEmail: z.email().trim().toLowerCase().max(254).optional(),
+    replacementPhone: boundedText(8, 32).optional(),
+    staffTitleId: erpUuidSchema,
+    roleIds: dealerStaffRoleIdsSchema,
   })
   .strict();
 
@@ -997,6 +1157,8 @@ export const dealerDirectoryRawSearchParamsSchema = z
     q: rawSingleSearchValueSchema.optional(),
     dealerType: rawSingleSearchValueSchema.optional(),
     active: rawSingleSearchValueSchema.optional(),
+    sortBy: rawSingleSearchValueSchema.optional(),
+    sortDirection: rawSingleSearchValueSchema.optional(),
     cursor: rawSingleSearchValueSchema.optional(),
   })
   .strict();
@@ -1005,7 +1167,9 @@ export const dealerDirectorySearchParamsSchema = z
   .object({
     q: z.string().trim().min(1).max(100).optional(),
     dealerType: dealerOnboardingTypeSchema.optional(),
-    active: z.enum(["true", "false"]).optional(),
+    active: z.enum(["true", "false", "all"]).optional(),
+    sortBy: z.enum(DEALER_DIRECTORY_SORT_FIELDS).optional(),
+    sortDirection: z.enum(DEALER_DIRECTORY_SORT_DIRECTIONS).optional(),
     cursor: z.string().trim().min(1).max(2048).optional(),
   })
   .strict();
@@ -1030,12 +1194,74 @@ export const dealerProfileUpdateActionInputSchema = z
     body: dealerProfileUpdateBodySchema,
   })
   .strict();
+export const dealerBulkStatusUpdateBodySchema = z
+  .object({
+    dealers: z
+      .array(
+        z
+          .object({
+            dealerOrgUnitId: erpUuidSchema,
+            expectedUpdatedAt: z.iso.datetime({ offset: true }),
+          })
+          .strict(),
+      )
+      .min(1)
+      .max(100),
+    isActive: z.boolean(),
+    reason: boundedText(3, 500),
+  })
+  .strict()
+  .superRefine((value, context) => {
+    const seen = new Set<string>();
+    value.dealers.forEach((dealer, index) => {
+      if (seen.has(dealer.dealerOrgUnitId)) {
+        context.addIssue({
+          code: "custom",
+          path: ["dealers", index, "dealerOrgUnitId"],
+          message: "Each dealer may appear only once.",
+        });
+      }
+      seen.add(dealer.dealerOrgUnitId);
+    });
+  });
+export const dealerBulkStatusUpdateResultSchema = z
+  .object({
+    items: z.array(
+      z
+        .object({
+          dealerOrgUnitId: erpUuidSchema,
+          isActive: z.boolean(),
+          updatedAt: z.iso.datetime({ offset: true }),
+        })
+        .strict(),
+    ),
+  })
+  .strict();
+export const dealerBulkStatusUpdateActionInputSchema =
+  dealerBulkStatusUpdateBodySchema;
 export const dealerMarginUpdateActionInputSchema = z
   .object({
     dealerOrgUnitId: erpUuidSchema,
     body: dealerMarginUpdateBodySchema,
   })
   .strict();
+export const dealerStaffOptionsActionInputSchema = z
+  .object({ dealerOrgUnitId: erpUuidSchema })
+  .strict();
+export const dealerStaffCreateActionInputSchema = z
+  .object({
+    dealerOrgUnitId: erpUuidSchema,
+    body: dealerStaffCreateBodySchema,
+  })
+  .strict();
+export const dealerStaffUpdateActionInputSchema = z
+  .object({
+    dealerOrgUnitId: erpUuidSchema,
+    userId: erpUuidSchema,
+    body: dealerStaffUpdateBodySchema,
+  })
+  .strict();
+
 export const dealerContactCreateActionInputSchema = z
   .object({
     dealerOrgUnitId: erpUuidSchema,
@@ -1060,6 +1286,10 @@ export type DealerOnboardingOrigin = z.output<
   typeof dealerOnboardingOriginSchema
 >;
 export type DealerOnboardingType = z.output<typeof dealerOnboardingTypeSchema>;
+export type DealerDirectorySortField =
+  (typeof DEALER_DIRECTORY_SORT_FIELDS)[number];
+export type DealerDirectorySortDirection =
+  (typeof DEALER_DIRECTORY_SORT_DIRECTIONS)[number];
 export type DealerOnboardingPreflightBody = z.output<
   typeof dealerOnboardingPreflightBodySchema
 >;
@@ -1101,6 +1331,17 @@ export type DealerDirectoryDetail = z.output<
   typeof dealerDirectoryDetailSchema
 >;
 export type DealerContact = z.output<typeof dealerContactSchema>;
+export type DealerStaff = z.output<typeof dealerStaffSchema>;
+export type DealerStaffOptions = z.output<typeof dealerStaffOptionsSchema>;
+export type DealerDirectorySummary = z.output<
+  typeof dealerDirectorySummarySchema
+>;
+export type DealerStaffCreateBody = z.output<
+  typeof dealerStaffCreateBodySchema
+>;
+export type DealerStaffUpdateBody = z.output<
+  typeof dealerStaffUpdateBodySchema
+>;
 export type DealerContactCreateBody = z.output<
   typeof dealerContactCreateBodySchema
 >;
@@ -1109,6 +1350,12 @@ export type DealerContactUpdateBody = z.output<
 >;
 export type DealerProfileUpdateBody = z.output<
   typeof dealerProfileUpdateBodySchema
+>;
+export type DealerBulkStatusUpdateBody = z.output<
+  typeof dealerBulkStatusUpdateBodySchema
+>;
+export type DealerBulkStatusUpdateResult = z.output<
+  typeof dealerBulkStatusUpdateResultSchema
 >;
 export type DealerMarginUpdateBody = z.output<
   typeof dealerMarginUpdateBodySchema

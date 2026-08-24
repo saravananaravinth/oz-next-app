@@ -22,7 +22,8 @@ export function DealerOnboardingPage({
     <ContentRoot
       width="full"
       density="compact"
-      className="min-h-[calc(100dvh-8rem)]"
+      aria-labelledby="dealer-directory-title"
+      className="lg:h-full lg:min-h-0 lg:overflow-hidden"
     >
       <DealerDirectoryTable access={access} data={data} query={query} />
     </ContentRoot>

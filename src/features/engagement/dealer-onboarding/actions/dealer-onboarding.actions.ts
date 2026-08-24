@@ -10,6 +10,7 @@ import { assertSameOriginMutation } from "@/server/security/origin";
 import {
   dealerContactCreateActionInputSchema,
   dealerContactUpdateActionInputSchema,
+  dealerBulkStatusUpdateActionInputSchema,
   dealerDocumentBindBodySchema,
   dealerDocumentDownloadActionInputSchema,
   dealerFileStatusActionInputSchema,
@@ -20,9 +21,13 @@ import {
   dealerOnboardingPreflightActionInputSchema,
   dealerOnboardingProvisionActionInputSchema,
   dealerProfileUpdateActionInputSchema,
+  dealerStaffCreateActionInputSchema,
+  dealerStaffOptionsActionInputSchema,
+  dealerStaffUpdateActionInputSchema,
   dealerUploadFinalizeBodySchema,
   dealerUploadIntentBodySchema,
   type DealerDirectoryDetail,
+  type DealerBulkStatusUpdateResult,
   type DealerDocument,
   type DealerDocumentDownloadResult,
   type DealerFileStatus,
@@ -31,6 +36,7 @@ import {
   type DealerOnboardingOptions,
   type DealerOnboardingPreflightResult,
   type DealerOnboardingProvisionResult,
+  type DealerStaffOptions,
   type DealerUploadIntentResult,
 } from "@/features/engagement/dealer-onboarding/contracts/dealer-onboarding.schema";
 import {
@@ -45,6 +51,7 @@ import {
 import {
   bindDealerDocument,
   createDealerContact,
+  createDealerStaff,
   cancelDealerDocumentUpload,
   createDealerDocumentUploadIntent,
   finalizeDealerDocumentUpload,
@@ -54,10 +61,13 @@ import {
   readDealerOnboardingGstinPrefill,
   readDealerOnboardingMargins,
   readDealerOnboardingOptions,
+  readDealerStaffOptions,
   runDealerOnboardingPreflight,
   updateDealerContact,
+  updateDealerStaff,
   updateDealerDirectoryMargins,
   updateDealerDirectoryProfile,
+  updateDealerDirectoryBulkStatus,
 } from "@/features/engagement/dealer-onboarding/server/dealer-onboarding.server";
 
 const ADMIN_PATH = "/engagement/dealers";
@@ -77,7 +87,12 @@ export type DealerOnboardingProvisionActionResult =
   ActionResult<DealerOnboardingProvisionResult>;
 export type DealerProfileUpdateActionResult =
   ActionResult<DealerDirectoryDetail>;
+export type DealerBulkStatusUpdateActionResult =
+  ActionResult<DealerBulkStatusUpdateResult>;
 export type DealerContactMutationActionResult =
+  ActionResult<DealerDirectoryDetail>;
+export type DealerStaffOptionsActionResult = ActionResult<DealerStaffOptions>;
+export type DealerStaffMutationActionResult =
   ActionResult<DealerDirectoryDetail>;
 export type DealerMarginUpdateActionResult =
   ActionResult<DealerDirectoryDetail>;
@@ -200,6 +215,63 @@ export async function provisionDealerOnboardingAction(
   }
 }
 
+export async function loadDealerStaffOptionsAction(
+  input: unknown,
+): Promise<DealerStaffOptionsActionResult> {
+  try {
+    const parsed = dealerStaffOptionsActionInputSchema.parse(input);
+    const access = await resolveActionAccess("canManageContacts");
+    return {
+      ok: true,
+      data: await readDealerStaffOptions({
+        access,
+        dealerOrgUnitId: parsed.dealerOrgUnitId,
+      }),
+    };
+  } catch (error: unknown) {
+    return dealerOnboardingActionFailure(error);
+  }
+}
+
+export async function createDealerStaffAction(
+  input: unknown,
+): Promise<DealerStaffMutationActionResult> {
+  try {
+    const parsed = dealerStaffCreateActionInputSchema.parse(input);
+    const access = await resolveActionAccess("canManageContacts");
+    const data = await createDealerStaff({
+      access,
+      dealerOrgUnitId: parsed.dealerOrgUnitId,
+      body: parsed.body,
+    });
+    revalidatePath(ADMIN_PATH);
+    revalidatePath(detailPath(parsed.dealerOrgUnitId));
+    return { ok: true, data };
+  } catch (error: unknown) {
+    return dealerOnboardingActionFailure(error);
+  }
+}
+
+export async function updateDealerStaffAction(
+  input: unknown,
+): Promise<DealerStaffMutationActionResult> {
+  try {
+    const parsed = dealerStaffUpdateActionInputSchema.parse(input);
+    const access = await resolveActionAccess("canManageContacts");
+    const data = await updateDealerStaff({
+      access,
+      dealerOrgUnitId: parsed.dealerOrgUnitId,
+      userId: parsed.userId,
+      body: parsed.body,
+    });
+    revalidatePath(ADMIN_PATH);
+    revalidatePath(detailPath(parsed.dealerOrgUnitId));
+    return { ok: true, data };
+  } catch (error: unknown) {
+    return dealerOnboardingActionFailure(error);
+  }
+}
+
 export async function createDealerContactAction(
   input: unknown,
 ): Promise<DealerContactMutationActionResult> {
@@ -252,6 +324,23 @@ export async function updateDealerProfileAction(
     });
     revalidatePath(ADMIN_PATH);
     revalidatePath(detailPath(parsed.dealerOrgUnitId));
+    return { ok: true, data };
+  } catch (error: unknown) {
+    return dealerOnboardingActionFailure(error);
+  }
+}
+
+export async function updateDealerBulkStatusAction(
+  input: unknown,
+): Promise<DealerBulkStatusUpdateActionResult> {
+  try {
+    const body = dealerBulkStatusUpdateActionInputSchema.parse(input);
+    const access = await resolveActionAccess("canUpdateDealer");
+    const data = await updateDealerDirectoryBulkStatus({ access, body });
+    revalidatePath(ADMIN_PATH);
+    body.dealers.forEach((dealer) => {
+      revalidatePath(detailPath(dealer.dealerOrgUnitId));
+    });
     return { ok: true, data };
   } catch (error: unknown) {
     return dealerOnboardingActionFailure(error);

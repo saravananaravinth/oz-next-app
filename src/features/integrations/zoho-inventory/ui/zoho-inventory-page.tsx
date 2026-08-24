@@ -23,12 +23,18 @@ import type {
   ZohoIntegrationSearchParams,
   ZohoPendingGrant,
   ZohoSyncJob,
+  ZohoConnectionOverview,
+  ZohoItemsResult,
+  ZohoWebhookEndpoint,
+  ZohoWebhookReceipt,
+  ZohoItemDetail,
 } from "@/features/integrations/zoho-inventory/contracts/zoho-inventory.schema";
 import type { ResolvedZohoInventoryAccess } from "@/features/integrations/zoho-inventory/policies/zoho-inventory.policy";
 import { ZohoConnectControl } from "@/features/integrations/zoho-inventory/ui/zoho-connect-control";
 import { ZohoConnectionCard } from "@/features/integrations/zoho-inventory/ui/zoho-connection-card";
 import { ZohoOrganizationSelector } from "@/features/integrations/zoho-inventory/ui/zoho-organization-selector";
 import { ZohoSyncHistory } from "@/features/integrations/zoho-inventory/ui/zoho-sync-history";
+import { ZohoCatalogMonitor } from "@/features/integrations/zoho-inventory/ui/zoho-catalog-monitor";
 
 function OAuthStatus({
   status,
@@ -104,6 +110,11 @@ export function ZohoInventoryPage({
   jobs,
   pendingGrant,
   query,
+  overview,
+  items,
+  webhooks,
+  receipts,
+  itemDetail,
 }: Readonly<{
   access: ResolvedZohoInventoryAccess;
   connections: readonly ZohoExternalConnection[];
@@ -111,6 +122,11 @@ export function ZohoInventoryPage({
   jobs: readonly ZohoSyncJob[];
   pendingGrant: ZohoPendingGrant | null;
   query: ZohoIntegrationSearchParams;
+  overview: ZohoConnectionOverview | null;
+  items: ZohoItemsResult;
+  webhooks: readonly ZohoWebhookEndpoint[];
+  receipts: readonly ZohoWebhookReceipt[];
+  itemDetail: ZohoItemDetail | null;
 }>): ReactElement {
   const activeDefaultExists = connections.some(
     (connection) => connection.isDefault && connection.status !== "DISABLED",
@@ -182,12 +198,25 @@ export function ZohoInventoryPage({
         )}
       </ContentDataSurface>
 
+      {overview === null ? null : (
+        <ZohoCatalogMonitor
+          overview={overview}
+          items={items}
+          webhooks={webhooks}
+          receipts={receipts}
+          query={query}
+          itemDetail={itemDetail}
+          canSync={access.capabilities.canRunSync}
+          canConfigure={access.capabilities.canConfigure}
+        />
+      )}
+
       <ContentDataSurface
         title="Synchronization history"
         description={
           selectedConnection === null
             ? "Connect Zoho Inventory to begin organization reconciliation."
-            : `Latest durable jobs for ${selectedConnection.organizationName}. Organization reconciliation is the only enabled synchronization operation in this foundation release.`
+            : `Latest durable jobs for ${selectedConnection.organizationName}, including manual, scheduled, webhook, and internal work.`
         }
         padded
         actions={

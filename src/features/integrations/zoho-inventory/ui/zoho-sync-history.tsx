@@ -60,7 +60,7 @@ export function ZohoSyncHistory({
       <ContentEmptyState
         icon={<History aria-hidden="true" />}
         title="No Zoho synchronization jobs yet"
-        description="Run a reconciliation after connecting Zoho Inventory. Organization reconciliation is the only synchronization operation enabled in this foundation release."
+        description="Manual, scheduled, webhook, and internal synchronization work will appear here."
       />
     );
   }
@@ -72,6 +72,7 @@ export function ZohoSyncHistory({
           <TableRow>
             <TableHead>Operation</TableHead>
             <TableHead>Status</TableHead>
+            <TableHead>Source</TableHead>
             <TableHead>Attempts</TableHead>
             <TableHead>Created</TableHead>
             <TableHead>Completed</TableHead>
@@ -92,6 +93,19 @@ export function ZohoSyncHistory({
                 </div>
               </TableCell>
               <TableCell>
+                <Badge
+                  variant={
+                    job.triggerSource === "WEBHOOK"
+                      ? "info"
+                      : job.triggerSource === "SCHEDULED"
+                        ? "secondary"
+                        : "outline"
+                  }
+                >
+                  {job.triggerSource}
+                </Badge>
+              </TableCell>
+              <TableCell>
                 <Badge variant={statusVariant(job.status)}>
                   {statusLabel(job.status)}
                 </Badge>
@@ -102,8 +116,12 @@ export function ZohoSyncHistory({
               <TableCell>{formatDateTime(job.createdAt)}</TableCell>
               <TableCell>{formatDateTime(job.completedAt)}</TableCell>
               <TableCell>
-                {job.lastErrorCode === null ? (
+                {job.lastErrorCode === null && job.outcome === null ? (
                   <span className="text-muted-readable">—</span>
+                ) : job.lastErrorCode === null ? (
+                  <code className="max-w-64 break-all text-caption">
+                    {JSON.stringify(job.outcome)}
+                  </code>
                 ) : (
                   <code className="max-w-64 break-all text-caption text-destructive">
                     {job.lastErrorCode}

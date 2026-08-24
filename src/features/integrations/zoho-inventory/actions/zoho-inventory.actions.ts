@@ -12,10 +12,14 @@ import {
   createZohoConnectionActionInputSchema,
   runZohoReconciliationActionInputSchema,
   zohoConnectionActionInputSchema,
+  runZohoCatalogueSyncActionInputSchema,
+  zohoWebhookActionInputSchema,
+  zohoWebhookEndpointActionInputSchema,
   type ZohoAuthorizationStartResult,
   type ZohoExternalConnection,
   type ZohoSyncJob,
   type ZohoVerifyResult,
+  type ZohoWebhookSecretResult,
 } from "@/features/integrations/zoho-inventory/contracts/zoho-inventory.schema";
 import {
   resolveZohoInventoryAccess,
@@ -29,6 +33,10 @@ import {
   disconnectZohoConnection,
   enqueueZohoReconciliation,
   verifyZohoConnection,
+  createZohoWebhookEndpoint,
+  disableZohoWebhookEndpoint,
+  enqueueZohoCatalogueSync,
+  rotateZohoWebhookEndpoint,
 } from "@/features/integrations/zoho-inventory/server/zoho-inventory.server";
 import {
   clearZohoPendingGrant,
@@ -54,6 +62,8 @@ export type DisconnectZohoConnectionActionResult = ActionResult<
   Readonly<{ disconnected: true }>
 >;
 export type RunZohoReconciliationActionResult = ActionResult<ZohoSyncJob>;
+export type ZohoWebhookSecretActionResult =
+  ActionResult<ZohoWebhookSecretResult>;
 
 async function resolveActionAccess(
   capability: keyof ZohoInventoryCapabilities,
@@ -67,6 +77,79 @@ async function resolveActionAccess(
   }
 
   return access;
+}
+
+export async function runZohoCatalogueSyncAction(
+  input: unknown,
+): Promise<ActionResult<ZohoSyncJob>> {
+  try {
+    const body = runZohoCatalogueSyncActionInputSchema.parse(input);
+    const access = await resolveActionAccess("canRunSync");
+    const idempotencyKey = `zoho:manual:${body.connectionId}:${body.scopeId}:${crypto.randomUUID()}`;
+    const data = await enqueueZohoCatalogueSync({
+      access,
+      connectionId: body.connectionId,
+      scopeId: body.scopeId,
+      idempotencyKey,
+    });
+    revalidatePath(INTEGRATION_PATH);
+    return { ok: true, data };
+  } catch (error: unknown) {
+    return zohoInventoryActionFailure(error);
+  }
+}
+
+export async function createZohoWebhookEndpointAction(
+  input: unknown,
+): Promise<ZohoWebhookSecretActionResult> {
+  try {
+    const body = zohoWebhookActionInputSchema.parse(input);
+    const access = await resolveActionAccess("canConfigure");
+    const data = await createZohoWebhookEndpoint({
+      access,
+      connectionId: body.connectionId,
+    });
+    revalidatePath(INTEGRATION_PATH);
+    return { ok: true, data };
+  } catch (error: unknown) {
+    return zohoInventoryActionFailure(error);
+  }
+}
+
+export async function rotateZohoWebhookEndpointAction(
+  input: unknown,
+): Promise<ZohoWebhookSecretActionResult> {
+  try {
+    const body = zohoWebhookEndpointActionInputSchema.parse(input);
+    const access = await resolveActionAccess("canConfigure");
+    const data = await rotateZohoWebhookEndpoint({
+      access,
+      connectionId: body.connectionId,
+      endpointId: body.endpointId,
+    });
+    revalidatePath(INTEGRATION_PATH);
+    return { ok: true, data };
+  } catch (error: unknown) {
+    return zohoInventoryActionFailure(error);
+  }
+}
+
+export async function disableZohoWebhookEndpointAction(
+  input: unknown,
+): Promise<ActionResult<Readonly<{ disabled: true }>>> {
+  try {
+    const body = zohoWebhookEndpointActionInputSchema.parse(input);
+    const access = await resolveActionAccess("canConfigure");
+    await disableZohoWebhookEndpoint({
+      access,
+      connectionId: body.connectionId,
+      endpointId: body.endpointId,
+    });
+    revalidatePath(INTEGRATION_PATH);
+    return { ok: true, data: { disabled: true } };
+  } catch (error: unknown) {
+    return zohoInventoryActionFailure(error);
+  }
 }
 
 export async function beginZohoAuthorizationAction(

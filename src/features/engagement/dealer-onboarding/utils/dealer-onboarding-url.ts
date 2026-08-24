@@ -19,6 +19,8 @@ export function parseDealerDirectorySearchParams(
   const input = dealerDirectoryRawSearchParamsSchema.safeParse(raw);
   if (!input.success) return input;
 
+  const active = input.data.active?.trim();
+
   return dealerDirectorySearchParamsSchema.safeParse({
     ...(input.data.q === undefined || input.data.q.trim() === ""
       ? {}
@@ -27,9 +29,14 @@ export function parseDealerDirectorySearchParams(
     input.data.dealerType.trim() === ""
       ? {}
       : { dealerType: input.data.dealerType }),
-    ...(input.data.active === undefined || input.data.active.trim() === ""
+    active: active === undefined || active === "" ? "true" : active,
+    ...(input.data.sortBy === undefined || input.data.sortBy.trim() === ""
       ? {}
-      : { active: input.data.active }),
+      : { sortBy: input.data.sortBy }),
+    ...(input.data.sortDirection === undefined ||
+    input.data.sortDirection.trim() === ""
+      ? {}
+      : { sortDirection: input.data.sortDirection }),
     ...(input.data.cursor === undefined || input.data.cursor.trim() === ""
       ? {}
       : { cursor: input.data.cursor }),
@@ -41,9 +48,18 @@ export function dealerDirectoryHref(
 ): Route {
   const search = new URLSearchParams();
   if (filters.q !== undefined) search.set("q", filters.q);
-  if (filters.dealerType !== undefined)
+  if (filters.dealerType !== undefined) {
     search.set("dealerType", filters.dealerType);
-  if (filters.active !== undefined) search.set("active", filters.active);
+  }
+  if (filters.active !== undefined && filters.active !== "true") {
+    search.set("active", filters.active);
+  }
+  if (filters.sortBy !== undefined && filters.sortBy !== "DISPLAY_NAME") {
+    search.set("sortBy", filters.sortBy);
+  }
+  if (filters.sortDirection !== undefined && filters.sortDirection !== "ASC") {
+    search.set("sortDirection", filters.sortDirection);
+  }
   if (filters.cursor !== undefined) search.set("cursor", filters.cursor);
   const query = search.toString();
   return `${DEALER_ADMINISTRATION_ROUTE}${query.length === 0 ? "" : `?${query}`}` as Route;

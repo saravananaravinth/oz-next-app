@@ -14,6 +14,11 @@ import {
 import {
   readZohoConnections,
   readZohoSyncJobs,
+  readZohoConnectionOverview,
+  readZohoItems,
+  readZohoWebhookEndpoints,
+  readZohoWebhookReceipts,
+  readZohoItemDetail,
 } from "@/features/integrations/zoho-inventory/server/zoho-inventory.server";
 import { readZohoPendingGrant } from "@/features/integrations/zoho-inventory/server/zoho-oauth-session";
 
@@ -50,7 +55,16 @@ function scalar(value: string | string[] | undefined): string | undefined {
 }
 
 function parseSearchParams(raw: RawSearchParams) {
-  const allowed = new Set(["oauth", "connection"]);
+  const allowed = new Set([
+    "oauth",
+    "connection",
+    "item",
+    "search",
+    "membership",
+    "mapping",
+    "itemStatus",
+    "cursor",
+  ]);
 
   if (Object.keys(raw).some((key) => !allowed.has(key))) {
     return zohoIntegrationSearchParamsSchema.safeParse({ invalid: "true" });
@@ -58,7 +72,12 @@ function parseSearchParams(raw: RawSearchParams) {
 
   if (
     (Array.isArray(raw["oauth"]) && raw["oauth"].length > 0) ||
-    (Array.isArray(raw["connection"]) && raw["connection"].length > 0)
+    (Array.isArray(raw["connection"]) && raw["connection"].length > 0) ||
+    (Array.isArray(raw["item"]) && raw["item"].length > 0) ||
+    ["search", "membership", "mapping", "itemStatus", "cursor"].some((key) => {
+      const value = raw[key];
+      return Array.isArray(value) && value.length > 0;
+    })
   ) {
     return zohoIntegrationSearchParamsSchema.safeParse({ invalid: "true" });
   }
@@ -70,6 +89,22 @@ function parseSearchParams(raw: RawSearchParams) {
     ...(scalar(raw["connection"]) === undefined
       ? {}
       : { connection: scalar(raw["connection"]) }),
+    ...(scalar(raw["item"]) === undefined ? {} : { item: scalar(raw["item"]) }),
+    ...(scalar(raw["search"]) === undefined
+      ? {}
+      : { search: scalar(raw["search"]) }),
+    ...(scalar(raw["membership"]) === undefined
+      ? {}
+      : { membership: scalar(raw["membership"]) }),
+    ...(scalar(raw["mapping"]) === undefined
+      ? {}
+      : { mapping: scalar(raw["mapping"]) }),
+    ...(scalar(raw["itemStatus"]) === undefined
+      ? {}
+      : { itemStatus: scalar(raw["itemStatus"]) }),
+    ...(scalar(raw["cursor"]) === undefined
+      ? {}
+      : { cursor: scalar(raw["cursor"]) }),
   });
 }
 
@@ -131,14 +166,62 @@ export default async function ZohoInventoryIntegrationRoutePage({
       : (connections.find(
           (connection) => connection.connectionId === connectionId,
         ) ?? null);
-  const jobs =
+  const [jobs, overview, items, webhooks, receipts, itemDetail] =
     selectedConnection === null
-      ? []
-      : await readZohoSyncJobs({
-          access,
-          connectionId: selectedConnection.connectionId,
-          limit: 50,
-        });
+      ? ([
+          [],
+          null,
+          { items: [], total: 0, nextCursor: null },
+          [],
+          [],
+          null,
+        ] as const)
+      : await Promise.all([
+          readZohoSyncJobs({
+            access,
+            connectionId: selectedConnection.connectionId,
+            limit: 50,
+          }),
+          readZohoConnectionOverview({
+            access,
+            connectionId: selectedConnection.connectionId,
+          }),
+          readZohoItems({
+            access,
+            connectionId: selectedConnection.connectionId,
+            limit: 50,
+            ...(parsedQuery.data.cursor === undefined
+              ? {}
+              : { cursor: parsedQuery.data.cursor }),
+            ...(parsedQuery.data.search === undefined
+              ? {}
+              : { search: parsedQuery.data.search }),
+            ...(parsedQuery.data.membership === undefined
+              ? {}
+              : { membershipState: parsedQuery.data.membership }),
+            ...(parsedQuery.data.mapping === undefined
+              ? {}
+              : { mappingStatus: parsedQuery.data.mapping }),
+            ...(parsedQuery.data.itemStatus === undefined
+              ? {}
+              : { itemStatus: parsedQuery.data.itemStatus }),
+          }),
+          readZohoWebhookEndpoints({
+            access,
+            connectionId: selectedConnection.connectionId,
+          }),
+          readZohoWebhookReceipts({
+            access,
+            connectionId: selectedConnection.connectionId,
+          }),
+          parsedQuery.data.item === undefined
+            ? Promise.resolve(null)
+            : readZohoItemDetail({
+                access,
+                connectionId: selectedConnection.connectionId,
+                itemId: parsedQuery.data.item,
+              }),
+        ]);
   const query: ZohoIntegrationSearchParams =
     parsedQuery.data.oauth === "authorized" && pendingGrant === null
       ? { ...parsedQuery.data, oauth: "context-lost" }
@@ -152,6 +235,11 @@ export default async function ZohoInventoryIntegrationRoutePage({
       jobs={jobs}
       pendingGrant={pendingGrant}
       query={query}
+      overview={overview}
+      items={items}
+      webhooks={webhooks}
+      receipts={receipts}
+      itemDetail={itemDetail}
     />
   );
 }

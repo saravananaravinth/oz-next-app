@@ -197,6 +197,13 @@ export const zohoSyncJobSchema = z
     startedAt: nullableIsoDateTimeSchema,
     completedAt: nullableIsoDateTimeSchema,
     lastErrorCode: z.string().trim().min(1).max(256).nullable(),
+    triggerSource: z.enum(["MANUAL", "SCHEDULED", "WEBHOOK", "SYSTEM"]),
+    scopeId: uuidSchema.nullable(),
+    resourceKey: z.string().trim().max(256).nullable(),
+    triggerReference: z.string().trim().max(512).nullable(),
+    batchId: uuidSchema.nullable(),
+    parentSyncJobId: uuidSchema.nullable(),
+    outcome: z.record(z.string(), z.unknown()).nullable(),
   })
   .strict();
 
@@ -231,6 +238,171 @@ export const runZohoReconciliationActionInputSchema = z
     connectionId: uuidSchema,
     idempotencyKey: safeIdempotencyKeySchema,
   })
+  .strict();
+
+export const zohoScopeSchema = z
+  .object({
+    scopeId: uuidSchema,
+    connectionId: uuidSchema,
+    sourceCode: z.string().min(1).max(128),
+    customViewId: safeProviderIdentifierSchema,
+    customViewName: z.string().max(512).nullable(),
+    categoryId: safeProviderIdentifierSchema.nullable(),
+    categoryName: z.string().min(1).max(512),
+    isActive: z.boolean(),
+    lastFullSyncAt: nullableIsoDateTimeSchema,
+    lastIncrementalSyncAt: nullableIsoDateTimeSchema,
+  })
+  .strict();
+
+export const zohoOverviewSchema = z
+  .object({
+    activeScopes: z.number().int().nonnegative(),
+    totalItems: z.number().int().nonnegative(),
+    inScopeItems: z.number().int().nonnegative(),
+    mappedItems: z.number().int().nonnegative(),
+    serials: z.number().int().nonnegative(),
+    activeWebhookEndpoints: z.number().int().nonnegative(),
+    webhookReceipts24h: z.number().int().nonnegative(),
+    failedWebhookReceipts24h: z.number().int().nonnegative(),
+    lastSuccessfulSyncAt: nullableIsoDateTimeSchema,
+  })
+  .strict();
+
+export const zohoConnectionOverviewSchema = z
+  .object({
+    connection: zohoExternalConnectionSchema,
+    overview: zohoOverviewSchema,
+    scopes: z.array(zohoScopeSchema).max(100).readonly(),
+    itemReadScopeGranted: z.boolean(),
+  })
+  .strict();
+
+export const zohoItemSchema = z
+  .object({
+    itemMappingId: uuidSchema,
+    scopeId: uuidSchema,
+    zohoItemId: safeProviderIdentifierSchema,
+    componentId: uuidSchema.nullable(),
+    sku: z.string().max(256).nullable(),
+    name: z.string().min(1).max(1024),
+    description: z.string().max(10000).nullable(),
+    itemStatus: z.string().max(128).nullable(),
+    itemType: z.string().max(128).nullable(),
+    productType: z.string().max(128).nullable(),
+    unit: z.string().max(128).nullable(),
+    categoryName: z.string().max(512).nullable(),
+    salesRate: z.string().nullable(),
+    purchaseRate: z.string().nullable(),
+    reorderLevel: z.string().nullable(),
+    availableStock: z.string().nullable(),
+    actualAvailableStock: z.string().nullable(),
+    serialTrackingEnabled: z.boolean(),
+    batchTrackingEnabled: z.boolean(),
+    imageName: z.string().max(1024).nullable(),
+    imageContentType: z.string().max(128).nullable(),
+    hasImage: z.boolean(),
+    providerLastModifiedAt: nullableIsoDateTimeSchema,
+    membershipState: z.enum(["IN_SCOPE", "OUT_OF_SCOPE", "DELETED"]),
+    mappingStatus: z.enum([
+      "MAPPED",
+      "UNMAPPED",
+      "CONFLICT",
+      "INVALID_CONFIGURATION",
+    ]),
+    lastSyncedAt: isoDateTimeSchema,
+    rowVersion: z.number().int().nonnegative(),
+  })
+  .strict();
+
+export const zohoItemsResultSchema = z
+  .object({
+    items: z.array(zohoItemSchema).max(100).readonly(),
+    total: z.number().int().nonnegative(),
+    nextCursor: z.string().min(8).max(1024).nullable(),
+  })
+  .strict();
+
+export const zohoSerialSchema = z
+  .object({
+    zohoSerialId: uuidSchema,
+    zohoSerialNumberId: safeProviderIdentifierSchema,
+    serialNumber: z.string().min(1).max(512),
+    providerStatus: z.string().max(128).nullable(),
+    isTransactedOut: z.boolean(),
+    warehouseId: safeProviderIdentifierSchema.nullable(),
+    locationId: safeProviderIdentifierSchema.nullable(),
+    membershipState: z.enum(["PRESENT", "MISSING", "DELETED"]),
+    lastVerifiedAt: nullableIsoDateTimeSchema,
+  })
+  .strict();
+
+export const zohoItemDetailSchema = z
+  .object({
+    item: zohoItemSchema,
+    serials: z.array(zohoSerialSchema).max(10000).readonly(),
+    imageDownload: z
+      .object({ url: z.url(), expiresAt: isoDateTimeSchema })
+      .strict()
+      .nullable(),
+  })
+  .strict();
+
+export const zohoWebhookEndpointSchema = z
+  .object({
+    webhookEndpointId: uuidSchema,
+    connectionId: uuidSchema,
+    endpointKey: z.string().min(32).max(160),
+    status: z.enum(["ACTIVE", "ROTATING", "DISABLED"]),
+    allowedResourceTypes: z.array(z.string().max(128)).max(32).readonly(),
+    lastReceivedAt: nullableIsoDateTimeSchema,
+    previousSecretValidUntil: nullableIsoDateTimeSchema,
+    createdAt: isoDateTimeSchema,
+    updatedAt: isoDateTimeSchema,
+  })
+  .strict();
+export const zohoWebhookEndpointsSchema = z
+  .array(zohoWebhookEndpointSchema)
+  .max(100)
+  .readonly();
+export const zohoWebhookReceiptSchema = z
+  .object({
+    receiptId: uuidSchema,
+    status: z.enum([
+      "RECEIVED",
+      "QUEUED",
+      "PROCESSING",
+      "PROCESSED",
+      "FAILED",
+      "IGNORED",
+    ]),
+    resourceId: safeProviderIdentifierSchema.nullable(),
+    eventName: z.string().max(256).nullable(),
+    receivedAt: isoDateTimeSchema,
+    lastErrorCode: z.string().max(256).nullable(),
+    syncJobId: uuidSchema.nullable(),
+  })
+  .strict();
+export const zohoWebhookReceiptsSchema = z
+  .array(zohoWebhookReceiptSchema)
+  .max(100)
+  .readonly();
+export const zohoWebhookSecretResultSchema = z
+  .object({
+    endpoint: zohoWebhookEndpointSchema,
+    secret: z.string().min(32).max(256),
+    secretHeader: z.string().min(1).max(128),
+  })
+  .strict();
+
+export const runZohoCatalogueSyncActionInputSchema = z
+  .object({ connectionId: uuidSchema, scopeId: uuidSchema })
+  .strict();
+export const zohoWebhookActionInputSchema = z
+  .object({ connectionId: uuidSchema })
+  .strict();
+export const zohoWebhookEndpointActionInputSchema = z
+  .object({ connectionId: uuidSchema, endpointId: uuidSchema })
   .strict();
 
 export const zohoOAuthCallbackQuerySchema = z
@@ -316,6 +488,20 @@ export const zohoIntegrationSearchParamsSchema = z
   .object({
     oauth: z.enum(ZOHO_INTEGRATION_OAUTH_STATUSES).optional(),
     connection: uuidSchema.optional(),
+    item: safeProviderIdentifierSchema.optional(),
+    search: z.string().trim().min(1).max(128).optional(),
+    membership: z.enum(["IN_SCOPE", "OUT_OF_SCOPE", "DELETED"]).optional(),
+    mapping: z
+      .enum(["MAPPED", "UNMAPPED", "CONFLICT", "INVALID_CONFIGURATION"])
+      .optional(),
+    itemStatus: z.string().trim().min(1).max(64).optional(),
+    cursor: z
+      .string()
+      .trim()
+      .min(8)
+      .max(1024)
+      .regex(/^[A-Za-z0-9_-]+$/u)
+      .optional(),
   })
   .strict();
 
@@ -333,6 +519,17 @@ export type ZohoAuthorizationExchangeResult = z.infer<
 >;
 export type ZohoVerifyResult = z.infer<typeof zohoVerifyResultSchema>;
 export type ZohoSyncJob = z.infer<typeof zohoSyncJobSchema>;
+export type ZohoConnectionOverview = z.infer<
+  typeof zohoConnectionOverviewSchema
+>;
+export type ZohoItem = z.infer<typeof zohoItemSchema>;
+export type ZohoItemsResult = z.infer<typeof zohoItemsResultSchema>;
+export type ZohoItemDetail = z.infer<typeof zohoItemDetailSchema>;
+export type ZohoWebhookEndpoint = z.infer<typeof zohoWebhookEndpointSchema>;
+export type ZohoWebhookReceipt = z.infer<typeof zohoWebhookReceiptSchema>;
+export type ZohoWebhookSecretResult = z.infer<
+  typeof zohoWebhookSecretResultSchema
+>;
 export type ZohoOAuthCallbackQuery = z.infer<
   typeof zohoOAuthCallbackQuerySchema
 >;

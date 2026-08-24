@@ -7,6 +7,7 @@ import { HTTP_METHODS } from "@/lib/api/http-contract";
 import {
   dealerDirectoryDetailSchema,
   dealerDirectoryPageSchema,
+  dealerBulkStatusUpdateResultSchema,
   dealerDocumentDownloadResultSchema,
   dealerDocumentSchema,
   dealerFileStatusSchema,
@@ -14,14 +15,20 @@ import {
   dealerOnboardingMarginGridSchema,
   dealerOnboardingOptionsSchema,
   dealerOnboardingPreflightResultSchema,
+  dealerStaffOptionsSchema,
   dealerOnboardingProvisionResultSchema,
   dealerUploadCancelResultSchema,
   dealerUploadIntentResultSchema,
   type DealerContactCreateBody,
   type DealerContactUpdateBody,
+  type DealerStaffCreateBody,
+  type DealerStaffUpdateBody,
+  type DealerStaffOptions,
   type DealerDirectoryDetail,
   type DealerDirectoryListQuery,
   type DealerDirectoryPage,
+  type DealerBulkStatusUpdateBody,
+  type DealerBulkStatusUpdateResult,
   type DealerDocument,
   type DealerDocumentBindBody,
   type DealerDocumentDownloadResult,
@@ -86,6 +93,61 @@ export async function readDealerDirectoryDetail(
   });
 }
 
+export async function readDealerStaffOptions(
+  input: Readonly<{
+    access: ResolvedDealerAdministrationAccess;
+    dealerOrgUnitId: string;
+  }>,
+): Promise<DealerStaffOptions> {
+  return await dealerAdministrationClient.request({
+    method: HTTP_METHODS.GET,
+    path: `/${segment(input.dealerOrgUnitId)}/staff/options`,
+    schema: dealerStaffOptionsSchema,
+    ...(input.access.actorContext === undefined
+      ? {}
+      : { actorContext: input.access.actorContext }),
+  });
+}
+
+export async function createDealerStaff(
+  input: Readonly<{
+    access: ResolvedDealerAdministrationAccess;
+    dealerOrgUnitId: string;
+    body: DealerStaffCreateBody;
+  }>,
+): Promise<DealerDirectoryDetail> {
+  return await dealerAdministrationClient.request({
+    method: HTTP_METHODS.POST,
+    path: `/${segment(input.dealerOrgUnitId)}/staff`,
+    body: input.body,
+    schema: dealerDirectoryDetailSchema,
+    refreshOnUnauthorized: false,
+    ...(input.access.actorContext === undefined
+      ? {}
+      : { actorContext: input.access.actorContext }),
+  });
+}
+
+export async function updateDealerStaff(
+  input: Readonly<{
+    access: ResolvedDealerAdministrationAccess;
+    dealerOrgUnitId: string;
+    userId: string;
+    body: DealerStaffUpdateBody;
+  }>,
+): Promise<DealerDirectoryDetail> {
+  return await dealerAdministrationClient.request({
+    method: HTTP_METHODS.PATCH,
+    path: `/${segment(input.dealerOrgUnitId)}/staff/${segment(input.userId)}`,
+    body: input.body,
+    schema: dealerDirectoryDetailSchema,
+    refreshOnUnauthorized: false,
+    ...(input.access.actorContext === undefined
+      ? {}
+      : { actorContext: input.access.actorContext }),
+  });
+}
+
 export async function createDealerContact(
   input: Readonly<{
     access: ResolvedDealerAdministrationAccess;
@@ -137,6 +199,24 @@ export async function updateDealerDirectoryProfile(
     path: `/${segment(input.dealerOrgUnitId)}/profile`,
     body: input.body,
     schema: dealerDirectoryDetailSchema,
+    refreshOnUnauthorized: false,
+    ...(input.access.actorContext === undefined
+      ? {}
+      : { actorContext: input.access.actorContext }),
+  });
+}
+
+export async function updateDealerDirectoryBulkStatus(
+  input: Readonly<{
+    access: ResolvedDealerAdministrationAccess;
+    body: DealerBulkStatusUpdateBody;
+  }>,
+): Promise<DealerBulkStatusUpdateResult> {
+  return await dealerAdministrationClient.request({
+    method: HTTP_METHODS.PATCH,
+    path: "/bulk-status",
+    body: input.body,
+    schema: dealerBulkStatusUpdateResultSchema,
     refreshOnUnauthorized: false,
     ...(input.access.actorContext === undefined
       ? {}

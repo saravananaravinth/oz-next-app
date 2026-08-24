@@ -27,6 +27,7 @@ import {
   Warehouse,
   Wrench,
   Component,
+  Network,
 } from "lucide-react";
 
 import { Badge, type BadgeProps } from "@/components/ui/badge";
@@ -89,6 +90,7 @@ const NAV_ICON_COMPONENTS = {
   Warranty: Shield,
   Wrench,
   component: Component,
+  network: Network,
 
   // Canonical persisted Lucide-style identifiers.
   "bar-chart-3": BarChart3,

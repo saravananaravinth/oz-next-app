@@ -133,6 +133,7 @@ export const BROWSER_API_ALLOWED_PREFIXES = ["/erp/engagement/public"] as const;
  */
 export const BROWSER_SAME_ORIGIN_ALLOWED_EXACT_PATHS = [
   "/api/auth/refresh",
+  "/api/engagement/dealers/search",
   "/api/inventory/dealer-contexts",
   "/api/inventory/vehicles/export",
   "/api/inventory/vehicles/search",

@@ -4,7 +4,6 @@
 import * as React from "react";
 import Link from "next/link";
 import {
-  ArrowLeft,
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
@@ -13,6 +12,7 @@ import {
   SearchCheck,
   ShieldCheck,
   Sparkles,
+  UserPlus,
 } from "lucide-react";
 
 import {
@@ -59,6 +59,7 @@ import {
   type DealerPreflightApplication,
 } from "@/features/engagement/dealer-onboarding/contracts/dealer-onboarding.schema";
 import type { ResolvedDealerAdministrationAccess } from "@/features/engagement/dealer-onboarding/policies/dealer-onboarding.policy";
+import { DealerWorkspaceHeader } from "@/features/engagement/dealer-onboarding/ui/dealer-workspace-header";
 import {
   DEALER_ADMINISTRATION_ROUTE,
   dealerDetailHref,
@@ -549,33 +550,39 @@ export function DealerOnboardingWorkbench({
   const canGoBack = currentStep > 1;
 
   return (
-    <ContentRoot width="wide" density="comfortable">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div className="space-y-3">
-          <Button asChild variant="outline">
-            <Link href={DEALER_ADMINISTRATION_ROUTE}>
-              <ArrowLeft aria-hidden="true" />
-              Dealers
-            </Link>
-          </Button>
-          <div>
-            <h1 className="text-page-title">Onboard Dealer</h1>
-            <p className="mt-1 max-w-3xl text-body-sm text-muted-readable">
-              Create a dealer or sub-dealer through duplicate-safe preflight,
-              verified tax identity, scoped organization provisioning, and
-              auditable contact and location capture.
-            </p>
+    <ContentRoot
+      width="full"
+      density="comfortable"
+      aria-labelledby="dealer-onboarding-title"
+      className="min-h-[calc(100dvh-8rem)]"
+    >
+      <DealerWorkspaceHeader
+        titleId="dealer-onboarding-title"
+        title="Onboard Dealer"
+        description="Duplicate-safe dealer and sub-dealer provisioning with verified tax identity and auditable organization setup."
+        icon={<UserPlus aria-hidden="true" className="size-4" />}
+        backHref={DEALER_ADMINISTRATION_ROUTE}
+        backLabel="Back to dealer directory"
+        meta={
+          <div className="flex shrink-0 items-center gap-2">
+            <Badge variant="info" className="h-8">
+              Enterprise onboarding
+            </Badge>
+            <Badge variant="outline" className="h-8 text-tabular">
+              Step {(currentStep + 1).toLocaleString("en-IN")} of{" "}
+              {WORKFLOW_STEPS.length.toLocaleString("en-IN")}
+            </Badge>
           </div>
-        </div>
-        <Badge variant="info">Enterprise onboarding</Badge>
-      </div>
+        }
+      />
 
       <Alert variant="info">
         <Sparkles aria-hidden="true" />
         <AlertTitle>GST Portal Prefill</AlertTitle>
         <AlertDescription>
-          Prefill Customer details from the GST portal using the Customer&apos;s
-          GSTIN.
+          Use a valid GSTIN to prefill verified legal and tax details. All
+          returned data remains subject to the onboarding validation contract
+          before provisioning.
         </AlertDescription>
       </Alert>
 
@@ -603,56 +610,73 @@ export function DealerOnboardingWorkbench({
         </Alert>
       ) : null}
 
-      <WorkflowStepper steps={WORKFLOW_STEPS} currentStep={currentStep} />
+      <div className="grid min-h-0 gap-5 xl:grid-cols-[minmax(15rem,19rem)_minmax(0,1fr)]">
+        <aside className="xl:sticky xl:top-4 xl:self-start">
+          <ContentSection
+            title="Onboarding progress"
+            description="Complete each validated stage before dealer provisioning."
+            padded
+          >
+            <WorkflowStepper steps={WORKFLOW_STEPS} currentStep={currentStep} />
+          </ContentSection>
+        </aside>
 
-      {currentStep === 0 ? (
-        <PreflightStep
-          input={preflightInput}
-          result={preflight}
-          busy={preflightBusy}
-          update={updatePreflight}
-          onRun={() => void runPreflight()}
-          onContinueApplication={(application) =>
-            void runPreflight(application)
-          }
-        />
-      ) : null}
+        <ContentDataSurface
+          title={WORKFLOW_STEPS[currentStep]?.label ?? "Dealer onboarding"}
+          description={WORKFLOW_STEPS[currentStep]?.description}
+          padded
+          className="min-w-0"
+        >
+          {currentStep === 0 ? (
+            <PreflightStep
+              input={preflightInput}
+              result={preflight}
+              busy={preflightBusy}
+              update={updatePreflight}
+              onRun={() => void runPreflight()}
+              onContinueApplication={(application) =>
+                void runPreflight(application)
+              }
+            />
+          ) : null}
 
-      {currentStep === 1 ? (
-        <DealerStep
-          draft={draft}
-          options={options}
-          optionsBusy={optionsBusy}
-          update={updateDraft}
-        />
-      ) : null}
+          {currentStep === 1 ? (
+            <DealerStep
+              draft={draft}
+              options={options}
+              optionsBusy={optionsBusy}
+              update={updateDraft}
+            />
+          ) : null}
 
-      {currentStep === 2 ? (
-        <TaxStep
-          draft={draft}
-          options={options}
-          gstinBusy={gstinBusy}
-          update={updateDraft}
-          onGstinPrefill={() => void lookupGstin()}
-        />
-      ) : null}
+          {currentStep === 2 ? (
+            <TaxStep
+              draft={draft}
+              options={options}
+              gstinBusy={gstinBusy}
+              update={updateDraft}
+              onGstinPrefill={() => void lookupGstin()}
+            />
+          ) : null}
 
-      {currentStep === 3 ? (
-        <LocationsStep
-          draft={draft}
-          options={options}
-          geoBusy={geoBusy}
-          update={updateDraft}
-          onCaptureLocation={captureLocation}
-        />
-      ) : null}
+          {currentStep === 3 ? (
+            <LocationsStep
+              draft={draft}
+              options={options}
+              geoBusy={geoBusy}
+              update={updateDraft}
+              onCaptureLocation={captureLocation}
+            />
+          ) : null}
 
-      {currentStep === 4 ? (
-        <ReviewStep draft={draft} preflight={preflight} />
-      ) : null}
+          {currentStep === 4 ? (
+            <ReviewStep draft={draft} preflight={preflight} />
+          ) : null}
+        </ContentDataSurface>
+      </div>
 
       {currentStep > 0 ? (
-        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border/70 pt-5">
+        <div className="sticky bottom-3 z-20 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border/80 bg-background/95 p-3 shadow-lg shadow-foreground/5 supports-[backdrop-filter]:backdrop-blur-md">
           <Button
             type="button"
             variant="outline"
@@ -708,11 +732,12 @@ function PreflightStep({
   onContinueApplication: (application: DealerPreflightApplication) => void;
 }>): React.ReactElement {
   return (
-    <ContentDataSurface
-      title="Check existing records"
-      description="Identity preflight is mandatory. It prevents duplicate dealers and preserves dealership-application provenance when a matching application already exists."
-      padded
-    >
+    <div>
+      <p className="mb-5 max-w-4xl text-body-sm text-muted-readable">
+        Identity preflight is mandatory. It prevents duplicate dealers and
+        preserves dealership-application provenance when a matching application
+        already exists.
+      </p>
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         <TextField
           label="Company / Business Name"
@@ -788,7 +813,7 @@ function PreflightStep({
           />
         </div>
       )}
-    </ContentDataSurface>
+    </div>
   );
 }
 

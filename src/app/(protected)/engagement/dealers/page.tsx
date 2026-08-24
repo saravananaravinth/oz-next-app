@@ -15,7 +15,7 @@ import { readDealerDirectory } from "@/features/engagement/dealer-onboarding/ser
 
 const PAGE_TITLE = "Dealers";
 const PAGE_DESCRIPTION =
-  "Manage dealers and sub-dealers, contacts, tax identity, locations, wallets, Welfare Fund activity, and supporting documents.";
+  "Manage dealers and sub-dealers, staff access, tax identity, locations, wallets, Welfare Fund activity, and supporting documents.";
 
 type PageProps = Readonly<{
   searchParams: Promise<DealerDirectoryRawSearchParams>;
@@ -66,9 +66,12 @@ export default async function DealersRoutePage({
       ...(parsedQuery.data.dealerType === undefined
         ? {}
         : { dealerType: parsedQuery.data.dealerType }),
-      ...(parsedQuery.data.active === undefined
+      ...(parsedQuery.data.active === "all"
         ? {}
-        : { active: parsedQuery.data.active === "true" }),
+        : { active: parsedQuery.data.active !== "false" }),
+      includeSummary: true,
+      sortBy: parsedQuery.data.sortBy ?? "DISPLAY_NAME",
+      sortDirection: parsedQuery.data.sortDirection ?? "ASC",
       limit: 40,
       ...(parsedQuery.data.cursor === undefined
         ? {}

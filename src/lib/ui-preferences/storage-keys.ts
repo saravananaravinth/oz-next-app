@@ -7,6 +7,8 @@ export const UI_STORAGE_KEYS = {
   /** Browser-scoped acknowledgement only. Stores no actor, tenant, or PII value. */
   DEALER_DASHBOARD_GUIDE_ACKNOWLEDGED:
     "oz_dealer_dashboard_guide_v1_acknowledged",
+  /** Presentation-only dealer directory column order/visibility/density. */
+  DEALER_DIRECTORY_TABLE: "oz_dealer_directory_table_v1",
 } as const;
 
 export const LEGACY_UI_STORAGE_KEYS = {

@@ -7,7 +7,7 @@ import { Select as SelectPrimitive } from "radix-ui";
 
 import { cn } from "@/lib/utils";
 
-type SelectTriggerSize = "sm" | "default";
+type SelectTriggerSize = "sm" | "compact" | "default";
 
 function Select({
   ...props
@@ -50,7 +50,7 @@ function SelectTrigger({
       className={cn(
         "flex w-full min-w-0 items-center justify-between gap-2 rounded-2xl border border-input bg-background px-3 text-body-sm whitespace-nowrap shadow-xs transition-[background-color,border-color,box-shadow,color] duration-[var(--motion-duration-fast)] ease-enterprise outline-none select-none motion-reduce:transition-none",
         "focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/40 disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-[3px] aria-invalid:ring-destructive/20 data-placeholder:text-muted-readable",
-        "data-[size=default]:h-11 data-[size=sm]:h-8 data-[size=sm]:rounded-xl dark:bg-input/30 dark:hover:bg-input/50 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40",
+        "data-[size=default]:h-11 data-[size=compact]:h-9 data-[size=compact]:rounded-xl data-[size=sm]:h-8 data-[size=sm]:rounded-xl dark:bg-input/30 dark:hover:bg-input/50 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40",
         "*:data-[slot=select-value]:line-clamp-1 *:data-[slot=select-value]:flex *:data-[slot=select-value]:min-w-0 *:data-[slot=select-value]:items-center *:data-[slot=select-value]:gap-1.5 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
         className,
       )}

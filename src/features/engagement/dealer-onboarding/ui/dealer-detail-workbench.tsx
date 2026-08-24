@@ -2,11 +2,12 @@
 "use client";
 
 import * as React from "react";
-import Link from "next/link";
 import {
-  ArrowLeft,
   Download,
   FileUp,
+  Building2,
+  Files,
+  LayoutDashboard,
   LocateFixed,
   Mail,
   MapPin,
@@ -16,6 +17,7 @@ import {
   ShieldCheck,
   TriangleAlert,
   UserRound,
+  UsersRound,
   WalletCards,
 } from "lucide-react";
 
@@ -48,29 +50,40 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Tabs,
+  TabsBadge,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 
 import {
   bindDealerDocumentAction,
-  createDealerContactAction,
+  createDealerStaffAction,
   getDealerDocumentDownloadAction,
   loadDealerOnboardingOptionsAction,
-  updateDealerContactAction,
+  loadDealerStaffOptionsAction,
+  updateDealerStaffAction,
   updateDealerProfileAction,
 } from "@/features/engagement/dealer-onboarding/actions/dealer-onboarding.actions";
 import {
   DEALER_DOCUMENT_KINDS,
   DEALER_GST_TREATMENTS,
   DEALER_ONBOARDING_LANGUAGES,
+  DEALER_ONBOARDING_TYPES,
   DEALER_TAX_PREFERENCES,
-  type DealerContact,
   type DealerDirectoryDetail,
+  type DealerOnboardingType,
+  type DealerStaff,
+  type DealerStaffOptions,
   type DealerDocumentKind,
   type DealerFileStatus,
   type DealerOnboardingOptions,
 } from "@/features/engagement/dealer-onboarding/contracts/dealer-onboarding.schema";
 import type { ResolvedDealerAdministrationAccess } from "@/features/engagement/dealer-onboarding/policies/dealer-onboarding.policy";
+import { DealerWorkspaceHeader } from "@/features/engagement/dealer-onboarding/ui/dealer-workspace-header";
 import {
   DealerDocumentUploadError,
   resumeDealerDocumentScan,
@@ -91,6 +104,7 @@ const EMPTY_OPTIONS: DealerOnboardingOptions = {
 type Feedback = Readonly<{ kind: "success" | "error"; message: string }> | null;
 
 type ProfileDraft = Readonly<{
+  dealerType: DealerOnboardingType;
   companyName: string;
   displayName: string;
   isActive: boolean;
@@ -134,19 +148,23 @@ type ProfileDraft = Readonly<{
   reason: string;
 }>;
 
-type NewContactDraft = Readonly<{
+type NewStaffDraft = Readonly<{
   displayName: string;
   email: string;
   phone: string;
-  title: string;
+  staffTitleId: string;
+  roleIds: readonly string[];
 }>;
 
-const EMPTY_CONTACT: NewContactDraft = {
+const EMPTY_STAFF: NewStaffDraft = {
   displayName: "",
   email: "",
   phone: "",
-  title: "",
+  staffTitleId: "",
+  roleIds: [],
 };
+
+const EMPTY_STAFF_OPTIONS: DealerStaffOptions = { titles: [], roles: [] };
 
 type BrowserGeolocation = Readonly<{
   getCurrentPosition: (
@@ -207,7 +225,7 @@ export function DealerDetailWorkbench({
     let cancelled = false;
 
     void loadDealerOnboardingOptionsAction({
-      dealerType: dealer.dealerType,
+      dealerType: draft.dealerType,
       stateId: draft.operatingStateId,
       currency: draft.currency,
     }).then((result) => {
@@ -222,7 +240,7 @@ export function DealerDetailWorkbench({
     return () => {
       cancelled = true;
     };
-  }, [dealer.dealerType, draft.currency, draft.operatingStateId]);
+  }, [draft.currency, draft.dealerType, draft.operatingStateId]);
 
   const saveProfile = React.useCallback(async (): Promise<void> => {
     const latitude = Number(draft.latitude);
@@ -260,8 +278,9 @@ export function DealerDetailWorkbench({
         companyName: draft.companyName,
         displayName: draft.displayName,
         isActive: draft.isActive,
+        dealerType: draft.dealerType,
         parentOrgUnitId:
-          dealer.dealerType === "SUB_DEALER" && draft.parentOrgUnitId !== ""
+          draft.dealerType === "SUB_DEALER" && draft.parentOrgUnitId !== ""
             ? draft.parentOrgUnitId
             : null,
         primaryContact: {
@@ -387,38 +406,50 @@ export function DealerDetailWorkbench({
     <ContentRoot
       width="full"
       density="compact"
+      aria-labelledby="dealer-detail-title"
       className="min-h-[calc(100dvh-8rem)]"
     >
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div className="space-y-3">
-          <Button asChild variant="outline">
-            <Link href={DEALER_ADMINISTRATION_ROUTE}>
-              <ArrowLeft aria-hidden="true" />
-              Dealers
-            </Link>
-          </Button>
-          <div>
-            <h1 className="text-page-title">{dealer.displayName}</h1>
-            <p className="mt-1 text-body-sm text-muted-readable">
-              {dealer.companyName} ·{" "}
+      <DealerWorkspaceHeader
+        titleId="dealer-detail-title"
+        title={dealer.displayName}
+        description={`${dealer.companyName} · ${dealer.dealerCode}${dealer.dicCode === null ? "" : ` · DIC ${dealer.dicCode}`}`}
+        icon={<Building2 aria-hidden="true" className="size-4" />}
+        backHref={DEALER_ADMINISTRATION_ROUTE}
+        backLabel="Back to dealer directory"
+        meta={
+          <div className="flex shrink-0 items-center gap-2">
+            <Badge
+              variant={dealer.dealerType === "DEALER" ? "info" : "warning"}
+              className="h-8"
+            >
               {dealer.dealerType === "DEALER" ? "Dealer" : "Sub-dealer"}
-              {dealer.parentDealerName === null
-                ? ""
-                : ` · Parent: ${dealer.parentDealerName}`}
-            </p>
+            </Badge>
+            <Badge
+              variant={dealer.isActive ? "success" : "secondary"}
+              className="h-8"
+            >
+              {dealer.isActive ? "Active" : "Inactive"}
+            </Badge>
+            <Badge variant="outline" className="h-8">
+              {sourceDisplayName(dealer.source.name)}
+            </Badge>
+            {dealer.parentDealerName === null ? null : (
+              <span className="whitespace-nowrap text-caption text-muted-readable">
+                Parent: {dealer.parentDealerName}
+              </span>
+            )}
           </div>
-        </div>
+        }
+      />
 
-        <div className="flex flex-wrap items-center gap-2">
-          <Badge variant={dealer.dealerType === "DEALER" ? "info" : "warning"}>
-            {dealer.dealerType === "DEALER" ? "Dealer" : "Sub-dealer"}
-          </Badge>
-          <Badge variant={dealer.isActive ? "success" : "secondary"}>
-            {dealer.isActive ? "Active" : "Inactive"}
-          </Badge>
-          <Badge variant="outline">{dealer.source.name}</Badge>
-        </div>
-      </div>
+      {dealer.dataCompleteness.status === "PARTIAL" ? (
+        <ContentStatus
+          variant="warning"
+          icon={<TriangleAlert aria-hidden="true" />}
+          title="Dealer master data needs reconciliation"
+          description={`This dealer is available for normal administration, but ${dealer.dataCompleteness.missing.length.toLocaleString("en-IN")} enterprise data section${dealer.dataCompleteness.missing.length === 1 ? " is" : "s are"} incomplete: ${dealer.dataCompleteness.missing.map(completenessLabel).join(", ")}.`}
+        />
+      ) : null}
 
       {feedback !== null ? (
         <Alert variant={feedback.kind === "error" ? "destructive" : "default"}>
@@ -438,17 +469,56 @@ export function DealerDetailWorkbench({
 
       <ContentDataSurface
         title="Dealer administration"
-        description="Organization, tax, contacts, addresses, documents, wallet balances, and Welfare Fund activity. Dealer Code and DIC are immutable identifiers."
+        description="Organization, tax, staff logins, addresses, documents, wallet balances, and Welfare Fund activity. Dealer Code and DIC are immutable identifiers."
         padded
         className="min-h-0 flex-1"
       >
-        <Tabs defaultValue="overview" className="min-h-0">
-          <TabsList className="h-auto flex-wrap justify-start">
-            <TabsTrigger value="overview">Overview</TabsTrigger>
-            <TabsTrigger value="profile">Profile & Addresses</TabsTrigger>
-            <TabsTrigger value="contacts">Contacts</TabsTrigger>
-            <TabsTrigger value="wallets">Wallet & Welfare</TabsTrigger>
-            <TabsTrigger value="documents">Attachments</TabsTrigger>
+        <Tabs defaultValue="overview" className="min-h-0 gap-0">
+          <TabsList
+            variant="line"
+            aria-label="Dealer administration sections"
+            className="grid h-auto w-full grid-cols-2 overflow-x-visible overflow-y-visible group-data-[orientation=horizontal]/tabs:h-auto sm:grid-cols-3 xl:grid-cols-5"
+          >
+            <TabsTrigger
+              value="overview"
+              className="min-w-0 justify-start px-3 py-2.5"
+            >
+              <LayoutDashboard data-icon="inline-start" aria-hidden="true" />
+              <span className="truncate">Overview</span>
+            </TabsTrigger>
+            <TabsTrigger
+              value="profile"
+              className="min-w-0 justify-start px-3 py-2.5"
+            >
+              <Building2 data-icon="inline-start" aria-hidden="true" />
+              <span className="truncate">Profile & Addresses</span>
+            </TabsTrigger>
+            <TabsTrigger
+              value="staff"
+              className="min-w-0 justify-start px-3 py-2.5"
+            >
+              <UsersRound data-icon="inline-start" aria-hidden="true" />
+              <span className="truncate">Staff</span>
+              <TabsBadge>{dealer.staff.length}</TabsBadge>
+            </TabsTrigger>
+            <TabsTrigger
+              value="wallets"
+              className="min-w-0 justify-start px-3 py-2.5"
+            >
+              <WalletCards data-icon="inline-start" aria-hidden="true" />
+              <span className="truncate">Wallet & Welfare</span>
+              {dealer.wallets.length === 0 ? null : (
+                <TabsBadge>{dealer.wallets.length}</TabsBadge>
+              )}
+            </TabsTrigger>
+            <TabsTrigger
+              value="documents"
+              className="min-w-0 justify-start px-3 py-2.5"
+            >
+              <Files data-icon="inline-start" aria-hidden="true" />
+              <span className="truncate">Attachments</span>
+              <TabsBadge>{dealer.documents.length}</TabsBadge>
+            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="overview" className="mt-5 space-y-5">
@@ -468,8 +538,8 @@ export function DealerDetailWorkbench({
             />
           </TabsContent>
 
-          <TabsContent value="contacts" className="mt-5">
-            <ContactsWorkspace
+          <TabsContent value="staff" className="mt-5">
+            <StaffWorkspace
               access={access}
               dealer={dealer}
               onDealerChange={setDealer}
@@ -520,7 +590,7 @@ function Overview({
         <Summary
           label="GSTIN / Place of Supply"
           value={dealer.legalEntity.gstinMasked ?? "Not registered"}
-          helper={dealer.legalEntity.placeOfSupply}
+          helper={dealer.legalEntity.placeOfSupply ?? "—"}
         />
         <Summary
           label="Wallet Balance"
@@ -563,7 +633,7 @@ function Overview({
             />
             <DescriptionItem
               label="Source"
-              value={`${dealer.source.name} (${dealer.source.code})`}
+              value={`${sourceDisplayName(dealer.source.name)} (${dealer.source.code})`}
             />
             <DescriptionItem
               label="Status"
@@ -599,7 +669,11 @@ function Overview({
               />
               <DescriptionItem
                 label="Channels"
-                value={dealer.communicationChannels.join(", ")}
+                value={
+                  dealer.communicationChannels.length === 0
+                    ? "Not configured"
+                    : dealer.communicationChannels.join(", ")
+                }
               />
             </DescriptionGrid>
           </div>
@@ -648,7 +722,7 @@ function Overview({
           />
           <DescriptionItem
             label="Place of supply"
-            value={dealer.legalEntity.placeOfSupply}
+            value={dealer.legalEntity.placeOfSupply ?? "—"}
           />
           <DescriptionItem
             label="Tax preference"
@@ -710,8 +784,8 @@ function ProfileEditor({
   return (
     <div className="space-y-5">
       <EditSection
-        title="Immutable identifiers"
-        description="These identifiers are generated during provisioning and cannot be edited."
+        title="Identifiers & hierarchy"
+        description="Dealer Code and DIC are immutable. Dealer Type changes are hierarchy-validated and require an approved parent for Sub-dealers."
       >
         <TextField
           label="Dealer Code"
@@ -727,12 +801,19 @@ function ProfileEditor({
           placeholder="DIC"
           disabled
         />
-        <TextField
+        <SelectField
           label="Dealer Type"
-          value={dealer.dealerType === "DEALER" ? "Dealer" : "Sub-dealer"}
-          onChange={() => undefined}
-          placeholder="Dealer Type"
-          disabled
+          value={draft.dealerType}
+          onValueChange={(value) => {
+            if (value !== "DEALER" && value !== "SUB_DEALER") return;
+            setField("dealerType", value);
+            if (value === "DEALER") setField("parentOrgUnitId", "");
+          }}
+          placeholder="Select dealer type"
+          options={DEALER_ONBOARDING_TYPES.map((value) => ({
+            value,
+            label: value === "DEALER" ? "Dealer" : "Sub-dealer",
+          }))}
         />
       </EditSection>
 
@@ -756,7 +837,7 @@ function ProfileEditor({
           }}
           placeholder="ERP display name"
         />
-        {dealer.dealerType === "SUB_DEALER" ? (
+        {draft.dealerType === "SUB_DEALER" ? (
           <SelectField
             label="Parent Dealer"
             value={draft.parentOrgUnitId}
@@ -1172,7 +1253,7 @@ function addressKeys(prefix: AddressPrefix): Readonly<{
   };
 }
 
-function ContactsWorkspace({
+function StaffWorkspace({
   access,
   dealer,
   onDealerChange,
@@ -1183,130 +1264,295 @@ function ContactsWorkspace({
   onDealerChange: (dealer: DealerDirectoryDetail) => void;
   onFeedback: (feedback: Feedback) => void;
 }>): React.ReactElement {
-  const [draft, setDraft] = React.useState<NewContactDraft>(EMPTY_CONTACT);
+  const [options, setOptions] =
+    React.useState<DealerStaffOptions>(EMPTY_STAFF_OPTIONS);
+  const [draft, setDraft] = React.useState<NewStaffDraft>(EMPTY_STAFF);
   const [busy, setBusy] = React.useState(false);
+  const [optionsBusy, setOptionsBusy] = React.useState(false);
   const [editingUserId, setEditingUserId] = React.useState<string | null>(null);
 
-  const createContact = React.useCallback(async (): Promise<void> => {
+  React.useEffect(() => {
+    if (!access.capabilities.canManageContacts) return;
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (cancelled) return;
+      setOptionsBusy(true);
+      void loadDealerStaffOptionsAction({
+        dealerOrgUnitId: dealer.dealerOrgUnitId,
+      }).then((result) => {
+        if (cancelled) return;
+        setOptionsBusy(false);
+        if (!result.ok) {
+          onFeedback({ kind: "error", message: result.message });
+          return;
+        }
+        setOptions(result.data);
+      });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    access.capabilities.canManageContacts,
+    dealer.dealerOrgUnitId,
+    onFeedback,
+  ]);
+
+  const createStaff = React.useCallback(async (): Promise<void> => {
+    if (draft.staffTitleId === "" || draft.roleIds.length === 0) {
+      onFeedback({
+        kind: "error",
+        message: "Choose a staff title and at least one approved dealer role.",
+      });
+      return;
+    }
     setBusy(true);
     onFeedback(null);
-    const result = await createDealerContactAction({
+    const result = await createDealerStaffAction({
       dealerOrgUnitId: dealer.dealerOrgUnitId,
       body: {
         displayName: draft.displayName,
         email: draft.email,
         phone: draft.phone,
-        title: draft.title.trim() === "" ? null : draft.title.trim(),
+        staffTitleId: draft.staffTitleId,
+        roleIds: [...draft.roleIds],
       },
     });
     setBusy(false);
-
     if (!result.ok) {
       onFeedback({ kind: "error", message: result.message });
       return;
     }
-
     onDealerChange(result.data);
-    setDraft(EMPTY_CONTACT);
+    setDraft(EMPTY_STAFF);
     onFeedback({
       kind: "success",
-      message: "Contact person added without granting ERP roles by default.",
+      message:
+        "Staff login created with tenant-scoped title, organization membership, and reviewed ERP role grants.",
     });
   }, [dealer.dealerOrgUnitId, draft, onDealerChange, onFeedback]);
 
   return (
     <div className="space-y-5">
       <ContentSection
-        title="Contact persons"
-        description="The primary contact remains managed in the dealer profile. Additional contacts do not receive ERP roles automatically."
+        title="Dealer staff access"
+        description="Each staff member has an individual ERP identity. Titles come from the tenant staff-title master and roles are limited to approved dealer roles."
+        actions={
+          <Badge variant="outline">
+            {dealer.staff.length.toLocaleString("en-IN")} identities
+          </Badge>
+        }
       >
-        <div className="overflow-auto rounded-2xl border border-border/70">
-          <Table>
-            <TableHeader>
+        <div className="hidden overflow-hidden rounded-2xl border border-border/70 lg:block">
+          <Table className="table-fixed">
+            <TableHeader className="sticky top-0 z-10 bg-card">
               <TableRow>
+                <TableHead>Staff</TableHead>
                 <TableHead>Contact</TableHead>
-                <TableHead>Email</TableHead>
-                <TableHead>Phone</TableHead>
                 <TableHead>Title</TableHead>
-                <TableHead>Last Login</TableHead>
+                <TableHead className="hidden xl:table-cell">Teams</TableHead>
+                <TableHead>Roles</TableHead>
+                <TableHead className="text-center">Last Login</TableHead>
                 <TableHead className="text-end">Action</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {dealer.contacts.map((contact) => (
-                <React.Fragment key={contact.userId}>
-                  <TableRow>
-                    <TableCell>
-                      <div className="font-medium">{contact.displayName}</div>
-                      {contact.isPrimary ? (
-                        <Badge variant="info" className="mt-1">
-                          Primary
-                        </Badge>
-                      ) : null}
-                    </TableCell>
-                    <TableCell>{contact.email ?? "—"}</TableCell>
-                    <TableCell>{contact.phone ?? "—"}</TableCell>
-                    <TableCell>{contact.title ?? "—"}</TableCell>
-                    <TableCell>
-                      {contact.lastLoginAt === null
-                        ? "Never"
-                        : formatDateTime(contact.lastLoginAt)}
-                    </TableCell>
-                    <TableCell className="text-end">
-                      {!contact.isPrimary &&
-                      access.capabilities.canManageContacts ? (
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="outline"
-                          onClick={() => {
-                            setEditingUserId((current) =>
-                              current === contact.userId
-                                ? null
-                                : contact.userId,
-                            );
-                          }}
-                        >
-                          Edit
-                        </Button>
-                      ) : null}
-                    </TableCell>
-                  </TableRow>
-                  {editingUserId === contact.userId ? (
+              {dealer.staff.length === 0 ? (
+                <TableRow>
+                  <TableCell
+                    colSpan={7}
+                    className="h-28 text-center text-muted-readable"
+                  >
+                    No dealer staff identities are assigned.
+                  </TableCell>
+                </TableRow>
+              ) : (
+                dealer.staff.map((staff) => (
+                  <React.Fragment key={staff.userId}>
                     <TableRow>
-                      <TableCell colSpan={6} className="bg-muted/20">
-                        <ContactEditor
-                          dealerOrgUnitId={dealer.dealerOrgUnitId}
-                          contact={contact}
-                          onUpdated={(updatedDealer) => {
-                            onDealerChange(updatedDealer);
-                            setEditingUserId(null);
-                          }}
-                          onFeedback={onFeedback}
-                        />
+                      <TableCell className="whitespace-normal">
+                        <div className="font-medium">{staff.displayName}</div>
+                        <div className="mt-1 flex gap-1">
+                          {staff.isPrimary ? (
+                            <Badge variant="info">Primary</Badge>
+                          ) : null}
+                          <Badge
+                            variant={
+                              staff.status === "ACTIVE"
+                                ? "success"
+                                : "secondary"
+                            }
+                          >
+                            {formatEnum(staff.status)}
+                          </Badge>
+                        </div>
+                      </TableCell>
+                      <TableCell className="whitespace-normal">
+                        <div className="break-all">{staff.email ?? "—"}</div>
+                        <div className="break-words text-caption text-muted-readable">
+                          {staff.phone ?? "—"}
+                        </div>
+                      </TableCell>
+                      <TableCell>{staff.title ?? "—"}</TableCell>
+                      <TableCell className="hidden whitespace-normal xl:table-cell">
+                        {staff.teamCodes.length === 0
+                          ? "—"
+                          : staff.teamCodes.join(", ")}
+                      </TableCell>
+                      <TableCell className="whitespace-normal">
+                        {staff.roleNames.length === 0
+                          ? "—"
+                          : staff.roleNames.map(roleDisplayName).join(", ")}
+                      </TableCell>
+                      <TableCell className="text-center tabular-nums">
+                        {staff.lastLoginAt === null
+                          ? "Never"
+                          : formatDateTime(staff.lastLoginAt)}
+                      </TableCell>
+                      <TableCell className="text-end">
+                        {!staff.isPrimary &&
+                        access.capabilities.canManageContacts ? (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              setEditingUserId((current) =>
+                                current === staff.userId ? null : staff.userId,
+                              );
+                            }}
+                          >
+                            Edit access
+                          </Button>
+                        ) : null}
                       </TableCell>
                     </TableRow>
-                  ) : null}
-                </React.Fragment>
-              ))}
+                    {editingUserId === staff.userId ? (
+                      <TableRow>
+                        <TableCell colSpan={7} className="bg-muted/20">
+                          <StaffEditor
+                            dealerOrgUnitId={dealer.dealerOrgUnitId}
+                            staff={staff}
+                            options={options}
+                            optionsBusy={optionsBusy}
+                            onUpdated={(updatedDealer) => {
+                              onDealerChange(updatedDealer);
+                              setEditingUserId(null);
+                            }}
+                            onFeedback={onFeedback}
+                          />
+                        </TableCell>
+                      </TableRow>
+                    ) : null}
+                  </React.Fragment>
+                ))
+              )}
             </TableBody>
           </Table>
+        </div>
+        <div className="grid gap-3 lg:hidden">
+          {dealer.staff.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-border/80 p-6 text-center text-body-sm text-muted-readable">
+              No dealer staff identities are assigned.
+            </div>
+          ) : (
+            dealer.staff.map((staff) => (
+              <article
+                key={staff.userId}
+                className="rounded-2xl border border-border/70 p-4"
+              >
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <div className="font-medium">{staff.displayName}</div>
+                    <div className="mt-1 flex gap-1">
+                      {staff.isPrimary ? (
+                        <Badge variant="info">Primary</Badge>
+                      ) : null}
+                      <Badge
+                        variant={
+                          staff.status === "ACTIVE" ? "success" : "secondary"
+                        }
+                      >
+                        {formatEnum(staff.status)}
+                      </Badge>
+                    </div>
+                  </div>
+                  {!staff.isPrimary && access.capabilities.canManageContacts ? (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        setEditingUserId((current) =>
+                          current === staff.userId ? null : staff.userId,
+                        );
+                      }}
+                    >
+                      Edit access
+                    </Button>
+                  ) : null}
+                </div>
+                <dl className="mt-4 grid gap-3 sm:grid-cols-2">
+                  <DescriptionItem label="Email" value={staff.email ?? "—"} />
+                  <DescriptionItem label="Phone" value={staff.phone ?? "—"} />
+                  <DescriptionItem label="Title" value={staff.title ?? "—"} />
+                  <DescriptionItem
+                    label="Roles"
+                    value={
+                      staff.roleNames.length === 0
+                        ? "—"
+                        : staff.roleNames.map(roleDisplayName).join(", ")
+                    }
+                  />
+                </dl>
+                {editingUserId === staff.userId ? (
+                  <div className="mt-4 border-t border-border/70 pt-4">
+                    <StaffEditor
+                      dealerOrgUnitId={dealer.dealerOrgUnitId}
+                      staff={staff}
+                      options={options}
+                      optionsBusy={optionsBusy}
+                      onUpdated={(updatedDealer) => {
+                        onDealerChange(updatedDealer);
+                        setEditingUserId(null);
+                      }}
+                      onFeedback={onFeedback}
+                    />
+                  </div>
+                ) : null}
+              </article>
+            ))
+          )}
         </div>
       </ContentSection>
 
       {access.capabilities.canManageContacts ? (
         <ContentSection
-          title="Add contact person"
-          description="Creates a contact-only tenant membership for this dealer; access roles are not assigned here."
+          title="Add staff login"
+          description="Creates a dedicated ERP user, dealer organization membership, canonical title and reviewed role assignment in one server-side transaction."
         >
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          {optionsBusy ? (
+            <div className="flex items-center gap-2 text-body-sm text-muted-readable">
+              <Spinner aria-hidden="true" />
+              Loading approved staff options…
+            </div>
+          ) : null}
+          {!optionsBusy &&
+          (options.titles.length === 0 || options.roles.length === 0) ? (
+            <ContentStatus
+              variant="warning"
+              title="Staff access masters need configuration"
+              description="At least one active tenant staff title and one approved dealer role are required before a staff login can be created."
+            />
+          ) : null}
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
             <TextField
               label="Display Name"
               value={draft.displayName}
               onChange={(value) => {
                 setDraft((current) => ({ ...current, displayName: value }));
               }}
-              placeholder="Contact name"
+              placeholder="Staff name"
             />
             <TextField
               label="Email"
@@ -1326,27 +1572,43 @@ function ContactsWorkspace({
               }}
               placeholder="+919876543210"
             />
-            <TextField
+            <SelectField
               label="Title"
-              value={draft.title}
-              onChange={(value) => {
-                setDraft((current) => ({ ...current, title: value }));
+              value={draft.staffTitleId}
+              onValueChange={(value) => {
+                setDraft((current) => ({ ...current, staffTitleId: value }));
               }}
-              placeholder="Owner / Accounts / Sales"
+              placeholder="Select title"
+              options={options.titles.map((title) => ({
+                value: title.staffTitleId,
+                label: title.name,
+              }))}
+            />
+            <RoleSelector
+              roleIds={draft.roleIds}
+              options={options}
+              onChange={(roleIds) => {
+                setDraft((current) => ({ ...current, roleIds }));
+              }}
             />
           </div>
           <div className="mt-4 flex justify-end">
             <Button
               type="button"
-              onClick={() => void createContact()}
-              disabled={busy}
+              onClick={() => void createStaff()}
+              disabled={
+                busy ||
+                optionsBusy ||
+                options.titles.length === 0 ||
+                options.roles.length === 0
+              }
             >
               {busy ? (
                 <Spinner aria-hidden="true" />
               ) : (
                 <Plus aria-hidden="true" />
               )}
-              {busy ? "Adding…" : "Add Contact"}
+              {busy ? "Creating…" : "Create Staff Login"}
             </Button>
           </div>
         </ContentSection>
@@ -1355,31 +1617,47 @@ function ContactsWorkspace({
   );
 }
 
-function ContactEditor({
+function StaffEditor({
   dealerOrgUnitId,
-  contact,
+  staff,
+  options,
+  optionsBusy,
   onUpdated,
   onFeedback,
 }: Readonly<{
   dealerOrgUnitId: string;
-  contact: DealerContact;
+  staff: DealerStaff;
+  options: DealerStaffOptions;
+  optionsBusy: boolean;
   onUpdated: (dealer: DealerDirectoryDetail) => void;
   onFeedback: (feedback: Feedback) => void;
 }>): React.ReactElement {
-  const [displayName, setDisplayName] = React.useState(contact.displayName);
+  const [displayName, setDisplayName] = React.useState(staff.displayName);
   const [replacementEmail, setReplacementEmail] = React.useState("");
   const [replacementPhone, setReplacementPhone] = React.useState("");
-  const [title, setTitle] = React.useState(contact.title ?? "");
+  const [staffTitleId, setStaffTitleId] = React.useState(
+    staff.staffTitleId ?? "",
+  );
+  const [roleIds, setRoleIds] = React.useState<readonly string[]>(
+    staff.roleIds,
+  );
   const [busy, setBusy] = React.useState(false);
 
   const save = React.useCallback(async (): Promise<void> => {
+    if (staffTitleId === "" || roleIds.length === 0) {
+      onFeedback({
+        kind: "error",
+        message: "Choose a staff title and at least one approved dealer role.",
+      });
+      return;
+    }
     setBusy(true);
     onFeedback(null);
-    const result = await updateDealerContactAction({
+    const result = await updateDealerStaffAction({
       dealerOrgUnitId,
-      userId: contact.userId,
+      userId: staff.userId,
       body: {
-        expectedUpdatedAt: contact.updatedAt,
+        expectedUpdatedAt: staff.updatedAt,
         displayName,
         ...(replacementEmail.trim() === ""
           ? {}
@@ -1387,64 +1665,120 @@ function ContactEditor({
         ...(replacementPhone.trim() === ""
           ? {}
           : { replacementPhone: replacementPhone.trim() }),
-        title: title.trim() === "" ? null : title.trim(),
+        staffTitleId,
+        roleIds: [...roleIds],
       },
     });
     setBusy(false);
-
     if (!result.ok) {
       onFeedback({ kind: "error", message: result.message });
       return;
     }
-
     onUpdated(result.data);
-    onFeedback({ kind: "success", message: "Contact person updated." });
+    onFeedback({
+      kind: "success",
+      message: "Dealer staff identity and access were updated.",
+    });
   }, [
-    contact.updatedAt,
-    contact.userId,
     dealerOrgUnitId,
     displayName,
     onFeedback,
     onUpdated,
     replacementEmail,
     replacementPhone,
-    title,
+    roleIds,
+    staff.updatedAt,
+    staff.userId,
+    staffTitleId,
   ]);
 
   return (
-    <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5 xl:items-end">
+    <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-6 xl:items-end">
       <TextField
         label="Display Name"
         value={displayName}
         onChange={setDisplayName}
-        placeholder="Contact name"
+        placeholder="Staff name"
       />
       <TextField
         label="Replacement Email"
         type="email"
         value={replacementEmail}
         onChange={setReplacementEmail}
-        placeholder={contact.email ?? "New email"}
+        placeholder={staff.email ?? "New email"}
       />
       <TextField
         label="Replacement Phone"
         type="tel"
         value={replacementPhone}
         onChange={setReplacementPhone}
-        placeholder={contact.phone ?? "New phone"}
+        placeholder={staff.phone ?? "New phone"}
       />
-      <TextField
+      <SelectField
         label="Title"
-        value={title}
-        onChange={setTitle}
-        placeholder="Contact title"
+        value={staffTitleId}
+        onValueChange={setStaffTitleId}
+        placeholder="Select title"
+        options={options.titles.map((title) => ({
+          value: title.staffTitleId,
+          label: title.name,
+        }))}
       />
-      <Button type="button" onClick={() => void save()} disabled={busy}>
+      <RoleSelector roleIds={roleIds} options={options} onChange={setRoleIds} />
+      <Button
+        type="button"
+        onClick={() => void save()}
+        disabled={busy || optionsBusy}
+      >
         {busy ? <Spinner aria-hidden="true" /> : <Save aria-hidden="true" />}
-        {busy ? "Saving…" : "Save"}
+        {busy ? "Saving…" : "Save access"}
       </Button>
     </div>
   );
+}
+
+function RoleSelector({
+  roleIds,
+  options,
+  onChange,
+}: Readonly<{
+  roleIds: readonly string[];
+  options: DealerStaffOptions;
+  onChange: (roleIds: readonly string[]) => void;
+}>): React.ReactElement {
+  return (
+    <div className="space-y-2">
+      <Label>Roles</Label>
+      <div className="grid min-h-11 gap-2 rounded-2xl border border-input px-3 py-2">
+        {options.roles.length === 0 ? (
+          <span className="text-caption text-muted-readable">
+            No assignable roles
+          </span>
+        ) : (
+          options.roles.map((role) => (
+            <CheckField
+              key={role.roleId}
+              label={roleDisplayName(role.name)}
+              checked={roleIds.includes(role.roleId)}
+              onCheckedChange={(checked) => {
+                onChange(
+                  checked
+                    ? [...roleIds, role.roleId]
+                    : roleIds.filter((roleId) => roleId !== role.roleId),
+                );
+              }}
+            />
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+
+function roleDisplayName(role: string): string {
+  if (role === "dealer") return "Dealer Administrator";
+  if (role === "dealer_staff") return "Dealer Staff";
+  return formatEnum(role);
 }
 
 function WalletAndWelfare({
@@ -1467,8 +1801,8 @@ function WalletAndWelfare({
         title="Wallet accounts"
         description="Balances are read directly from PostgreSQL and are never cached as authoritative financial state."
       >
-        <div className="overflow-auto rounded-2xl border border-border/70">
-          <Table>
+        <div className="hidden overflow-hidden rounded-2xl border border-border/70 md:block">
+          <Table className="table-fixed">
             <TableHeader>
               <TableRow>
                 <TableHead>Wallet</TableHead>
@@ -1538,6 +1872,68 @@ function WalletAndWelfare({
               )}
             </TableBody>
           </Table>
+        </div>
+        <div className="grid gap-3 md:hidden">
+          {dealer.wallets.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-border/80 p-6 text-center text-body-sm text-muted-readable">
+              No wallet account is currently linked to this dealer.
+            </div>
+          ) : (
+            dealer.wallets.map((wallet) => (
+              <article
+                key={wallet.walletId}
+                className="rounded-2xl border border-border/70 p-4"
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <div className="font-medium">
+                      {formatEnum(wallet.walletType)}
+                    </div>
+                    <div className="text-caption text-muted-readable">
+                      {wallet.currency}
+                    </div>
+                  </div>
+                  <Badge
+                    variant={
+                      wallet.status === "ACTIVE" ? "success" : "secondary"
+                    }
+                  >
+                    {formatEnum(wallet.status)}
+                  </Badge>
+                </div>
+                <dl className="mt-4 grid grid-cols-2 gap-3 text-end tabular-nums">
+                  <DescriptionItem
+                    label="Posted"
+                    value={formatCurrencyString(
+                      wallet.postedBalance,
+                      wallet.currency,
+                    )}
+                  />
+                  <DescriptionItem
+                    label="Available"
+                    value={formatCurrencyString(
+                      wallet.availableBalance,
+                      wallet.currency,
+                    )}
+                  />
+                  <DescriptionItem
+                    label="Reserved"
+                    value={formatCurrencyString(
+                      wallet.reservedBalance,
+                      wallet.currency,
+                    )}
+                  />
+                  <DescriptionItem
+                    label="Pending credit"
+                    value={formatCurrencyString(
+                      wallet.pendingCredit,
+                      wallet.currency,
+                    )}
+                  />
+                </dl>
+              </article>
+            ))
+          )}
         </div>
       </ContentSection>
 
@@ -1612,8 +2008,8 @@ function WalletAndWelfare({
             title="Recent Welfare Fund accruals"
             description="Latest sale-derived credits, pending credits, reversals, or blocked accruals."
           >
-            <div className="overflow-auto rounded-2xl border border-border/70">
-              <Table>
+            <div className="hidden overflow-hidden rounded-2xl border border-border/70 md:block">
+              <Table className="table-fixed">
                 <TableHeader>
                   <TableRow>
                     <TableHead>Invoice</TableHead>
@@ -1677,6 +2073,55 @@ function WalletAndWelfare({
                   )}
                 </TableBody>
               </Table>
+            </div>
+            <div className="grid gap-3 md:hidden">
+              {dealer.welfare.recentAccruals.length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-border/80 p-6 text-center text-body-sm text-muted-readable">
+                  No recent Welfare Fund accruals.
+                </div>
+              ) : (
+                dealer.welfare.recentAccruals.map((accrual) => (
+                  <article
+                    key={accrual.accrualId}
+                    className="rounded-2xl border border-border/70 p-4"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="font-mono text-caption">
+                          {shortId(accrual.invoiceId)}
+                        </div>
+                        <div className="mt-1 text-caption text-muted-readable">
+                          Credit due {formatDateTime(accrual.creditDueAt)}
+                        </div>
+                      </div>
+                      <Badge variant={welfareStatusVariant(accrual.status)}>
+                        {formatEnum(accrual.status)}
+                      </Badge>
+                    </div>
+                    <dl className="mt-4 grid grid-cols-2 gap-3 text-end tabular-nums">
+                      <DescriptionItem
+                        label="Base price"
+                        value={formatCurrencyString(
+                          accrual.totalBasePrice,
+                          accrual.currency,
+                        )}
+                      />
+                      <DescriptionItem
+                        label="Welfare amount"
+                        value={formatCurrencyString(
+                          accrual.welfareAmount,
+                          accrual.currency,
+                        )}
+                      />
+                    </dl>
+                    {accrual.blockedReason === null ? null : (
+                      <p className="mt-3 text-caption text-destructive">
+                        {accrual.blockedReason}
+                      </p>
+                    )}
+                  </article>
+                ))
+              )}
             </div>
           </ContentSection>
         </>
@@ -1808,28 +2253,26 @@ function DocumentWorkspace({
   return (
     <div className="space-y-4">
       {access.capabilities.canManageDocuments ? (
-        <div className="grid gap-4 rounded-3xl border border-border/70 bg-muted/20 p-4 lg:grid-cols-4 lg:items-end">
-          <SelectField
-            label="Document Type"
-            value={kind}
-            onValueChange={(value) => {
-              const parsed = DEALER_DOCUMENT_KINDS.find(
-                (candidate) => candidate === value,
-              );
-              if (parsed !== undefined) setKind(parsed);
-            }}
-            placeholder="Select document type"
-            options={DEALER_DOCUMENT_KINDS.map((value) => ({
-              value,
-              label: documentKindLabel(value),
-            }))}
-          />
-          <div className="space-y-2 lg:col-span-2">
-            <Label htmlFor="dealer-document-file">File</Label>
+        <div className="grid gap-5 rounded-3xl border border-border/70 bg-muted/20 p-4 lg:grid-cols-[minmax(0,1.3fr)_minmax(16rem,0.7fr)]">
+          <div className="space-y-2">
+            <Label htmlFor="dealer-document-file">Secure attachment</Label>
+            <Label
+              htmlFor="dealer-document-file"
+              className="flex min-h-36 cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed border-border bg-background px-5 py-6 text-center transition-colors hover:border-primary/45 hover:bg-primary/5"
+            >
+              <FileUp aria-hidden="true" className="size-7 text-primary" />
+              <span className="mt-3 text-body-sm font-medium">
+                {file?.name ?? "Choose a file to upload"}
+              </span>
+              <span className="mt-1 text-caption text-muted-readable">
+                PDF, PNG, JPEG, WebP, or DOCX · maximum 25 MB
+              </span>
+            </Label>
             <Input
               id="dealer-document-file"
               type="file"
-              placeholder="Choose KYC or dealer document"
+              className="sr-only"
+              placeholder="Choose dealer attachment"
               accept="application/pdf,image/png,image/jpeg,image/webp,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
               onChange={(event) => {
                 setFile(event.currentTarget.files?.[0] ?? null);
@@ -1838,18 +2281,45 @@ function DocumentWorkspace({
               }}
             />
           </div>
-          <TextField
-            label="Note"
-            value={note}
-            onChange={setNote}
-            placeholder="Optional document note"
-          />
-          <div className="lg:col-span-4 flex flex-wrap items-center justify-between gap-3">
-            <div className="text-caption text-muted-readable">
-              {progress?.message ??
-                "PDF, PNG, JPEG, WebP, or DOCX up to 25 MB. Files remain private and are scanned before binding."}
+          <div className="grid content-start gap-4">
+            <SelectField
+              label="Document Type"
+              value={kind}
+              onValueChange={(value) => {
+                const parsed = DEALER_DOCUMENT_KINDS.find(
+                  (candidate) => candidate === value,
+                );
+                if (parsed !== undefined) setKind(parsed);
+              }}
+              placeholder="Select document type"
+              options={DEALER_DOCUMENT_KINDS.map((value) => ({
+                value,
+                label: documentKindLabel(value),
+              }))}
+            />
+            <TextField
+              label="Note"
+              value={note}
+              onChange={setNote}
+              placeholder="Optional document note"
+            />
+            <div className="rounded-xl border border-border/70 bg-background p-3">
+              <div className="text-caption font-medium">
+                {progress === null
+                  ? "Private upload pipeline"
+                  : formatEnum(progress.phase)}
+              </div>
+              <div className="mt-1 text-caption text-muted-readable">
+                {progress?.message ??
+                  "Files remain private and are scanned before they are attached."}
+              </div>
             </div>
-            <Button type="button" onClick={() => void upload()} disabled={busy}>
+            <Button
+              type="button"
+              className="w-full"
+              onClick={() => void upload()}
+              disabled={busy || (file === null && pendingFile === null)}
+            >
               {busy ? (
                 <Spinner aria-hidden="true" />
               ) : (
@@ -1861,8 +2331,22 @@ function DocumentWorkspace({
         </div>
       ) : null}
 
-      <div className="overflow-auto rounded-3xl border border-border/70">
-        <Table>
+      <div className="grid gap-3 sm:grid-cols-3">
+        {(["APPROVED", "PENDING_REVIEW", "REJECTED"] as const).map((status) => (
+          <Summary
+            key={status}
+            label={formatEnum(status)}
+            value={String(
+              dealer.documents.filter((document) => document.status === status)
+                .length,
+            )}
+            helper="Attachments"
+          />
+        ))}
+      </div>
+
+      <div className="hidden overflow-hidden rounded-3xl border border-border/70 md:block">
+        <Table className="table-fixed">
           <TableHeader>
             <TableRow>
               <TableHead>Attachment</TableHead>
@@ -1930,6 +2414,58 @@ function DocumentWorkspace({
           </TableBody>
         </Table>
       </div>
+
+      <div className="grid gap-3 md:hidden">
+        {dealer.documents.length === 0 ? (
+          <div className="rounded-2xl border border-dashed border-border/80 p-6 text-center text-body-sm text-muted-readable">
+            No dealer attachments have been added yet.
+          </div>
+        ) : (
+          dealer.documents.map((dealerDocument) => (
+            <article
+              key={dealerDocument.dealerDocumentId}
+              className="rounded-2xl border border-border/70 bg-card p-4"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="truncate font-medium">
+                    {dealerDocument.fileName}
+                  </div>
+                  <div className="mt-1 text-caption text-muted-readable">
+                    {documentKindLabel(dealerDocument.kind)} ·{" "}
+                    {formatDateTime(dealerDocument.updatedAt)}
+                  </div>
+                </div>
+                <Badge
+                  variant={
+                    dealerDocument.status === "APPROVED"
+                      ? "success"
+                      : dealerDocument.status === "REJECTED"
+                        ? "destructive"
+                        : "warning"
+                  }
+                >
+                  {formatEnum(dealerDocument.status)}
+                </Badge>
+              </div>
+              <p className="mt-3 text-body-sm text-muted-readable">
+                {dealerDocument.note ?? "No note"}
+              </p>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="mt-4 w-full"
+                disabled={!access.capabilities.canReadDocuments}
+                onClick={() => void download(dealerDocument.dealerDocumentId)}
+              >
+                <Download aria-hidden="true" />
+                Download
+              </Button>
+            </article>
+          ))
+        )}
+      </div>
     </div>
   );
 }
@@ -1941,6 +2477,16 @@ function AddressCard({
   title: string;
   location: DealerDirectoryDetail["operatingLocation"];
 }>): React.ReactElement {
+  if (location === null) {
+    return (
+      <ContentSection title={title}>
+        <p className="text-body-sm text-muted-readable">
+          Address not configured. Complete it from Profile & Addresses.
+        </p>
+      </ContentSection>
+    );
+  }
+
   return (
     <ContentSection title={title}>
       <div className="flex gap-3">
@@ -2161,16 +2707,21 @@ function CheckField({
 }
 
 function profileDraft(dealer: DealerDirectoryDetail): ProfileDraft {
-  const sameShipping = sameLocation(
-    dealer.billingLocation,
-    dealer.shippingLocation,
-  );
+  const operating = dealer.operatingLocation;
+  const billing = dealer.billingLocation;
+  const shipping = dealer.shippingLocation;
+  const sameShipping = sameLocation(billing, shipping);
+
   return {
+    dealerType: dealer.dealerType,
     companyName: dealer.companyName,
     displayName: dealer.displayName,
     isActive: dealer.isActive,
     parentOrgUnitId: dealer.parentOrgUnitId ?? "",
-    primaryContactName: dealer.primaryContactName,
+    primaryContactName:
+      dealer.primaryContactName === "Not configured"
+        ? ""
+        : dealer.primaryContactName,
     replacementEmail: "",
     replacementPhone: "",
     preferredLanguage: dealer.preferredLanguage,
@@ -2181,36 +2732,37 @@ function profileDraft(dealer: DealerDirectoryDetail): ProfileDraft {
     gstTreatment: dealer.legalEntity.gstTreatment,
     replacementGstin: "",
     replacementPan: "",
-    placeOfSupplyStateId: dealer.legalEntity.placeOfSupplyStateId,
+    placeOfSupplyStateId:
+      dealer.legalEntity.placeOfSupplyStateId ?? operating?.stateId ?? "",
     taxPreference: dealer.legalEntity.taxPreference,
     currency: dealer.currency,
-    operatingAddressLine1: dealer.operatingLocation.addressLine1,
-    operatingAddressLine2: dealer.operatingLocation.addressLine2 ?? "",
-    operatingCity: dealer.operatingLocation.city,
-    operatingStateId: dealer.operatingLocation.stateId,
-    operatingDistrictId: dealer.operatingLocation.districtId,
-    operatingPostalCode: dealer.operatingLocation.postalCode,
+    operatingAddressLine1: operating?.addressLine1 ?? "",
+    operatingAddressLine2: operating?.addressLine2 ?? "",
+    operatingCity: operating?.city ?? "",
+    operatingStateId: operating?.stateId ?? "",
+    operatingDistrictId: operating?.districtId ?? "",
+    operatingPostalCode: operating?.postalCode ?? "",
     latitude:
-      dealer.operatingLocation.latitude === null
+      operating?.latitude === null || operating?.latitude === undefined
         ? ""
-        : String(dealer.operatingLocation.latitude),
+        : String(operating.latitude),
     longitude:
-      dealer.operatingLocation.longitude === null
+      operating?.longitude === null || operating?.longitude === undefined
         ? ""
-        : String(dealer.operatingLocation.longitude),
-    billingAddressLine1: dealer.billingLocation.addressLine1,
-    billingAddressLine2: dealer.billingLocation.addressLine2 ?? "",
-    billingCity: dealer.billingLocation.city,
-    billingStateId: dealer.billingLocation.stateId,
-    billingDistrictId: dealer.billingLocation.districtId,
-    billingPostalCode: dealer.billingLocation.postalCode,
+        : String(operating.longitude),
+    billingAddressLine1: billing?.addressLine1 ?? "",
+    billingAddressLine2: billing?.addressLine2 ?? "",
+    billingCity: billing?.city ?? "",
+    billingStateId: billing?.stateId ?? "",
+    billingDistrictId: billing?.districtId ?? "",
+    billingPostalCode: billing?.postalCode ?? "",
     shippingSameAsBilling: sameShipping,
-    shippingAddressLine1: dealer.shippingLocation.addressLine1,
-    shippingAddressLine2: dealer.shippingLocation.addressLine2 ?? "",
-    shippingCity: dealer.shippingLocation.city,
-    shippingStateId: dealer.shippingLocation.stateId,
-    shippingDistrictId: dealer.shippingLocation.districtId,
-    shippingPostalCode: dealer.shippingLocation.postalCode,
+    shippingAddressLine1: shipping?.addressLine1 ?? "",
+    shippingAddressLine2: shipping?.addressLine2 ?? "",
+    shippingCity: shipping?.city ?? "",
+    shippingStateId: shipping?.stateId ?? "",
+    shippingDistrictId: shipping?.districtId ?? "",
+    shippingPostalCode: shipping?.postalCode ?? "",
     reason: "Administrative dealer profile update",
   };
 }
@@ -2219,6 +2771,7 @@ function sameLocation(
   left: DealerDirectoryDetail["billingLocation"],
   right: DealerDirectoryDetail["shippingLocation"],
 ): boolean {
+  if (left === null || right === null) return false;
   return (
     left.addressLine1 === right.addressLine1 &&
     left.addressLine2 === right.addressLine2 &&
@@ -2227,6 +2780,32 @@ function sameLocation(
     left.districtId === right.districtId &&
     left.postalCode === right.postalCode
   );
+}
+
+function sourceDisplayName(value: string): string {
+  const normalized = value.trim().toLocaleLowerCase("en-US");
+  return normalized === "unknown" || normalized === "unknown source"
+    ? "Direct"
+    : value;
+}
+
+function completenessLabel(
+  value: DealerDirectoryDetail["dataCompleteness"]["missing"][number],
+): string {
+  switch (value) {
+    case "PRIMARY_PRINCIPAL":
+      return "primary staff administrator";
+    case "LEGAL_ENTITY":
+      return "legal entity";
+    case "TAX_REGISTRATION":
+      return "tax registration";
+    case "OPERATING_LOCATION":
+      return "operating address";
+    case "BILLING_LOCATION":
+      return "billing address";
+    case "SHIPPING_LOCATION":
+      return "shipping address";
+  }
 }
 
 function documentKindLabel(kind: DealerDocumentKind): string {

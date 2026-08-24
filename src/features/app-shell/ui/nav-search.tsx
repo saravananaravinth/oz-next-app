@@ -40,6 +40,7 @@ import { useDebounce } from "@/shared/hooks/use-debounce";
 export type SearchCategory =
   | "navigation"
   | "customer"
+  | "dealer"
   | "order"
   | "vehicle"
   | "component"
@@ -58,7 +59,8 @@ export type GlobalSearchProps = Readonly<{
   results?: readonly SearchResult[];
 }>;
 
-type PageSearchMode = "submit" | "vehicle-live" | "component-live";
+type PageSearchMode =
+  "submit" | "dealer-live" | "vehicle-live" | "component-live";
 
 type PageSearchScope = Readonly<{
   title: string;
@@ -70,6 +72,35 @@ type PageSearchScope = Readonly<{
   mode: PageSearchMode;
   minimumCharacters: number;
 }>;
+
+type DealerLiveSearchItem = Readonly<{
+  id: string;
+  href: Route;
+  category: "dealer";
+  dealerCode: string;
+  displayName: string;
+  companyName: string;
+  dealerType: "DEALER" | "SUB_DEALER";
+  city: string | null;
+  district: string | null;
+  state: string | null;
+  sourceName: string;
+  isActive: boolean;
+}>;
+
+type DealerLiveSearchState =
+  | Readonly<{
+      kind: "success";
+      query: string;
+      items: readonly DealerLiveSearchItem[];
+      truncated: boolean;
+    }>
+  | Readonly<{
+      kind: "error";
+      query: string;
+      message: string;
+      requestId: string | null;
+    }>;
 
 type VehicleLiveSearchItem = Readonly<{
   id: string;
@@ -140,8 +171,10 @@ const LIVE_SEARCH_DELAY_MS = 280;
 const LIVE_SEARCH_MAX_WAIT_MS = 750;
 const LIVE_SEARCH_TIMEOUT_MS = 8_000;
 const ENGAGEMENT_DASHBOARD_PREFIX = "/engagement/dashboard";
+const DEALER_DIRECTORY_PATH = "/engagement/dealers";
 const VEHICLE_INVENTORY_PATH = "/inventory/vehicles";
 const COMPONENT_INVENTORY_PATH = "/inventory/components";
+const DEALER_LIVE_SEARCH_ENDPOINT = "/api/engagement/dealers/search";
 const VEHICLE_LIVE_SEARCH_ENDPOINT = "/api/inventory/vehicles/search";
 const COMPONENT_LIVE_SEARCH_ENDPOINT = "/api/inventory/components/search";
 const ENGAGEMENT_CURSOR_PARAMS = [
@@ -153,6 +186,34 @@ const INVENTORY_CURSOR_PARAMS = ["cursor"] as const;
 const ASCII_CONTROL_MAX_CODE_POINT = 0x1f;
 const ASCII_DELETE_CODE_POINT = 0x7f;
 const WHITESPACE_RE = /\s+/gu;
+
+const dealerLiveSearchResponseSchema = z
+  .object({
+    asOf: z.iso.datetime({ offset: true }),
+    truncated: z.boolean(),
+    items: z
+      .array(
+        z
+          .object({
+            id: z.uuid(),
+            href: z.string().trim().min(1).max(2_048),
+            category: z.literal("dealer"),
+            dealerCode: z.string().trim().min(1).max(128),
+            displayName: z.string().trim().min(1).max(200),
+            companyName: z.string().trim().min(1).max(200),
+            dealerType: z.enum(["DEALER", "SUB_DEALER"]),
+            city: z.string().trim().min(1).max(120).nullable(),
+            district: z.string().trim().min(1).max(160).nullable(),
+            state: z.string().trim().min(1).max(160).nullable(),
+            sourceName: z.string().trim().min(1).max(180),
+            isActive: z.boolean(),
+          })
+          .strict(),
+      )
+      .max(8)
+      .readonly(),
+  })
+  .strict();
 
 const vehicleLiveSearchResponseSchema = z
   .object({
@@ -232,6 +293,18 @@ const ENGAGEMENT_SEARCH_SCOPE = {
   cursorParams: ENGAGEMENT_CURSOR_PARAMS,
   mode: "submit",
   minimumCharacters: 1,
+} as const satisfies PageSearchScope;
+
+const DEALER_DIRECTORY_SEARCH_SCOPE = {
+  title: "Search dealers",
+  description:
+    "Live-search the authorized dealer network by dealer name, code, GSTIN, primary staff identity, or location.",
+  placeholder: "Dealer name, code, GSTIN, email, phone, location…",
+  inputLabel: "Search authorized dealers",
+  triggerLabel: "Search dealers",
+  cursorParams: INVENTORY_CURSOR_PARAMS,
+  mode: "dealer-live",
+  minimumCharacters: 3,
 } as const satisfies PageSearchScope;
 
 const VEHICLE_INVENTORY_SEARCH_SCOPE = {
@@ -473,6 +546,10 @@ function matches(result: SearchResult, query: string): boolean {
 }
 
 function resolvePageSearchScope(pathname: string): PageSearchScope | null {
+  if (pathname === DEALER_DIRECTORY_PATH) {
+    return DEALER_DIRECTORY_SEARCH_SCOPE;
+  }
+
   if (pathname === VEHICLE_INVENTORY_PATH) {
     return VEHICLE_INVENTORY_SEARCH_SCOPE;
   }
@@ -510,6 +587,43 @@ function inventoryScopeFlags(searchParams: URLSearchParams): Readonly<{
       .getAll("includeSubDealerStock")
       .includes("true"),
   };
+}
+
+function dealerLiveSearchPath(
+  query: string,
+  searchParams: URLSearchParams,
+): string {
+  const liveParams = new URLSearchParams({ q: normalizedPageQuery(query) });
+  const dealerType = searchParams.get("dealerType");
+  const active = searchParams.get("active") ?? "true";
+
+  if (dealerType === "DEALER" || dealerType === "SUB_DEALER") {
+    liveParams.set("dealerType", dealerType);
+  }
+  if (active === "true" || active === "false" || active === "all") {
+    liveParams.set("active", active);
+  }
+
+  return `${DEALER_LIVE_SEARCH_ENDPOINT}?${liveParams.toString()}`;
+}
+
+function toDealerLiveSearchItems(
+  payload: z.output<typeof dealerLiveSearchResponseSchema>,
+): readonly DealerLiveSearchItem[] {
+  return payload.items.map((item) => ({
+    id: item.id,
+    href: safeInternalHref(item.href, DEALER_DIRECTORY_PATH),
+    category: item.category,
+    dealerCode: cleanText(item.dealerCode),
+    displayName: cleanText(item.displayName, "Dealer"),
+    companyName: cleanText(item.companyName, item.displayName),
+    dealerType: item.dealerType,
+    city: item.city === null ? null : cleanText(item.city),
+    district: item.district === null ? null : cleanText(item.district),
+    state: item.state === null ? null : cleanText(item.state),
+    sourceName: cleanText(item.sourceName, "Direct"),
+    isActive: item.isActive,
+  }));
 }
 
 function vehicleLiveSearchPath(
@@ -633,6 +747,235 @@ function inventorySearchError(
     message: "Live inventory search could not reach the application server.",
     requestId: null,
   };
+}
+
+function dealerSearchError(error: unknown): Readonly<{
+  message: string;
+  requestId: string | null;
+}> {
+  if (isApiHttpError(error)) {
+    if (error.status === HTTP_STATUS.UNAUTHORIZED) {
+      return {
+        message:
+          "Your ERP session expired. Sign in again to search protected dealers.",
+        requestId: error.requestId ?? null,
+      };
+    }
+    if (error.status === HTTP_STATUS.FORBIDDEN) {
+      return {
+        message: "You do not have access to search the dealer directory.",
+        requestId: error.requestId ?? null,
+      };
+    }
+    if (error.status === HTTP_STATUS.TOO_MANY_REQUESTS) {
+      return {
+        message:
+          "Live dealer search is temporarily rate limited. Retry shortly.",
+        requestId: error.requestId ?? null,
+      };
+    }
+    return {
+      message:
+        error.status >= 500
+          ? "Live dealer search is temporarily unavailable."
+          : "The dealer search request could not be completed.",
+      requestId: error.requestId ?? null,
+    };
+  }
+
+  return {
+    message: "Live dealer search could not reach the application server.",
+    requestId: null,
+  };
+}
+
+function DealerLiveResults({
+  query,
+  debouncedQuery,
+  minimumCharacters,
+  state,
+  closeSearch,
+}: Readonly<{
+  query: string;
+  debouncedQuery: string;
+  minimumCharacters: number;
+  state: DealerLiveSearchState | null;
+  closeSearch: () => void;
+}>): React.ReactElement {
+  const normalized = normalizedPageQuery(query);
+  const normalizedDebounced = normalizedPageQuery(debouncedQuery);
+  const ready = normalized.length >= minimumCharacters;
+  const waitingForDebounce = ready && normalized !== normalizedDebounced;
+  const loading =
+    ready && !waitingForDebounce && state?.query !== normalizedDebounced;
+  const visibleState =
+    state !== null && state.query === normalizedDebounced ? state : null;
+
+  if (normalized.length === 0) {
+    return (
+      <div className="grid min-h-44 place-items-center rounded-2xl border border-dashed border-border/70 bg-muted/25 px-6 py-8 text-center">
+        <div className="grid max-w-md justify-items-center gap-2">
+          <span className="grid size-10 place-items-center rounded-xl bg-primary/10 text-primary">
+            <Building2 aria-hidden="true" className="size-5" />
+          </span>
+          <p className="text-body-sm font-medium text-foreground">
+            Find a dealer from the organization directory
+          </p>
+          <p className="text-caption text-muted-readable">
+            Search dealer name, dealer code, GSTIN, primary staff email or
+            phone, city, district, or state.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!ready) {
+    return (
+      <div className="grid min-h-36 place-items-center rounded-2xl border border-border/70 bg-muted/25 px-6 py-8 text-center text-body-sm text-muted-readable">
+        Type at least {String(minimumCharacters)} characters to start the live
+        dealer search.
+      </div>
+    );
+  }
+
+  if (waitingForDebounce || loading) {
+    return (
+      <div
+        className="grid min-h-36 place-items-center rounded-2xl border border-border/70 bg-muted/20 px-6 py-8"
+        role="status"
+        aria-live="polite"
+      >
+        <span className="inline-flex items-center gap-2 text-body-sm text-muted-readable">
+          <LoaderCircle
+            aria-hidden="true"
+            className="size-4 animate-spin motion-reduce:animate-none"
+          />
+          Searching authorized dealers…
+        </span>
+      </div>
+    );
+  }
+
+  if (visibleState?.kind === "error") {
+    return (
+      <Alert variant="destructive">
+        <AlertTriangle aria-hidden="true" />
+        <AlertTitle>Dealer search could not be completed</AlertTitle>
+        <AlertDescription>
+          {visibleState.message}
+          {visibleState.requestId === null ? null : (
+            <span className="mt-1 block text-caption">
+              Reference: <code>{visibleState.requestId}</code>
+            </span>
+          )}
+        </AlertDescription>
+      </Alert>
+    );
+  }
+
+  if (visibleState?.kind !== "success" || visibleState.items.length === 0) {
+    return (
+      <div className="grid min-h-36 place-items-center rounded-2xl border border-border/70 bg-muted/25 px-6 py-8 text-center">
+        <div className="grid gap-1">
+          <p className="text-body-sm font-medium text-foreground">
+            No authorized dealer matched
+          </p>
+          <p className="text-caption text-muted-readable">
+            Check the dealer name, code, GSTIN, staff identity, or location
+            spelling.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="grid gap-2" role="list" aria-label="Dealer search results">
+      {visibleState.items.map((item) => {
+        const location = [item.city, item.district, item.state]
+          .filter(
+            (value): value is string => value !== null && value.length > 0,
+          )
+          .join(" · ");
+        return (
+          <Button
+            key={item.id}
+            variant="ghost"
+            className="h-auto w-full justify-start rounded-2xl border border-transparent px-3 py-3 text-start hover:border-border/70 hover:bg-muted/55 focus-visible:border-ring"
+            asChild
+          >
+            <Link
+              href={item.href}
+              prefetch={false}
+              onClick={closeSearch}
+              role="listitem"
+            >
+              <span className="grid min-w-0 flex-1 grid-cols-[auto_minmax(0,1fr)] items-start gap-3">
+                <span className="mt-0.5 grid size-9 shrink-0 place-items-center rounded-xl border border-primary/15 bg-primary/10 text-primary">
+                  <Building2 aria-hidden="true" className="size-4" />
+                </span>
+                <span className="grid min-w-0 gap-1.5">
+                  <span className="flex min-w-0 items-center justify-between gap-3">
+                    <span className="min-w-0 truncate text-body-sm font-semibold text-foreground">
+                      <HighlightedText
+                        value={item.displayName}
+                        query={normalized}
+                      />
+                    </span>
+                    <Badge
+                      variant={item.isActive ? "success" : "secondary"}
+                      className="h-5 shrink-0 rounded-md px-1.5 text-[0.625rem] font-medium"
+                    >
+                      {item.isActive ? "Active" : "Inactive"}
+                    </Badge>
+                  </span>
+                  <span className="flex min-w-0 flex-wrap items-center gap-x-1.5 text-caption text-muted-readable">
+                    <span className="font-medium text-foreground/85 text-tabular">
+                      <HighlightedText
+                        value={item.dealerCode}
+                        query={normalized}
+                      />
+                    </span>
+                    <span aria-hidden="true">·</span>
+                    <span>
+                      {item.dealerType === "DEALER" ? "Dealer" : "Sub-dealer"}
+                    </span>
+                    <span aria-hidden="true">·</span>
+                    <span>{item.sourceName}</span>
+                  </span>
+                  {item.companyName === item.displayName ? null : (
+                    <span className="truncate text-caption text-foreground/80">
+                      <HighlightedText
+                        value={item.companyName}
+                        query={normalized}
+                      />
+                    </span>
+                  )}
+                  <span className="inline-flex min-w-0 items-center gap-1.5 text-caption text-muted-readable">
+                    <MapPin aria-hidden="true" className="size-3.5 shrink-0" />
+                    <span className="truncate">
+                      {location.length === 0 ? (
+                        "Location not configured"
+                      ) : (
+                        <HighlightedText value={location} query={normalized} />
+                      )}
+                    </span>
+                  </span>
+                </span>
+              </span>
+            </Link>
+          </Button>
+        );
+      })}
+      {visibleState.truncated ? (
+        <p className="px-2 pt-1 text-caption text-muted-readable">
+          Showing the best eight matches. Press Enter to apply the search to the
+          full dealer table.
+        </p>
+      ) : null}
+    </div>
+  );
 }
 
 function VehicleLiveResults({
@@ -1109,6 +1452,8 @@ export function GlobalSearch({
   const pageSearchScope = resolvePageSearchScope(pathname);
   const [open, setOpen] = React.useState(false);
   const [query, setQuery] = React.useState("");
+  const [dealerLiveState, setDealerLiveState] =
+    React.useState<DealerLiveSearchState | null>(null);
   const [vehicleLiveState, setVehicleLiveState] =
     React.useState<VehicleLiveSearchState | null>(null);
   const [componentLiveState, setComponentLiveState] =
@@ -1184,6 +1529,54 @@ export function GlobalSearch({
   const closeSearch = React.useCallback((): void => {
     setOpen(false);
   }, []);
+
+  React.useEffect(() => {
+    const normalized = normalizedPageQuery(debouncedPageQuery);
+
+    if (
+      !open ||
+      pageSearchScope?.mode !== "dealer-live" ||
+      normalized.length < pageSearchScope.minimumCharacters
+    ) {
+      return;
+    }
+
+    const controller = new AbortController();
+    const path = dealerLiveSearchPath(
+      normalized,
+      new URLSearchParams(searchParamsString),
+    );
+
+    void sameOriginFetch(path, {
+      method: HTTP_METHODS.GET,
+      schema: dealerLiveSearchResponseSchema,
+      timeoutMs: LIVE_SEARCH_TIMEOUT_MS,
+      signal: controller.signal,
+    })
+      .then((payload) => {
+        if (controller.signal.aborted) return;
+        setDealerLiveState({
+          kind: "success",
+          query: normalized,
+          items: toDealerLiveSearchItems(payload),
+          truncated: payload.truncated,
+        });
+      })
+      .catch((error: unknown) => {
+        if (controller.signal.aborted) return;
+        const failure = dealerSearchError(error);
+        setDealerLiveState({
+          kind: "error",
+          query: normalized,
+          message: failure.message,
+          requestId: failure.requestId,
+        });
+      });
+
+    return () => {
+      controller.abort();
+    };
+  }, [debouncedPageQuery, open, pageSearchScope, searchParamsString]);
 
   React.useEffect(() => {
     const normalized = normalizedPageQuery(debouncedPageQuery);
@@ -1382,7 +1775,15 @@ export function GlobalSearch({
                 />
               </div>
 
-              {pageSearchScope.mode === "vehicle-live" ? (
+              {pageSearchScope.mode === "dealer-live" ? (
+                <DealerLiveResults
+                  query={query}
+                  debouncedQuery={debouncedPageQuery}
+                  minimumCharacters={pageSearchScope.minimumCharacters}
+                  state={dealerLiveState}
+                  closeSearch={closeSearch}
+                />
+              ) : pageSearchScope.mode === "vehicle-live" ? (
                 <VehicleLiveResults
                   query={query}
                   debouncedQuery={debouncedPageQuery}
@@ -1509,7 +1910,8 @@ export function GlobalSearch({
               disabled={!pageQueryIsReady(query, pageSearchScope)}
             >
               <Search aria-hidden="true" className="size-4" />
-              {pageSearchScope.mode === "vehicle-live" ||
+              {pageSearchScope.mode === "dealer-live" ||
+              pageSearchScope.mode === "vehicle-live" ||
               pageSearchScope.mode === "component-live"
                 ? "Show all matches"
                 : "Search this page"}
