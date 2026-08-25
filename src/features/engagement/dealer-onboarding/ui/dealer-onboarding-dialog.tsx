@@ -456,6 +456,16 @@ export function DealerOnboardingDialog({
         return;
       }
 
+      if (preflight.nextAction === "WAIT_FOR_APPLICATION_APPROVAL") {
+        setSubmission({
+          kind: "error",
+          message:
+            preflight.warnings[0] ??
+            "The matching application must be approved before onboarding can continue.",
+        });
+        return;
+      }
+
       if (origin === "DIRECT" && preflight.outcome === "APPLICATION_FOUND") {
         if (preflight.applications.length === 0) {
           setSubmission({
@@ -484,7 +494,9 @@ export function DealerOnboardingDialog({
       if (preflight.preflightToken === null) {
         setSubmission({
           kind: "error",
-          message: "The existing-record check did not authorize provisioning.",
+          message:
+            preflight.warnings[0] ??
+            "The existing-record check did not authorize provisioning.",
         });
         return;
       }
@@ -1306,6 +1318,10 @@ export function DealerOnboardingDialog({
               <button
                 key={application.applicationId}
                 type="button"
+                disabled={
+                  application.status !== "APPROVED" ||
+                  application.approvedAt === null
+                }
                 className="flex w-full items-center justify-between gap-4 rounded-2xl border border-border/70 bg-background p-4 text-start transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/30"
                 onClick={() =>
                   void selectApplication(application.applicationId)
@@ -1319,7 +1335,12 @@ export function DealerOnboardingDialog({
                     {application.phase} · {application.status}
                   </div>
                 </div>
-                <Badge variant="outline">Use application</Badge>
+                <Badge variant="outline">
+                  {application.status === "APPROVED" &&
+                  application.approvedAt !== null
+                    ? "Use application"
+                    : "Awaiting approval"}
+                </Badge>
               </button>
             ))}
           </DialogBody>

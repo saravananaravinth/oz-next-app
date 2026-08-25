@@ -59,6 +59,10 @@ import {
   type DealerPreflightApplication,
 } from "@/features/engagement/dealer-onboarding/contracts/dealer-onboarding.schema";
 import type { ResolvedDealerAdministrationAccess } from "@/features/engagement/dealer-onboarding/policies/dealer-onboarding.policy";
+import {
+  isPreflightExpired,
+  preflightRemainingMs,
+} from "@/features/engagement/dealer-onboarding/ui/dealer-onboarding-preflight-expiry";
 import { DealerWorkspaceHeader } from "@/features/engagement/dealer-onboarding/ui/dealer-workspace-header";
 import {
   DEALER_ADMINISTRATION_ROUTE,
@@ -258,6 +262,33 @@ export function DealerOnboardingWorkbench({
   const [geoBusy, setGeoBusy] = React.useState(false);
   const idempotencyKeyRef = React.useRef(createIdempotencyKey());
   const optionsRequestRef = React.useRef(0);
+
+  React.useEffect(() => {
+    if (
+      preflight?.preflightToken === undefined ||
+      preflight.preflightToken === null ||
+      preflight.expiresAt === null
+    )
+      return;
+    const remainingMs = preflightRemainingMs(preflight);
+    const expirePreflight = (): void => {
+      setPreflight(null);
+      setCurrentStep(0);
+      setNotice({
+        kind: "error",
+        message:
+          "Identity preflight expired. Run the existing-record check again.",
+      });
+    };
+    if (remainingMs === null || remainingMs <= 0) {
+      expirePreflight();
+      return;
+    }
+    const timeout = window.setTimeout(expirePreflight, remainingMs);
+    return () => {
+      window.clearTimeout(timeout);
+    };
+  }, [preflight]);
 
   const updateDraft = React.useCallback(
     <K extends keyof Draft>(key: K, value: Draft[K]): void => {
@@ -513,6 +544,16 @@ export function DealerOnboardingWorkbench({
       });
       return;
     }
+    if (isPreflightExpired(preflight)) {
+      setPreflight(null);
+      setCurrentStep(0);
+      setNotice({
+        kind: "error",
+        message:
+          "Identity preflight expired. Run the existing-record check again.",
+      });
+      return;
+    }
 
     const body = buildProvisionBody(draft, preflight);
     const parsed = dealerOnboardingProvisionBodySchema.safeParse(body);
@@ -535,6 +576,10 @@ export function DealerOnboardingWorkbench({
     setProvisionBusy(false);
 
     if (!result.ok) {
+      if (result.requiresPreflightRestart === true) {
+        setPreflight(null);
+        setCurrentStep(0);
+      }
       setNotice({ kind: "error", message: result.message });
       return;
     }
@@ -847,6 +892,18 @@ function PreflightResult({
     result.outcome === "APPLICATION_FOUND" &&
     result.preflightToken === null
   ) {
+    if (result.nextAction === "WAIT_FOR_APPLICATION_APPROVAL") {
+      return (
+        <ContentStatus
+          variant="warning"
+          title="Application approval required"
+          description={
+            result.warnings[0] ??
+            "This application must be approved before onboarding can continue."
+          }
+        />
+      );
+    }
     return (
       <ContentSection
         title="Existing dealership application found"
@@ -870,12 +927,19 @@ function PreflightResult({
               <Button
                 type="button"
                 variant="outline"
-                disabled={busy}
+                disabled={
+                  busy ||
+                  application.status !== "APPROVED" ||
+                  application.approvedAt === null
+                }
                 onClick={() => {
                   onContinueApplication(application);
                 }}
               >
-                Continue Application
+                {application.status === "APPROVED" &&
+                application.approvedAt !== null
+                  ? "Continue Application"
+                  : "Awaiting Approval"}
               </Button>
             </div>
           ))}
@@ -1648,6 +1712,9 @@ function validateStep(
     preflight?.preflightToken === undefined
   ) {
     return "Identity preflight must pass before continuing.";
+  }
+  if (isPreflightExpired(preflight)) {
+    return "Identity preflight expired. Run the existing-record check again.";
   }
   if (step === 1) {
     if (draft.dealerType === "SUB_DEALER" && draft.parentOrgUnitId === "")
