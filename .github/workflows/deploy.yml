@@ -394,9 +394,9 @@ jobs:
           placement = config.get("placement")
           require(isinstance(placement, dict), "Missing placement", "placement must be configured.")
           require(
-              placement.get("region") == "gcp:asia-south1",
+              placement.get("mode") == "smart",
               "Invalid placement",
-              "placement.region must be gcp:asia-south1.",
+              "placement.mode must be smart.",
           )
 
           observability = config.get("observability")
