@@ -39,7 +39,7 @@ export default function WalletError({
       <ContentStatus
         variant="destructive"
         title="Wallet workspace could not be rendered"
-        description="Retry the wallet workspace. No wallet balance, transaction, or Welfare Fund record was changed by this failure."
+        description="Retry the wallet workspace. No wallet balance, Welfare Fund record, Credit Note eligibility, or settlement record was changed by this failure."
         icon={<TriangleAlert aria-hidden="true" />}
         actions={
           <div className="flex flex-wrap gap-2">

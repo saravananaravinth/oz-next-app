@@ -92,6 +92,7 @@ export const CT = {
   JWK_SET: "application/jwk-set+json",
   TEXT: "text/plain; charset=utf-8",
   CSV: "text/csv",
+  PDF: "application/pdf",
 } as const;
 
 export const CACHE_CONTROL = {
@@ -151,6 +152,7 @@ export const SERVER_API_ALLOWED_PREFIXES = [
   "/erp/integrations",
   "/erp/wallets",
   "/erp/welfare",
+  "/erp/credit-notes",
 ] as const;
 
 /**

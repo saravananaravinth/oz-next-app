@@ -40,6 +40,7 @@ import {
 } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 
+import { CreditNoteWorkspace } from "@/features/wallet/ui/credit-note-workspace";
 import { WalletAnimatedAmount } from "@/features/wallet/ui/wallet-animated-amount";
 import { WalletWorkspaceHeader } from "@/features/wallet/ui/wallet-workspace-header";
 import { formatMoney } from "@/features/wallet/utils/wallet-money";
@@ -964,16 +965,22 @@ export function WalletPage({
       <WalletWorkspaceHeader
         titleId="wallet-page-title"
         title="Wallet"
-        description="Review Welfare Fund balances, posted transactions, and invoice settlement history."
+        description="Track Welfare Fund balances and the full Credit Note performance, offer, purchase, and settlement cycle."
         actions={
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Badge variant="success">Welfare Fund live</Badge>
+            {capabilities.canReadCreditNoteOverview ? (
+              <Badge variant="info">Credit Note live</Badge>
+            ) : null}
             <Badge variant="outline">Read only</Badge>
           </div>
         }
       />
 
-      <Tabs defaultValue="welfare-fund" className="min-w-0 gap-4">
+      <Tabs
+        defaultValue={query.tab ?? "welfare-fund"}
+        className="min-w-0 gap-4"
+      >
         <div className="overflow-hidden rounded-2xl border border-border/70 bg-card shadow-xs shadow-foreground/5">
           <div className="no-scrollbar overflow-x-auto overscroll-x-contain">
             <TabsList
@@ -991,12 +998,15 @@ export function WalletPage({
               </TabsTrigger>
               <TabsTrigger
                 value="credit-note"
-                disabled
                 className="min-w-[9.5rem] flex-none justify-start gap-2 px-4"
               >
                 <ReceiptText aria-hidden="true" className="size-4" />
                 <span>Credit Note</span>
-                <TabsBadge>Soon</TabsBadge>
+                <TabsBadge>
+                  {capabilities.canReadCreditNoteOverview
+                    ? "Live"
+                    : "Restricted"}
+                </TabsBadge>
               </TabsTrigger>
             </TabsList>
           </div>
@@ -1040,15 +1050,16 @@ export function WalletPage({
             </>
           )}
         </TabsContent>
-      </Tabs>
 
-      {data.creditNoteWalletCount > 0 ? (
-        <p className="sr-only">
-          {String(data.creditNoteWalletCount)} Credit Note wallet account
-          {data.creditNoteWalletCount === 1 ? "" : "s"} detected. Credit Note UI
-          is intentionally unavailable in Phase 1.
-        </p>
-      ) : null}
+        <TabsContent value="credit-note" className="grid min-w-0 gap-4">
+          <CreditNoteWorkspace
+            overview={data.creditNoteOverview}
+            invoices={data.creditNotePurchaseInvoices}
+            query={query}
+            capabilities={capabilities}
+          />
+        </TabsContent>
+      </Tabs>
     </ContentRoot>
   );
 }

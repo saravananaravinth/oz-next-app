@@ -5,12 +5,19 @@ const PERMISSION = {
   WALLET_READ: "wallet:read",
   WALLET_ENTRY_READ: "wallet:entry:read",
   WELFARE_ACCRUAL_READ: "welfare:accrual:read",
+  CREDIT_NOTE_ELIGIBILITY_READ: "credit-note:eligibility:read",
+  CREDIT_NOTE_PURCHASE_INVOICE_READ: "credit-note:purchase-invoice:read",
+  CREDIT_NOTE_PURCHASE_INVOICE_DOCUMENT_READ:
+    "credit-note:purchase-invoice-document:read",
 } as const;
 
 export type WalletCapabilities = Readonly<{
   canViewWallets: boolean;
   canReadEntries: boolean;
   canReadWelfareAccruals: boolean;
+  canReadCreditNoteOverview: boolean;
+  canReadCreditNotePurchaseInvoices: boolean;
+  canReadCreditNoteDocuments: boolean;
 }>;
 
 export type WalletAccess = Readonly<{
@@ -23,6 +30,9 @@ const NO_CAPABILITIES = {
   canViewWallets: false,
   canReadEntries: false,
   canReadWelfareAccruals: false,
+  canReadCreditNoteOverview: false,
+  canReadCreditNotePurchaseInvoices: false,
+  canReadCreditNoteDocuments: false,
 } as const satisfies WalletCapabilities;
 
 function effectivePermissions(me: MeResponse): ReadonlySet<string> {
@@ -58,6 +68,15 @@ export function resolveWalletAccess(me: MeResponse): WalletAccess {
     canViewWallets: permissions.has(PERMISSION.WALLET_READ),
     canReadEntries: permissions.has(PERMISSION.WALLET_ENTRY_READ),
     canReadWelfareAccruals: permissions.has(PERMISSION.WELFARE_ACCRUAL_READ),
+    canReadCreditNoteOverview: permissions.has(
+      PERMISSION.CREDIT_NOTE_ELIGIBILITY_READ,
+    ),
+    canReadCreditNotePurchaseInvoices: permissions.has(
+      PERMISSION.CREDIT_NOTE_PURCHASE_INVOICE_READ,
+    ),
+    canReadCreditNoteDocuments: permissions.has(
+      PERMISSION.CREDIT_NOTE_PURCHASE_INVOICE_DOCUMENT_READ,
+    ),
   } satisfies WalletCapabilities;
 
   return {

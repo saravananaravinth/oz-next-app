@@ -84,6 +84,16 @@ export const WELFARE_ENDPOINTS = {
     `${ERP_PREFIX}/welfare/accruals/${encodeURIComponent(accrualId)}` as const,
 } as const;
 
+export const CREDIT_NOTE_ENDPOINTS = {
+  base: `${ERP_PREFIX}/credit-notes`,
+  overview: `${ERP_PREFIX}/credit-notes/overview`,
+  purchaseInvoices: `${ERP_PREFIX}/credit-notes/purchase-invoices`,
+  purchaseInvoice: (invoiceProjectionId: string) =>
+    `${ERP_PREFIX}/credit-notes/purchase-invoices/${encodeURIComponent(invoiceProjectionId)}` as const,
+  purchaseInvoiceDocument: (invoiceProjectionId: string) =>
+    `${ERP_PREFIX}/credit-notes/purchase-invoices/${encodeURIComponent(invoiceProjectionId)}/document` as const,
+} as const;
+
 export const ZOHO_INVENTORY_ENDPOINTS = {
   base: `${ERP_PREFIX}/integrations/zoho-inventory`,
   authorizations: `${ERP_PREFIX}/integrations/zoho-inventory/authorizations`,

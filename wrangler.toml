@@ -11,7 +11,7 @@
 
 name = "oz-next-app"
 main = ".open-next/worker.js"
-compatibility_date = "2026-07-22"
+compatibility_date = "2026-09-01"
 compatibility_flags = [
   "nodejs_compat",
   "global_fetch_strictly_public",
@@ -48,11 +48,17 @@ binding = "ERP_EDGE"
 service = "oz-erp-edge"
 
 [placement]
-region = "gcp:asia-south1"
+mode = "smart"
 
 [observability]
 enabled = true
-head_sampling_rate = 0.1
+head_sampling_rate = 1.0
+redact_query_string = true
+
+[observability.traces]
+enabled = true
+
+[observability.logs]
 
 [vars]
 NEXTJS_ENV = "production"
@@ -61,5 +67,5 @@ NEXT_PUBLIC_APP_ENV = "production"
 NEXT_PUBLIC_APP_ORIGIN = "https://erp.ozotecev.com"
 NEXT_PUBLIC_API_BASE_URL = "https://api.erp.ozotecev.com"
 NEXT_PUBLIC_AUTH_CLIENT_ID = "erp-web"
-NEXT_PUBLIC_APP_VERSION = "0.1.0"
+NEXT_PUBLIC_APP_VERSION = "0.22.0"
 NEXT_PUBLIC_LOG_LEVEL = "warn"

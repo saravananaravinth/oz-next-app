@@ -18,7 +18,7 @@ import { isApiHttpError } from "@/lib/api/problem";
 
 const PAGE_TITLE = "Wallet";
 const PAGE_DESCRIPTION =
-  "Dealer Welfare Fund wallet balances, transactions, and settlement history.";
+  "Dealer Welfare Fund and Credit Note eligibility, purchase offer, invoice, and settlement workspace.";
 
 type WalletRoutePageProps = Readonly<{
   searchParams: Promise<WalletRawSearchParams>;
