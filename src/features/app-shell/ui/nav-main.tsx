@@ -25,6 +25,7 @@ import {
   UserRoundPlus,
   Users,
   Warehouse,
+  WalletCards,
   Wrench,
   Component,
   Network,
@@ -88,6 +89,8 @@ const NAV_ICON_COMPONENTS = {
   Users,
   Warehouse,
   Warranty: Shield,
+  Wallet: WalletCards,
+  WalletCards,
   Wrench,
   component: Component,
   network: Network,
@@ -111,6 +114,8 @@ const NAV_ICON_COMPONENTS = {
   "user-round-plus": UserRoundPlus,
   users: Users,
   warehouse: Warehouse,
+  wallet: WalletCards,
+  "wallet-cards": WalletCards,
   wrench: Wrench,
 } as const;
 

@@ -1,3 +1,4 @@
+// oz-next-app/src/features/engagement/dealer-onboarding/ui/dealer-onboarding-preflight-expiry.ts
 type ExpiringPreflight = Readonly<{
   preflightToken: string | null;
   expiresAt: string | null;

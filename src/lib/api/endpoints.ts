@@ -69,6 +69,21 @@ export const ENGAGEMENT_ENDPOINTS = {
     `${ERP_PREFIX}/engagement/support/video-messages/${encodeURIComponent(videoMessageId)}/retry` as const,
 } as const;
 
+export const WALLET_ENDPOINTS = {
+  base: `${ERP_PREFIX}/wallets`,
+  wallet: (walletId: string) =>
+    `${ERP_PREFIX}/wallets/${encodeURIComponent(walletId)}` as const,
+  entries: (walletId: string) =>
+    `${ERP_PREFIX}/wallets/${encodeURIComponent(walletId)}/entries` as const,
+} as const;
+
+export const WELFARE_ENDPOINTS = {
+  base: `${ERP_PREFIX}/welfare`,
+  accruals: `${ERP_PREFIX}/welfare/accruals`,
+  accrual: (accrualId: string) =>
+    `${ERP_PREFIX}/welfare/accruals/${encodeURIComponent(accrualId)}` as const,
+} as const;
+
 export const ZOHO_INVENTORY_ENDPOINTS = {
   base: `${ERP_PREFIX}/integrations/zoho-inventory`,
   authorizations: `${ERP_PREFIX}/integrations/zoho-inventory/authorizations`,

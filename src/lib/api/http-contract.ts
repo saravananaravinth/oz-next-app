@@ -149,6 +149,8 @@ export const SERVER_API_ALLOWED_PREFIXES = [
   "/erp/engagement",
   "/erp/dealer/inventory",
   "/erp/integrations",
+  "/erp/wallets",
+  "/erp/welfare",
 ] as const;
 
 /**
