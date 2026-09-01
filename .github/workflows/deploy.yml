@@ -51,7 +51,7 @@ jobs:
       NEXT_PUBLIC_APP_ORIGIN: https://erp.ozotecev.com
       NEXT_PUBLIC_API_BASE_URL: https://api.erp.ozotecev.com
       NEXT_PUBLIC_AUTH_CLIENT_ID: erp-web
-      NEXT_PUBLIC_APP_VERSION: 0.1.0
+      NEXT_PUBLIC_APP_VERSION: 0.22.0
 
     steps:
       - name: Checkout
