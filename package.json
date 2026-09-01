@@ -1,6 +1,6 @@
 {
   "name": "oz-next-app",
-  "version": "0.1.0",
+  "version": "0.22.0",
   "description": "Enterprise Ozotec ERP frontend on Next.js, TypeScript, shadcn/ui, and OpenNext Cloudflare.",
   "private": true,
   "type": "module",
