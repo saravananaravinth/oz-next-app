@@ -554,6 +554,38 @@ export const zohoIntegrationSearchParamsSchema = z
   })
   .strict();
 
+export const creditNoteOperationsSnapshotSchema = z
+  .object({
+    configured: z.boolean(),
+    locationId: z.string().nullable(),
+    locationName: z.string().nullable(),
+    lastSuccessfulSyncAt: isoDateTimeSchema.nullable(),
+    coveredThrough: z.iso.date().nullable(),
+    invoiceCount: z.number().int().nonnegative(),
+    eligibleInvoiceCount: z.number().int().nonnegative(),
+    excludedInvoiceCount: z.number().int().nonnegative(),
+    openIssueCount: z.number().int().nonnegative(),
+    activeDealerCount: z.number().int().nonnegative(),
+    mappedDealerCount: z.number().int().nonnegative(),
+  })
+  .strict();
+
+export const creditNoteInvoiceBackfillActionInputSchema = z
+  .object({ fromDate: z.iso.date(), toDate: z.iso.date() })
+  .strict();
+
+export const creditNoteInvoiceBackfillResultSchema = z
+  .object({
+    taskId: z.string().trim().min(8).max(256),
+    fromDate: z.iso.date(),
+    toDate: z.iso.date(),
+  })
+  .strict();
+
+export type CreditNoteInvoiceBackfillResult = z.infer<
+  typeof creditNoteInvoiceBackfillResultSchema
+>;
+
 export type ZohoExternalConnection = z.infer<
   typeof zohoExternalConnectionSchema
 >;
@@ -591,6 +623,9 @@ export type ZohoOAuthAttemptContext = z.infer<
 export type ZohoPendingGrant = z.infer<typeof zohoPendingGrantSchema>;
 export type ZohoIntegrationSearchParams = z.infer<
   typeof zohoIntegrationSearchParamsSchema
+>;
+export type CreditNoteOperationsSnapshot = z.infer<
+  typeof creditNoteOperationsSnapshotSchema
 >;
 export type BeginZohoAuthorizationActionInput = z.input<
   typeof beginZohoAuthorizationActionInputSchema

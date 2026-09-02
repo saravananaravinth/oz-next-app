@@ -3,6 +3,7 @@ import "server-only";
 
 import { createErpFeatureClient } from "@/features/erp-core/api/erp-feature.client.server";
 import { ZOHO_INVENTORY_ENDPOINTS } from "@/lib/api/endpoints";
+import { CREDIT_NOTE_ENDPOINTS } from "@/lib/api/endpoints";
 import { HTTP_METHODS } from "@/lib/api/http-contract";
 import { serverApiClient } from "@/server/api/edge-api-client";
 import type { ServerActorContextHeaders } from "@/server/api/request-context-headers";
@@ -35,6 +36,10 @@ import {
   type ZohoWebhookEndpoint,
   type ZohoWebhookReceipt,
   type ZohoWebhookSecretResult,
+  creditNoteOperationsSnapshotSchema,
+  type CreditNoteOperationsSnapshot,
+  creditNoteInvoiceBackfillResultSchema,
+  type CreditNoteInvoiceBackfillResult,
 } from "@/features/integrations/zoho-inventory/contracts/zoho-inventory.schema";
 import type { ResolvedZohoInventoryAccess } from "@/features/integrations/zoho-inventory/policies/zoho-inventory.policy";
 
@@ -42,6 +47,43 @@ const zohoInventoryClient = createErpFeatureClient({
   featureName: "integrations.zoho-inventory",
   basePath: ZOHO_INVENTORY_ENDPOINTS.base,
 });
+
+const creditNoteOperationsClient = createErpFeatureClient({
+  featureName: "credit-note.operations",
+  basePath: CREDIT_NOTE_ENDPOINTS.base,
+});
+
+export async function readCreditNoteOperations(
+  input: Readonly<{ access: ResolvedZohoInventoryAccess }>,
+): Promise<CreditNoteOperationsSnapshot> {
+  return await creditNoteOperationsClient.request({
+    method: HTTP_METHODS.GET,
+    path: "/operations",
+    schema: creditNoteOperationsSnapshotSchema,
+    ...(input.access.actorContext === undefined
+      ? {}
+      : { actorContext: input.access.actorContext }),
+  });
+}
+
+export async function enqueueCreditNoteInvoiceBackfill(
+  input: Readonly<{
+    access: ResolvedZohoInventoryAccess;
+    fromDate: string;
+    toDate: string;
+  }>,
+): Promise<CreditNoteInvoiceBackfillResult> {
+  return await creditNoteOperationsClient.request({
+    method: HTTP_METHODS.POST,
+    path: "/operations/invoice-backfills",
+    body: { fromDate: input.fromDate, toDate: input.toDate },
+    schema: creditNoteInvoiceBackfillResultSchema,
+    refreshOnUnauthorized: false,
+    ...(input.access.actorContext === undefined
+      ? {}
+      : { actorContext: input.access.actorContext }),
+  });
+}
 
 export async function readZohoConnections(
   input: Readonly<{

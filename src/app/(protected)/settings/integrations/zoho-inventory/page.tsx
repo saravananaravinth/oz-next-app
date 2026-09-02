@@ -19,6 +19,7 @@ import {
   readZohoWebhookEndpoints,
   readZohoWebhookReceipts,
   readZohoItemDetail,
+  readCreditNoteOperations,
 } from "@/features/integrations/zoho-inventory/server/zoho-inventory.server";
 import { readZohoPendingGrant } from "@/features/integrations/zoho-inventory/server/zoho-oauth-session";
 
@@ -166,7 +167,25 @@ export default async function ZohoInventoryIntegrationRoutePage({
       : (connections.find(
           (connection) => connection.connectionId === connectionId,
         ) ?? null);
-  const [jobs, overview, items, webhooks, receipts, itemDetail] =
+  const effectivePermissions =
+    me.auth?.permissionResolution?.effectivePermissions ??
+    me.auth?.effectivePermissions ??
+    me.permissions;
+  const canReadCreditNoteOperations =
+    access.actorKind === "SUPER_ADMIN" ||
+    effectivePermissions.includes("credit-note:provider-config:read");
+  const canManageCreditNoteOperations =
+    access.actorKind === "SUPER_ADMIN" ||
+    effectivePermissions.includes("credit-note:reconciliation:run");
+  const [
+    jobs,
+    overview,
+    items,
+    webhooks,
+    receipts,
+    itemDetail,
+    creditNoteOperations,
+  ] =
     selectedConnection === null
       ? ([
           [],
@@ -174,6 +193,7 @@ export default async function ZohoInventoryIntegrationRoutePage({
           { items: [], total: 0, nextCursor: null },
           [],
           [],
+          null,
           null,
         ] as const)
       : await Promise.all([
@@ -227,6 +247,9 @@ export default async function ZohoInventoryIntegrationRoutePage({
                 connectionId: selectedConnection.connectionId,
                 itemId: parsedQuery.data.item,
               }),
+          canReadCreditNoteOperations
+            ? readCreditNoteOperations({ access })
+            : Promise.resolve(null),
         ]);
   const query: ZohoIntegrationSearchParams =
     parsedQuery.data.oauth === "authorized" && pendingGrant === null
@@ -246,6 +269,8 @@ export default async function ZohoInventoryIntegrationRoutePage({
       webhooks={webhooks}
       receipts={receipts}
       itemDetail={itemDetail}
+      creditNoteOperations={creditNoteOperations}
+      canManageCreditNoteOperations={canManageCreditNoteOperations}
     />
   );
 }

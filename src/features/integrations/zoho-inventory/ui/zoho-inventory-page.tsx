@@ -28,6 +28,7 @@ import type {
   ZohoWebhookEndpoint,
   ZohoWebhookReceipt,
   ZohoItemDetail,
+  CreditNoteOperationsSnapshot,
 } from "@/features/integrations/zoho-inventory/contracts/zoho-inventory.schema";
 import type { ResolvedZohoInventoryAccess } from "@/features/integrations/zoho-inventory/policies/zoho-inventory.policy";
 import { ZohoConnectControl } from "@/features/integrations/zoho-inventory/ui/zoho-connect-control";
@@ -35,6 +36,7 @@ import { ZohoConnectionCard } from "@/features/integrations/zoho-inventory/ui/zo
 import { ZohoOrganizationSelector } from "@/features/integrations/zoho-inventory/ui/zoho-organization-selector";
 import { ZohoSyncHistory } from "@/features/integrations/zoho-inventory/ui/zoho-sync-history";
 import { ZohoCatalogMonitor } from "@/features/integrations/zoho-inventory/ui/zoho-catalog-monitor";
+import { CreditNoteInvoiceSyncButton } from "@/features/integrations/zoho-inventory/ui/zoho-catalog-actions";
 
 function OAuthStatus({
   status,
@@ -115,6 +117,8 @@ export function ZohoInventoryPage({
   webhooks,
   receipts,
   itemDetail,
+  creditNoteOperations,
+  canManageCreditNoteOperations,
 }: Readonly<{
   access: ResolvedZohoInventoryAccess;
   connections: readonly ZohoExternalConnection[];
@@ -127,6 +131,8 @@ export function ZohoInventoryPage({
   webhooks: readonly ZohoWebhookEndpoint[];
   receipts: readonly ZohoWebhookReceipt[];
   itemDetail: ZohoItemDetail | null;
+  creditNoteOperations: CreditNoteOperationsSnapshot | null;
+  canManageCreditNoteOperations: boolean;
 }>): ReactElement {
   const activeDefaultExists = connections.some(
     (connection) => connection.isDefault && connection.status !== "DISABLED",
@@ -211,6 +217,58 @@ export function ZohoInventoryPage({
         />
       )}
 
+      {creditNoteOperations === null ? null : (
+        <ContentDataSurface
+          title="Credit Note Operations"
+          description="Authoritative Zoho purchase-invoice discovery, VIN eligibility, dealer mapping coverage, and reconciliation health."
+          padded
+          actions={
+            <div className="flex items-center gap-3">
+              <span className="text-caption text-muted-readable">
+                {String(creditNoteOperations.openIssueCount)} open issues
+              </span>
+              {access.capabilities.canRunSync &&
+              canManageCreditNoteOperations ? (
+                <CreditNoteInvoiceSyncButton
+                  fromDate={creditNoteBackfillStart()}
+                  toDate={new Date().toISOString().slice(0, 10)}
+                />
+              ) : null}
+            </div>
+          }
+        >
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <OperationMetric
+              label="Invoice source"
+              value={
+                creditNoteOperations.configured
+                  ? (creditNoteOperations.locationName ??
+                    creditNoteOperations.locationId ??
+                    "Configured")
+                  : "Not configured"
+              }
+            />
+            <OperationMetric
+              label="Coverage watermark"
+              value={creditNoteOperations.coveredThrough ?? "Sync has not run"}
+            />
+            <OperationMetric
+              label="Invoice eligibility"
+              value={`${String(creditNoteOperations.eligibleInvoiceCount)} eligible · ${String(creditNoteOperations.excludedInvoiceCount)} excluded`}
+            />
+            <OperationMetric
+              label="Dealer mappings"
+              value={`${String(creditNoteOperations.mappedDealerCount)} / ${String(creditNoteOperations.activeDealerCount)}`}
+            />
+          </div>
+          <p className="mt-3 text-caption text-muted-readable">
+            {creditNoteOperations.lastSuccessfulSyncAt === null
+              ? "No successful Credit Note invoice sync has completed. Configure Head Office by its stable Zoho location ID before accrual."
+              : `Last successful sync: ${new Intl.DateTimeFormat("en-IN", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Kolkata" }).format(new Date(creditNoteOperations.lastSuccessfulSyncAt))}. Manual backfills are bounded to 93 days and mapping changes require a reason and row version.`}
+          </p>
+        </ContentDataSurface>
+      )}
+
       <ContentDataSurface
         title="Synchronization history"
         description={
@@ -231,5 +289,23 @@ export function ZohoInventoryPage({
         <ZohoSyncHistory jobs={jobs} />
       </ContentDataSurface>
     </ContentRoot>
+  );
+}
+
+function creditNoteBackfillStart(): string {
+  const date = new Date();
+  date.setUTCDate(date.getUTCDate() - 62);
+  return date.toISOString().slice(0, 10);
+}
+
+function OperationMetric({
+  label,
+  value,
+}: Readonly<{ label: string; value: string }>): ReactElement {
+  return (
+    <div className="rounded-xl border border-border/70 bg-muted/20 p-3.5">
+      <p className="text-caption text-muted-readable">{label}</p>
+      <p className="mt-1 text-body-sm font-semibold text-foreground">{value}</p>
+    </div>
   );
 }

@@ -16,12 +16,14 @@ import {
   runZohoCatalogueSyncBatchActionInputSchema,
   zohoWebhookActionInputSchema,
   zohoWebhookEndpointActionInputSchema,
+  creditNoteInvoiceBackfillActionInputSchema,
   type ZohoAuthorizationStartResult,
   type ZohoExternalConnection,
   type ZohoSyncJob,
   type ZohoSyncBatchResult,
   type ZohoVerifyResult,
   type ZohoWebhookSecretResult,
+  type CreditNoteInvoiceBackfillResult,
 } from "@/features/integrations/zoho-inventory/contracts/zoho-inventory.schema";
 import {
   resolveZohoInventoryAccess,
@@ -40,6 +42,7 @@ import {
   enqueueZohoCatalogueSync,
   enqueueZohoCatalogueSyncBatch,
   rotateZohoWebhookEndpoint,
+  enqueueCreditNoteInvoiceBackfill,
 } from "@/features/integrations/zoho-inventory/server/zoho-inventory.server";
 import {
   clearZohoPendingGrant,
@@ -55,6 +58,20 @@ const INTEGRATION_PATH = "/settings/integrations/zoho-inventory";
 
 type ActionSuccess<TData> = Readonly<{ ok: true; data: TData }>;
 type ActionResult<TData> = ActionSuccess<TData> | ZohoInventoryActionFailure;
+
+export async function runCreditNoteInvoiceBackfillAction(
+  input: unknown,
+): Promise<ActionResult<CreditNoteInvoiceBackfillResult>> {
+  try {
+    const body = creditNoteInvoiceBackfillActionInputSchema.parse(input);
+    const access = await resolveActionAccess("canRunSync");
+    const data = await enqueueCreditNoteInvoiceBackfill({ access, ...body });
+    revalidatePath(INTEGRATION_PATH);
+    return { ok: true, data };
+  } catch (error: unknown) {
+    return zohoInventoryActionFailure(error);
+  }
+}
 
 export type BeginZohoAuthorizationActionResult =
   ActionResult<ZohoAuthorizationStartResult>;

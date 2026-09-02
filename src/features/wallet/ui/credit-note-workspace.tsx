@@ -455,10 +455,10 @@ function ProcessTimeline({
   const steps = [
     {
       title: "1. Sell retail vehicles",
-      period: overview.performance.period.label,
-      description: `${String(overview.performance.eligibleRetailVehicleCount)} of ${String(overview.performance.targetRetailVehicleCount)} eligible retail vehicles counted.`,
+      period: overview.offer.qualificationPerformance.period.label,
+      description: `${String(overview.offer.qualificationPerformance.eligibleRetailVehicleCount)} of ${String(overview.offer.qualificationPerformance.targetRetailVehicleCount)} eligible retail vehicles qualified this offer.`,
       icon: <Target aria-hidden="true" />,
-      complete: overview.performance.targetAchieved,
+      complete: overview.offer.qualificationPerformance.targetAchieved,
     },
     {
       title: "2. Earn on purchases",
@@ -469,11 +469,11 @@ function ProcessTimeline({
     },
     {
       title: "3. Credit Note settlement",
-      period: overview.settlement.period.label,
+      period: formatDate(overview.settlement.period.start),
       description:
         overview.settlement.status === "SETTLED"
           ? `Settled as ${overview.settlement.zohoCreditNoteNumber ?? "Zoho Credit Note"}.`
-          : `Finalized benefit is settled through Zoho Inventory during ${overview.settlement.period.label}.`,
+          : `Finalized benefit is scheduled for settlement on ${formatDate(overview.settlement.period.start)}.`,
       icon: <ReceiptText aria-hidden="true" />,
       complete: overview.settlement.status === "SETTLED",
     },
@@ -647,7 +647,9 @@ function InvoiceCard({
               {invoice.invoiceNumber ?? "Zoho invoice"}
             </p>
             <p className="mt-0.5 truncate text-caption text-muted-readable">
-              Shipment {invoice.shipmentNumber}
+              {invoice.referenceNumber ??
+                invoice.locationName ??
+                "Provider-discovered invoice"}
             </p>
           </div>
           <Badge variant={approvalVariant(invoice.approvalStatus)}>
@@ -684,6 +686,18 @@ function InvoiceCard({
               {invoice.providerStatus === null
                 ? "Unknown"
                 : humanize(invoice.providerStatus)}
+            </p>
+          </div>
+          <div>
+            <p className="text-muted-readable">Invoice location</p>
+            <p className="mt-0.5 font-medium text-foreground">
+              {invoice.locationName ?? invoice.locationId ?? "Not supplied"}
+            </p>
+          </div>
+          <div>
+            <p className="text-muted-readable">Eligibility</p>
+            <p className="mt-0.5 font-medium text-foreground">
+              {humanize(invoice.exclusionReason ?? invoice.eligibilityStatus)}
             </p>
           </div>
         </div>
@@ -818,7 +832,9 @@ function PurchaseInvoices({
                           {invoice.invoiceNumber ?? "Zoho invoice"}
                         </p>
                         <p className="mt-0.5 text-caption text-muted-readable">
-                          Shipment {invoice.shipmentNumber}
+                          {invoice.referenceNumber ??
+                            invoice.locationName ??
+                            "Provider-discovered invoice"}
                         </p>
                       </div>
                     </TableCell>
@@ -865,14 +881,27 @@ function PurchaseInvoices({
 function DataFreshness({
   overview,
 }: Readonly<{ overview: CreditNoteOverview }>): ReactElement {
+  const syncMessage = (() => {
+    switch (overview.dataFreshness.invoiceSyncStatus) {
+      case "NOT_CONFIGURED":
+        return "Purchase invoice location is not configured";
+      case "NOT_RUN":
+        return "Zoho invoice sync has not run";
+      case "FAILED":
+        return "Zoho invoice sync failed; operator attention is required";
+      case "STALE":
+        return `Zoho invoice sync is stale (last succeeded ${formatDateTime(overview.dataFreshness.invoiceSyncLastSucceededAt)})`;
+      case "CURRENT":
+        return overview.offer.approvedPurchaseVehicleCount === 0
+          ? "Zoho invoice sync succeeded; no eligible VIN evidence was found"
+          : `Zoho invoice sync succeeded through ${overview.dataFreshness.invoiceSyncCoveredThrough ?? "the latest provider window"}`;
+    }
+  })();
   return (
     <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border/60 bg-muted/20 px-3.5 py-2.5 text-caption text-muted-readable">
       <div className="flex items-center gap-2">
         <RefreshCw className="size-3.5" aria-hidden="true" />
-        <span>
-          Zoho invoice data last reconciled:{" "}
-          {formatDateTime(overview.dataFreshness.zohoInvoiceLastFetchedAt)}
-        </span>
+        <span>{syncMessage}</span>
       </div>
       <div className="flex items-center gap-2 text-tabular">
         <Clock3 className="size-3.5" aria-hidden="true" />

@@ -170,6 +170,18 @@ export const creditNoteOverviewSchema = z
         finalizedAt: z.iso.datetime({ offset: true }).nullable(),
       })
       .strict(),
+    nextOfferPerformance: z
+      .object({
+        period: creditNotePeriodSchema,
+        eligibleRetailVehicleCount: z.number().int().nonnegative(),
+        targetRetailVehicleCount: z.number().int().positive(),
+        vehiclesRemaining: z.number().int().nonnegative(),
+        progressPercent: z.number().int().min(0).max(100),
+        targetAchieved: z.boolean(),
+        finalized: z.boolean(),
+        finalizedAt: z.iso.datetime({ offset: true }).nullable(),
+      })
+      .strict(),
     offer: z
       .object({
         period: creditNotePeriodSchema,
@@ -184,6 +196,18 @@ export const creditNoteOverviewSchema = z
         accruedAmount: z.string().trim().regex(MONEY_PATTERN),
         closesAt: z.iso.date(),
         purchaseLastReconciledAt: z.iso.datetime({ offset: true }).nullable(),
+        qualificationPerformance: z
+          .object({
+            period: creditNotePeriodSchema,
+            eligibleRetailVehicleCount: z.number().int().nonnegative(),
+            targetRetailVehicleCount: z.number().int().positive(),
+            vehiclesRemaining: z.number().int().nonnegative(),
+            progressPercent: z.number().int().min(0).max(100),
+            targetAchieved: z.boolean(),
+            finalized: z.boolean(),
+            finalizedAt: z.iso.datetime({ offset: true }).nullable(),
+          })
+          .strict(),
       })
       .strict(),
     settlement: z
@@ -215,6 +239,15 @@ export const creditNoteOverviewSchema = z
       .object({
         generatedAt: z.iso.datetime({ offset: true }),
         zohoInvoiceLastFetchedAt: z.iso.datetime({ offset: true }).nullable(),
+        invoiceSyncStatus: z.enum([
+          "NOT_CONFIGURED",
+          "NOT_RUN",
+          "CURRENT",
+          "STALE",
+          "FAILED",
+        ]),
+        invoiceSyncLastSucceededAt: z.iso.datetime({ offset: true }).nullable(),
+        invoiceSyncCoveredThrough: z.iso.date().nullable(),
       })
       .strict(),
   })
@@ -230,8 +263,18 @@ export const creditNotePurchaseInvoiceSchema = z
     approvalStatus: creditNoteApprovalStatusSchema,
     total: z.string().trim().regex(MONEY_PATTERN).nullable(),
     currency: z.string().trim().regex(CURRENCY_PATTERN).nullable(),
-    shipmentId: z.uuid(),
-    shipmentNumber: z.string().trim().min(1).max(256),
+    shipmentId: z.uuid().nullable(),
+    shipmentNumber: z.string().trim().min(1).max(256).nullable(),
+    referenceNumber: z.string().trim().min(1).max(256).nullable(),
+    locationId: z.string().trim().min(1).max(256).nullable(),
+    locationName: z.string().trim().min(1).max(256).nullable(),
+    eligibilityStatus: z.enum([
+      "PENDING",
+      "ELIGIBLE",
+      "EXCLUDED",
+      "RECONCILIATION_REQUIRED",
+    ]),
+    exclusionReason: z.string().trim().min(1).max(256).nullable(),
     vehicleCount: z.number().int().nonnegative(),
     countedVehicleCount: z.number().int().nonnegative(),
     providerLastFetchedAt: z.iso.datetime({ offset: true }).nullable(),

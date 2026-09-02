@@ -20,6 +20,7 @@ import {
   rotateZohoWebhookEndpointAction,
   runZohoCatalogueSyncAction,
   runZohoCatalogueSyncBatchAction,
+  runCreditNoteInvoiceBackfillAction,
 } from "@/features/integrations/zoho-inventory/actions/zoho-inventory.actions";
 import type { ZohoWebhookSecretResult } from "@/features/integrations/zoho-inventory/contracts/zoho-inventory.schema";
 
@@ -35,6 +36,50 @@ function notifyFailure(
         : `${result.message} Reference: ${result.requestId}`,
     replace: true,
   });
+}
+
+export function CreditNoteInvoiceSyncButton({
+  fromDate,
+  toDate,
+}: Readonly<{ fromDate: string; toDate: string }>): React.ReactElement {
+  const router = useRouter();
+  const [pending, startTransition] = React.useTransition();
+  return (
+    <Button
+      size="sm"
+      variant="outline"
+      disabled={pending}
+      aria-busy={pending}
+      onClick={() => {
+        startTransition(async () => {
+          const result = await runCreditNoteInvoiceBackfillAction({
+            fromDate,
+            toDate,
+          });
+          if (!result.ok) {
+            notifyFailure(
+              "Credit Note invoice sync could not be queued",
+              result,
+            );
+            return;
+          }
+          toast.success({
+            title: "Credit Note invoice sync queued",
+            description: `Authoritative invoice discovery will cover ${result.data.fromDate} through ${result.data.toDate}.`,
+            replace: true,
+          });
+          router.refresh();
+        });
+      }}
+    >
+      {pending ? (
+        <LoaderCircle className="animate-spin" aria-hidden="true" />
+      ) : (
+        <RefreshCw aria-hidden="true" />
+      )}
+      Sync invoices
+    </Button>
+  );
 }
 
 export function ZohoCatalogueSyncButton({
