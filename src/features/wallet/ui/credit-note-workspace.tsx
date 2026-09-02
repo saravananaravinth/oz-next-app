@@ -42,7 +42,6 @@ import {
 import { cn } from "@/lib/utils";
 
 import type {
-  CreditNoteApprovalStatus,
   CreditNoteEarningHistory,
   CreditNoteEarningHistoryPage,
   CreditNoteFinancialInsights,
@@ -142,20 +141,27 @@ function settlementStatusVariant(
   }
 }
 
-function approvalVariant(
-  status: CreditNoteApprovalStatus,
+function purchaseInvoiceStatusVariant(
+  invoice: CreditNotePurchaseInvoice,
 ): BadgeProps["variant"] {
-  switch (status) {
-    case "APPROVED":
+  switch (invoice.eligibilityStatus) {
+    case "ELIGIBLE":
       return "success";
+    case "RECONCILIATION_REQUIRED":
+      return "warning";
     case "PENDING":
       return "info";
-    case "REJECTED":
-      return "destructive";
-    case "NOT_REQUIRED":
-    case "UNKNOWN":
+    case "EXCLUDED":
       return "outline";
   }
+}
+
+function purchaseInvoiceStatusLabel(
+  invoice: CreditNotePurchaseInvoice,
+): string {
+  return invoice.providerStatus === null
+    ? "Unknown"
+    : humanize(invoice.providerStatus);
 }
 
 function OpportunityBanner({
@@ -645,8 +651,8 @@ function InvoiceCard({
                 "Provider-discovered invoice"}
             </p>
           </div>
-          <Badge variant={approvalVariant(invoice.approvalStatus)}>
-            {humanize(invoice.approvalStatus)}
+          <Badge variant={purchaseInvoiceStatusVariant(invoice)}>
+            {purchaseInvoiceStatusLabel(invoice)}
           </Badge>
         </div>
         <div className="grid grid-cols-2 gap-3 text-caption">
@@ -780,7 +786,7 @@ function PurchaseInvoices({
   return (
     <ContentDataSurface
       title="Approved purchase invoices"
-      description="Shipment-bound Zoho Inventory invoices for the active offer month. Only provider-approved invoices contribute to the benefit."
+      description="Zoho Inventory FG/ invoices for the active offer month. Provider status is authoritative; qualifying Zoho states, including DUE and OVERDUE families, contribute to the benefit."
       padded={false}
       className="min-w-0 overflow-hidden [&>[data-slot=card-footer]]:p-0"
       footer={footer}
@@ -790,7 +796,7 @@ function PurchaseInvoices({
           <ContentEmptyState
             icon={<ReceiptText aria-hidden="true" />}
             title="No purchase invoices yet"
-            description="Approved Zoho purchase invoices will appear here after they are synchronized and mapped to your dealer shipment."
+            description="Qualifying Zoho FG/ purchase invoices will appear here after synchronization and dealer mapping."
           />
         </div>
       ) : (
@@ -810,7 +816,7 @@ function PurchaseInvoices({
                 <TableRow>
                   <TableHead>Invoice</TableHead>
                   <TableHead className="text-center">Date</TableHead>
-                  <TableHead className="text-center">Approval</TableHead>
+                  <TableHead className="text-center">Zoho status</TableHead>
                   <TableHead className="text-right">Vehicles</TableHead>
                   <TableHead className="text-right">Invoice total</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
@@ -837,8 +843,8 @@ function PurchaseInvoices({
                         : formatDate(invoice.invoiceDate)}
                     </TableCell>
                     <TableCell className="text-center">
-                      <Badge variant={approvalVariant(invoice.approvalStatus)}>
-                        {humanize(invoice.approvalStatus)}
+                      <Badge variant={purchaseInvoiceStatusVariant(invoice)}>
+                        {purchaseInvoiceStatusLabel(invoice)}
                       </Badge>
                     </TableCell>
                     <TableCell className="text-right text-tabular">
