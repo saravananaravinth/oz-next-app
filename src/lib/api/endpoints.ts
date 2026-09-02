@@ -82,11 +82,17 @@ export const WELFARE_ENDPOINTS = {
   accruals: `${ERP_PREFIX}/welfare/accruals`,
   accrual: (accrualId: string) =>
     `${ERP_PREFIX}/welfare/accruals/${encodeURIComponent(accrualId)}` as const,
+  accrualInvoiceDocument: (accrualId: string) =>
+    `${ERP_PREFIX}/welfare/v3/accruals/${encodeURIComponent(accrualId)}/invoice-document` as const,
 } as const;
 
 export const CREDIT_NOTE_ENDPOINTS = {
   base: `${ERP_PREFIX}/credit-notes`,
   overview: `${ERP_PREFIX}/credit-notes/overview`,
+  insights: `${ERP_PREFIX}/credit-notes/insights`,
+  transactionHistory: `${ERP_PREFIX}/credit-notes/history/transactions`,
+  earningHistory: `${ERP_PREFIX}/credit-notes/history/earnings`,
+  settlementHistory: `${ERP_PREFIX}/credit-notes/history/settlements`,
   purchaseInvoices: `${ERP_PREFIX}/credit-notes/purchase-invoices`,
   purchaseInvoice: (invoiceProjectionId: string) =>
     `${ERP_PREFIX}/credit-notes/purchase-invoices/${encodeURIComponent(invoiceProjectionId)}` as const,

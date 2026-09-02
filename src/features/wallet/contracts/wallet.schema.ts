@@ -5,8 +5,11 @@ const MONEY_PATTERN = /^(?:0|[1-9][0-9]{0,15})(?:\.[0-9]{1,2})?$/u;
 const SIGNED_MONEY_PATTERN = /^-?(?:0|[1-9][0-9]{0,15})(?:\.[0-9]{1,2})?$/u;
 const CURRENCY_PATTERN = /^[A-Z]{3}$/u;
 const SAFE_CURSOR_PATTERN = /^[A-Za-z0-9_-]{16,2048}$/u;
+const INVOICE_STATUS_PATTERN = /^[A-Z][A-Z0-9_]{0,63}$/u;
 
-export const WALLET_TABLE_PAGE_SIZE = 20;
+export const WALLET_ACTIVITY_PAGE_SIZE = 6;
+export const CREDIT_NOTE_PURCHASE_INVOICE_PAGE_SIZE = 20;
+export const CREDIT_NOTE_HISTORY_PAGE_SIZE = 6;
 
 export const walletTypeSchema = z.enum(["WELFARE_FUND", "CREDIT_NOTE"]);
 export const walletStatusSchema = z.enum([
@@ -81,6 +84,10 @@ export const welfareAccrualSchema = z
     accrualId: z.uuid(),
     invoiceId: z.uuid(),
     invoiceNumber: z.string().trim().min(1).max(256),
+    customerName: z.string().trim().min(1).max(256).nullable(),
+    invoiceDate: z.iso.date(),
+    invoiceStatus: z.string().trim().regex(INVOICE_STATUS_PATTERN),
+    invoicePdfAvailable: z.boolean(),
     dealerOrgUnitId: z.uuid(),
     dealerName: z.string().trim().min(1).max(256),
     walletId: z.uuid().nullable(),
@@ -253,6 +260,161 @@ export const creditNoteOverviewSchema = z
   })
   .strict();
 
+const signedPercentSchema = z
+  .string()
+  .trim()
+  .regex(/^-?(?:0|[1-9][0-9]{0,5})(?:\.[0-9])?$/u);
+
+export const creditNoteTransactionHistorySchema = z
+  .object({
+    transactionId: z.uuid(),
+    cycleId: z.uuid(),
+    entryType: z.enum(["CREDIT_NOTE_ENTITLEMENT", "CREDIT_NOTE_SETTLEMENT"]),
+    direction: z.enum(["CREDIT", "DEBIT"]),
+    amount: z.string().trim().regex(MONEY_PATTERN),
+    signedAmount: z.string().trim().regex(SIGNED_MONEY_PATTERN),
+    currency: z.string().trim().regex(CURRENCY_PATTERN),
+    status: z.literal("POSTED"),
+    description: z.string().trim().min(1).max(512),
+    offerPeriodStart: z.iso.date().nullable(),
+    offerPeriodEndExclusive: z.iso.date().nullable(),
+    settlementPeriodStart: z.iso.date().nullable(),
+    settlementPeriodEndExclusive: z.iso.date().nullable(),
+    zohoCreditNoteNumber: z.string().trim().min(1).max(256).nullable(),
+    settlementStatus: creditNoteSettlementStatusSchema.nullable(),
+    effectiveAt: z.iso.datetime({ offset: true }),
+    postedAt: z.iso.datetime({ offset: true }),
+  })
+  .strict();
+
+export const creditNoteEarningHistorySchema = z
+  .object({
+    cycleId: z.uuid(),
+    currency: z.string().trim().regex(CURRENCY_PATTERN),
+    performancePeriodStart: z.iso.date(),
+    performancePeriodEndExclusive: z.iso.date(),
+    offerPeriodStart: z.iso.date(),
+    offerPeriodEndExclusive: z.iso.date(),
+    settlementPeriodStart: z.iso.date(),
+    settlementPeriodEndExclusive: z.iso.date(),
+    offerStatus: creditNoteOfferStatusSchema,
+    settlementStatus: creditNoteSettlementStatusSchema,
+    earningState: z.enum([
+      "ACCRUING",
+      "FINALIZED",
+      "SETTLED",
+      "NOT_QUALIFIED",
+      "NO_BENEFIT",
+      "PENDING",
+    ]),
+    retailSaleCount: z.number().int().nonnegative(),
+    retailTargetCount: z.number().int().positive().max(10_000),
+    qualificationPercent: z.number().int().min(0).max(100),
+    approvedPurchaseVehicleCount: z.number().int().nonnegative().max(10_000),
+    creditPerVehicle: z.string().trim().regex(MONEY_PATTERN),
+    projectedAmount: z.string().trim().regex(MONEY_PATTERN),
+    accruedAmount: z.string().trim().regex(MONEY_PATTERN),
+    finalAmount: z.string().trim().regex(MONEY_PATTERN).nullable(),
+    displayAmount: z.string().trim().regex(MONEY_PATTERN),
+    previousComparableAmount: z.string().trim().regex(MONEY_PATTERN).nullable(),
+    changePercent: signedPercentSchema.nullable(),
+    trend: z.enum(["UP", "DOWN", "FLAT", "NEW"]),
+    purchaseLastReconciledAt: z.iso.datetime({ offset: true }).nullable(),
+    offerFinalizedAt: z.iso.datetime({ offset: true }).nullable(),
+    settledAt: z.iso.datetime({ offset: true }).nullable(),
+  })
+  .strict();
+
+export const creditNoteSettlementHistorySchema = z
+  .object({
+    cycleId: z.uuid(),
+    providerSettlementId: z.uuid().nullable(),
+    currency: z.string().trim().regex(CURRENCY_PATTERN),
+    settlementPeriodStart: z.iso.date(),
+    settlementPeriodEndExclusive: z.iso.date(),
+    settlementStatus: creditNoteSettlementStatusSchema,
+    finalPurchaseVehicleCount: z
+      .number()
+      .int()
+      .nonnegative()
+      .max(10_000)
+      .nullable(),
+    finalAmount: z.string().trim().regex(MONEY_PATTERN).nullable(),
+    provider: z.string().trim().min(1).max(128).nullable(),
+    providerReference: z.string().trim().min(1).max(512).nullable(),
+    zohoCreditNoteNumber: z.string().trim().min(1).max(256).nullable(),
+    providerStatus: z
+      .enum([
+        "PREPARED",
+        "DRAFT_CREATED",
+        "OPEN",
+        "FAILED",
+        "OUTCOME_UNKNOWN",
+        "RECONCILIATION_REQUIRED",
+        "VOID",
+      ])
+      .nullable(),
+    providerAmount: z.string().trim().regex(MONEY_PATTERN).nullable(),
+    attemptCount: z.number().int().nonnegative(),
+    lastAttemptAt: z.iso.datetime({ offset: true }).nullable(),
+    providerCreatedAt: z.iso.datetime({ offset: true }).nullable(),
+    providerOpenedAt: z.iso.datetime({ offset: true }).nullable(),
+    settledAt: z.iso.datetime({ offset: true }).nullable(),
+    lastErrorCode: z.string().trim().min(1).max(256).nullable(),
+  })
+  .strict();
+
+export const creditNoteFinancialInsightsSchema = z
+  .object({
+    generatedAt: z.iso.datetime({ offset: true }),
+    currency: z.string().trim().regex(CURRENCY_PATTERN),
+    qualification: z
+      .object({
+        progressPercent: z.number().int().min(0).max(100),
+        elapsedPercent: z.number().int().min(0).max(100),
+        paceDeltaPoints: z.number().int().min(-100).max(100),
+        status: z.enum(["AHEAD", "ON_TRACK", "AT_RISK", "COMPLETE"]),
+        vehiclesRemaining: z.number().int().nonnegative().max(10_000),
+      })
+      .strict(),
+    offerProjection: z
+      .object({
+        isEstimate: z.literal(true),
+        projectedVehicleCount: z.number().int().nonnegative().max(10_000),
+        projectedAmount: z.string().trim().regex(MONEY_PATTERN),
+        currentVehicleCount: z.number().int().nonnegative().max(10_000),
+        currentAccruedAmount: z.string().trim().regex(MONEY_PATTERN),
+        confidence: z.enum(["LOW", "MEDIUM", "HIGH", "NOT_APPLICABLE"]),
+      })
+      .strict(),
+    settlementReliability: z
+      .object({
+        observedCycles: z.number().int().nonnegative().max(12),
+        settledCycles: z.number().int().nonnegative().max(12),
+        successRatePercent: z.number().int().min(0).max(100).nullable(),
+        averageSettlementLagDays: z.number().min(0).max(366).nullable(),
+        averageSettledAmount: z.string().trim().regex(MONEY_PATTERN).nullable(),
+      })
+      .strict(),
+    earningTrend: z
+      .object({
+        latestComparableAmount: z
+          .string()
+          .trim()
+          .regex(MONEY_PATTERN)
+          .nullable(),
+        previousComparableAmount: z
+          .string()
+          .trim()
+          .regex(MONEY_PATTERN)
+          .nullable(),
+        monthOverMonthPercent: signedPercentSchema.nullable(),
+        direction: z.enum(["UP", "DOWN", "FLAT", "NEW", "UNAVAILABLE"]),
+      })
+      .strict(),
+  })
+  .strict();
+
 export const creditNotePurchaseInvoiceSchema = z
   .object({
     invoiceProjectionId: z.uuid(),
@@ -284,6 +446,27 @@ export const creditNotePurchaseInvoiceSchema = z
 export const creditNotePurchaseInvoicePageSchema = z
   .object({
     items: z.array(creditNotePurchaseInvoiceSchema).readonly(),
+    nextCursor: z.string().trim().regex(SAFE_CURSOR_PATTERN).nullable(),
+  })
+  .strict();
+
+export const creditNoteTransactionHistoryPageSchema = z
+  .object({
+    items: z.array(creditNoteTransactionHistorySchema).readonly(),
+    nextCursor: z.string().trim().regex(SAFE_CURSOR_PATTERN).nullable(),
+  })
+  .strict();
+
+export const creditNoteEarningHistoryPageSchema = z
+  .object({
+    items: z.array(creditNoteEarningHistorySchema).readonly(),
+    nextCursor: z.string().trim().regex(SAFE_CURSOR_PATTERN).nullable(),
+  })
+  .strict();
+
+export const creditNoteSettlementHistoryPageSchema = z
+  .object({
+    items: z.array(creditNoteSettlementHistorySchema).readonly(),
     nextCursor: z.string().trim().regex(SAFE_CURSOR_PATTERN).nullable(),
   })
   .strict();
@@ -323,6 +506,9 @@ export const walletSearchParamsSchema = z
     accrualCursor: optionalCursorQuerySchema,
     accrualStatus: welfareAccrualStatusSchema.optional(),
     creditNoteInvoiceCursor: optionalCursorQuerySchema,
+    creditNoteTransactionCursor: optionalCursorQuerySchema,
+    creditNoteEarningCursor: optionalCursorQuerySchema,
+    creditNoteSettlementCursor: optionalCursorQuerySchema,
   })
   .strict();
 
@@ -351,6 +537,27 @@ export type CreditNotePurchaseInvoice = z.infer<
 export type CreditNotePurchaseInvoicePage = z.infer<
   typeof creditNotePurchaseInvoicePageSchema
 >;
+export type CreditNoteTransactionHistory = z.infer<
+  typeof creditNoteTransactionHistorySchema
+>;
+export type CreditNoteTransactionHistoryPage = z.infer<
+  typeof creditNoteTransactionHistoryPageSchema
+>;
+export type CreditNoteEarningHistory = z.infer<
+  typeof creditNoteEarningHistorySchema
+>;
+export type CreditNoteEarningHistoryPage = z.infer<
+  typeof creditNoteEarningHistoryPageSchema
+>;
+export type CreditNoteSettlementHistory = z.infer<
+  typeof creditNoteSettlementHistorySchema
+>;
+export type CreditNoteSettlementHistoryPage = z.infer<
+  typeof creditNoteSettlementHistoryPageSchema
+>;
+export type CreditNoteFinancialInsights = z.infer<
+  typeof creditNoteFinancialInsightsSchema
+>;
 export type WalletRawSearchParams = Readonly<
   Record<string, string | readonly string[] | undefined>
 >;
@@ -363,6 +570,10 @@ export type WalletWorkspaceData = Readonly<{
   accruals: WelfareAccrualPageData | null;
   creditNoteOverview: CreditNoteOverview | null;
   creditNotePurchaseInvoices: CreditNotePurchaseInvoicePage | null;
+  creditNoteInsights: CreditNoteFinancialInsights | null;
+  creditNoteTransactions: CreditNoteTransactionHistoryPage | null;
+  creditNoteEarnings: CreditNoteEarningHistoryPage | null;
+  creditNoteSettlements: CreditNoteSettlementHistoryPage | null;
 }>;
 
 function singleSearchParam(
@@ -383,5 +594,12 @@ export function parseWalletSearchParams(raw: WalletRawSearchParams) {
     accrualCursor: singleSearchParam(raw["accrualCursor"]),
     accrualStatus: singleSearchParam(raw["accrualStatus"]),
     creditNoteInvoiceCursor: singleSearchParam(raw["creditNoteInvoiceCursor"]),
+    creditNoteTransactionCursor: singleSearchParam(
+      raw["creditNoteTransactionCursor"],
+    ),
+    creditNoteEarningCursor: singleSearchParam(raw["creditNoteEarningCursor"]),
+    creditNoteSettlementCursor: singleSearchParam(
+      raw["creditNoteSettlementCursor"],
+    ),
   });
 }

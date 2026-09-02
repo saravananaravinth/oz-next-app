@@ -24,6 +24,7 @@ import {
 import {
   ContentDataSurface,
   ContentEmptyState,
+  ContentMetricCard,
   ContentStatus,
 } from "@/components/common/content-shell";
 import { Badge, type BadgeProps } from "@/components/ui/badge";
@@ -42,11 +43,18 @@ import { cn } from "@/lib/utils";
 
 import type {
   CreditNoteApprovalStatus,
+  CreditNoteEarningHistory,
+  CreditNoteEarningHistoryPage,
+  CreditNoteFinancialInsights,
   CreditNoteOfferStatus,
   CreditNoteOverview,
   CreditNotePurchaseInvoice,
   CreditNotePurchaseInvoicePage,
+  CreditNoteSettlementHistory,
+  CreditNoteSettlementHistoryPage,
   CreditNoteSettlementStatus,
+  CreditNoteTransactionHistory,
+  CreditNoteTransactionHistoryPage,
   WalletSearchParams,
 } from "@/features/wallet/contracts/wallet.schema";
 import type { WalletCapabilities } from "@/features/wallet/policies/wallet.policy";
@@ -54,6 +62,10 @@ import { formatMoney } from "@/features/wallet/utils/wallet-money";
 
 export type CreditNoteWorkspaceProps = Readonly<{
   overview: CreditNoteOverview | null;
+  insights: CreditNoteFinancialInsights | null;
+  transactions: CreditNoteTransactionHistoryPage | null;
+  earnings: CreditNoteEarningHistoryPage | null;
+  settlements: CreditNoteSettlementHistoryPage | null;
   invoices: CreditNotePurchaseInvoicePage | null;
   query: WalletSearchParams;
   capabilities: WalletCapabilities;
@@ -205,7 +217,6 @@ function CreditNoteHero({
                 : humanize(overview.offer.status)}
             </Badge>
             <Badge variant="outline">{overview.offer.period.label}</Badge>
-            <Badge variant="outline">Read only</Badge>
           </div>
 
           <div className="grid gap-2">
@@ -259,87 +270,69 @@ function CreditNoteHero({
   );
 }
 
-type MetricProps = Readonly<{
-  label: string;
-  value: string;
-  description: string;
-  icon: ReactElement;
-  tone?: "default" | "success" | "info" | "warning";
-}>;
-
-function MetricCard({
-  label,
-  value,
-  description,
-  icon,
-  tone = "default",
-}: MetricProps): ReactElement {
-  return (
-    <Card
-      data-tone={tone}
-      className={cn(
-        "min-w-0 overflow-hidden border-border/70 bg-gradient-to-br shadow-sm shadow-foreground/[0.04]",
-        tone === "default" && "from-card via-card to-muted/25",
-        tone === "success" && "from-success/[0.07] via-card to-card",
-        tone === "info" && "from-info/[0.07] via-card to-card",
-        tone === "warning" && "from-warning/[0.07] via-card to-card",
-      )}
-    >
-      <CardContent className="grid gap-3 px-4 py-4 sm:px-5">
-        <div className="flex items-start justify-between gap-3">
-          <span className="text-caption font-medium text-muted-readable">
-            {label}
-          </span>
-          <span className="grid size-9 shrink-0 place-items-center rounded-xl border border-border/70 bg-background/80 text-primary [&_svg]:size-4">
-            {icon}
-          </span>
-        </div>
-        <p className="truncate text-xl font-semibold tracking-tight text-foreground text-tabular">
-          {value}
-        </p>
-        <p className="text-caption text-muted-readable">{description}</p>
-      </CardContent>
-    </Card>
-  );
-}
-
 function CreditNoteMetrics({
   overview,
 }: Readonly<{ overview: CreditNoteOverview }>): ReactElement {
   return (
-    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-      <MetricCard
-        label="Pending Credit Note"
-        value={formatMoney(
-          overview.unsettledCreditNoteBalance,
-          overview.currency,
-        )}
-        description="Finalized benefit not yet settled in Zoho. Live projections are excluded."
-        icon={<BadgeIndianRupee aria-hidden="true" />}
-        tone="info"
-      />
-      <MetricCard
-        label="Current offer earned"
-        value={formatMoney(overview.offer.accruedAmount, overview.currency)}
-        description={`${String(overview.offer.approvedPurchaseVehicleCount)} approved purchased vehicles in ${overview.offer.period.label}.`}
-        icon={<ShoppingCart aria-hidden="true" />}
-        tone={overview.offer.isActive ? "success" : "default"}
-      />
-      <MetricCard
-        label="Next offer progress"
-        value={`${String(overview.performance.eligibleRetailVehicleCount)} / ${String(overview.performance.targetRetailVehicleCount)}`}
-        description={`${String(overview.performance.vehiclesRemaining)} more retail vehicle${overview.performance.vehiclesRemaining === 1 ? "" : "s"} needed.`}
-        icon={<Target aria-hidden="true" />}
-        tone={overview.performance.targetAchieved ? "success" : "warning"}
-      />
-      <MetricCard
-        label="Lifetime settled"
-        value={formatMoney(overview.lifetimeSettledAmount, overview.currency)}
-        description="Credit Note value successfully settled through the provider workflow."
-        icon={<Trophy aria-hidden="true" />}
-        tone="success"
-      />
-    </div>
+    <section
+      aria-labelledby="credit-note-performance-summary-title"
+      className="grid min-w-0 gap-3"
+    >
+      <div className="min-w-0 px-0.5">
+        <h2
+          id="credit-note-performance-summary-title"
+          className="text-card-title"
+        >
+          Credit Note performance summary
+        </h2>
+        <p className="text-caption text-muted-readable">
+          Current benefit, offer accrual, qualification progress, and lifetime
+          settlement.
+        </p>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <ContentMetricCard
+          presentation="dashboard"
+          tone="info"
+          label="Pending Credit Note"
+          value={formatMoney(
+            overview.unsettledCreditNoteBalance,
+            overview.currency,
+          )}
+          description="Awaiting settlement"
+          icon={<BadgeIndianRupee aria-hidden="true" />}
+        />
+        <ContentMetricCard
+          presentation="dashboard"
+          tone={overview.offer.isActive ? "success" : "default"}
+          label="Current offer earned"
+          value={formatMoney(overview.offer.accruedAmount, overview.currency)}
+          description={`${String(overview.offer.approvedPurchaseVehicleCount)} approved vehicles`}
+          icon={<ShoppingCart aria-hidden="true" />}
+        />
+        <ContentMetricCard
+          presentation="dashboard"
+          tone={overview.performance.targetAchieved ? "success" : "warning"}
+          label="Next offer progress"
+          value={`${String(overview.performance.eligibleRetailVehicleCount)} / ${String(overview.performance.targetRetailVehicleCount)}`}
+          description={
+            overview.performance.targetAchieved
+              ? "Target achieved"
+              : `${String(overview.performance.vehiclesRemaining)} remaining`
+          }
+          icon={<Target aria-hidden="true" />}
+        />
+        <ContentMetricCard
+          presentation="dashboard"
+          tone="success"
+          label="Lifetime settled"
+          value={formatMoney(overview.lifetimeSettledAmount, overview.currency)}
+          description="Provider settled"
+          icon={<Trophy aria-hidden="true" />}
+        />
+      </div>
+    </section>
   );
 }
 
@@ -878,6 +871,840 @@ function PurchaseInvoices({
   );
 }
 
+type CreditNoteHistoryKind = "transactions" | "earnings" | "settlements";
+
+const MONTH_FORMATTER = new Intl.DateTimeFormat("en-IN", {
+  month: "short",
+  year: "numeric",
+  timeZone: "Asia/Kolkata",
+});
+
+function formatMonth(value: string): string {
+  return MONTH_FORMATTER.format(new Date(`${value}T00:00:00+05:30`));
+}
+
+function formatOptionalDateTime(value: string | null): string {
+  return value === null ? "—" : formatDateTime(value);
+}
+
+function signedPercent(value: string | null): string {
+  if (value === null) return "—";
+  return `${value.startsWith("-") ? "" : "+"}${value}%`;
+}
+
+type QualificationStatus =
+  CreditNoteFinancialInsights["qualification"]["status"] | "COMPLETE";
+
+function insightTone(
+  status: QualificationStatus,
+): "success" | "warning" | "info" | "default" {
+  switch (status) {
+    case "COMPLETE":
+    case "AHEAD":
+      return "success";
+    case "ON_TRACK":
+      return "info";
+    case "AT_RISK":
+      return "warning";
+    default:
+      return "default";
+  }
+}
+
+function qualificationSignal(
+  qualification:
+    | CreditNoteFinancialInsights["qualification"]
+    | { status: "COMPLETE"; paceDeltaPoints: number },
+): string {
+  if (qualification.status === "COMPLETE") return "Target achieved";
+  const delta = qualification.paceDeltaPoints;
+  const points = `${delta >= 0 ? "+" : ""}${String(delta)} pts`;
+  switch (qualification.status) {
+    case "AHEAD":
+      return `Ahead ${points}`;
+    case "ON_TRACK":
+      return `On track ${points}`;
+    case "AT_RISK":
+      return `Behind ${points}`;
+    default:
+      return "Target achieved";
+  }
+}
+
+function FinancialIntelligence({
+  insights,
+}: Readonly<{ insights: CreditNoteFinancialInsights | null }>): ReactElement {
+  if (insights === null) {
+    return (
+      <ContentStatus
+        variant="default"
+        icon={<CircleGauge aria-hidden="true" />}
+        title="Financial intelligence is building"
+        description="Current-cycle intelligence becomes available when the active Credit Note lifecycle is initialized. Historical records remain available below."
+      />
+    );
+  }
+
+  const reliability = insights.settlementReliability;
+  const trend = insights.earningTrend;
+  const trendValue =
+    trend.latestComparableAmount === null
+      ? "Building history"
+      : formatMoney(trend.latestComparableAmount, insights.currency);
+  const reliabilityValue =
+    reliability.successRatePercent === null
+      ? "Building history"
+      : `${String(reliability.successRatePercent)}%`;
+  const lag =
+    reliability.averageSettlementLagDays === null
+      ? "lag not available"
+      : `${reliability.averageSettlementLagDays.toFixed(1)} day avg lag`;
+
+  return (
+    <ContentDataSurface
+      title="Financial intelligence"
+      description="Deterministic decision signals derived from authoritative Credit Note lifecycle and wallet history. Forecast values are estimates, never ledger balances."
+      padded
+    >
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <ContentMetricCard
+          presentation="dashboard"
+          tone={insightTone(insights.qualification.status)}
+          label="Qualification pace"
+          value={
+            <span className="block truncate text-xl leading-tight font-semibold tracking-tight sm:text-2xl">
+              {qualificationSignal(insights.qualification)}
+            </span>
+          }
+          description={`${String(insights.qualification.progressPercent)}% progress vs ${String(insights.qualification.elapsedPercent)}% month elapsed · ${String(insights.qualification.vehiclesRemaining)} remaining`}
+          icon={<Target aria-hidden="true" />}
+        />
+        <ContentMetricCard
+          presentation="dashboard"
+          tone={
+            insights.offerProjection.confidence === "HIGH" ? "success" : "info"
+          }
+          label="Month-end earning estimate"
+          value={
+            <span className="block whitespace-nowrap text-xl leading-tight font-semibold tracking-tight text-tabular sm:text-2xl">
+              {formatMoney(
+                insights.offerProjection.projectedAmount,
+                insights.currency,
+              )}
+            </span>
+          }
+          description={`${String(insights.offerProjection.projectedVehicleCount)} projected vehicles · ${humanize(insights.offerProjection.confidence)} confidence`}
+          icon={<BadgeIndianRupee aria-hidden="true" />}
+        />
+        <ContentMetricCard
+          presentation="dashboard"
+          tone={
+            reliability.successRatePercent === null
+              ? "default"
+              : reliability.successRatePercent >= 95
+                ? "success"
+                : reliability.successRatePercent >= 80
+                  ? "info"
+                  : "warning"
+          }
+          label="Settlement reliability"
+          value={
+            <span className="block truncate text-xl leading-tight font-semibold tracking-tight sm:text-2xl">
+              {reliabilityValue}
+            </span>
+          }
+          description={`${String(reliability.settledCycles)} of ${String(reliability.observedCycles)} observed cycles settled · ${lag}`}
+          icon={<CheckCircle2 aria-hidden="true" />}
+        />
+        <ContentMetricCard
+          presentation="dashboard"
+          tone={
+            trend.direction === "DOWN"
+              ? "warning"
+              : trend.direction === "UP"
+                ? "success"
+                : "default"
+          }
+          label="Earning trend"
+          value={
+            <span className="block truncate text-xl leading-tight font-semibold tracking-tight text-tabular sm:text-2xl">
+              {trendValue}
+            </span>
+          }
+          description={
+            trend.monthOverMonthPercent === null
+              ? "Comparable finalized month is not available yet"
+              : `${signedPercent(trend.monthOverMonthPercent)} vs previous comparable month`
+          }
+          icon={<Trophy aria-hidden="true" />}
+        />
+      </div>
+      <p className="mt-3 text-caption text-muted-readable">
+        Projection confidence increases only as the offer month advances and
+        approved purchase evidence accumulates. Finalized cycle amounts and
+        posted wallet entries remain the financial source of truth.
+      </p>
+    </ContentDataSurface>
+  );
+}
+
+function earningStateVariant(
+  state: CreditNoteEarningHistory["earningState"],
+): BadgeProps["variant"] {
+  switch (state) {
+    case "SETTLED":
+    case "FINALIZED":
+      return "success";
+    case "ACCRUING":
+      return "info";
+    case "NOT_QUALIFIED":
+    case "NO_BENEFIT":
+      return "warning";
+    case "PENDING":
+      return "outline";
+  }
+}
+
+function providerStatusVariant(
+  status: CreditNoteSettlementHistory["providerStatus"],
+): BadgeProps["variant"] {
+  switch (status) {
+    case "OPEN":
+      return "success";
+    case "PREPARED":
+    case "DRAFT_CREATED":
+      return "info";
+    case "FAILED":
+      return "destructive";
+    case "OUTCOME_UNKNOWN":
+    case "RECONCILIATION_REQUIRED":
+      return "warning";
+    case "VOID":
+    case null:
+      return "outline";
+  }
+}
+
+function historyQuery(
+  query: WalletSearchParams,
+  kind: CreditNoteHistoryKind,
+  cursor: string | null,
+): Record<string, string> {
+  const next: Record<string, string> = { tab: "credit-note" };
+  if (query.walletId !== undefined) next["walletId"] = query.walletId;
+  if (query.creditNoteInvoiceCursor !== undefined) {
+    next["creditNoteInvoiceCursor"] = query.creditNoteInvoiceCursor;
+  }
+
+  const transactionCursor =
+    kind === "transactions"
+      ? cursor
+      : (query.creditNoteTransactionCursor ?? null);
+  const earningCursor =
+    kind === "earnings" ? cursor : (query.creditNoteEarningCursor ?? null);
+  const settlementCursor =
+    kind === "settlements"
+      ? cursor
+      : (query.creditNoteSettlementCursor ?? null);
+
+  if (transactionCursor !== null)
+    next["creditNoteTransactionCursor"] = transactionCursor;
+  if (earningCursor !== null) next["creditNoteEarningCursor"] = earningCursor;
+  if (settlementCursor !== null)
+    next["creditNoteSettlementCursor"] = settlementCursor;
+  return next;
+}
+
+function currentHistoryCursor(
+  query: WalletSearchParams,
+  kind: CreditNoteHistoryKind,
+): string | undefined {
+  switch (kind) {
+    case "transactions":
+      return query.creditNoteTransactionCursor;
+    case "earnings":
+      return query.creditNoteEarningCursor;
+    case "settlements":
+      return query.creditNoteSettlementCursor;
+  }
+}
+
+function HistoryFooter({
+  query,
+  kind,
+  itemCount,
+  nextCursor,
+}: Readonly<{
+  query: WalletSearchParams;
+  kind: CreditNoteHistoryKind;
+  itemCount: number;
+  nextCursor: string | null;
+}>): ReactElement {
+  const currentCursor = currentHistoryCursor(query, kind);
+  const label =
+    kind === "transactions"
+      ? "transactions"
+      : kind === "earnings"
+        ? "earnings"
+        : "settlements";
+
+  return (
+    <div className="flex w-full flex-col gap-2 px-4 py-3 text-caption text-muted-readable sm:flex-row sm:items-center sm:justify-between">
+      <span>
+        Showing {String(itemCount)} {label} on this page.
+      </span>
+      <div className="flex items-center gap-2">
+        {currentCursor === undefined ? (
+          <Button variant="ghost" size="sm" disabled>
+            First page
+          </Button>
+        ) : (
+          <Button asChild variant="ghost" size="sm">
+            <Link
+              href={{
+                pathname: "/wallet",
+                query: historyQuery(query, kind, null),
+              }}
+              scroll={false}
+            >
+              First page
+            </Link>
+          </Button>
+        )}
+        {nextCursor === null ? (
+          <Button variant="outline" size="sm" disabled>
+            End of history
+          </Button>
+        ) : (
+          <Button asChild variant="outline" size="sm">
+            <Link
+              href={{
+                pathname: "/wallet",
+                query: historyQuery(query, kind, nextCursor),
+              }}
+              scroll={false}
+            >
+              Next 6
+              <ArrowRight aria-hidden="true" />
+            </Link>
+          </Button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function TransactionHistory({
+  page,
+  query,
+  canReadTransactions,
+}: Readonly<{
+  page: CreditNoteTransactionHistoryPage | null;
+  query: WalletSearchParams;
+  canReadTransactions: boolean;
+}>): ReactElement {
+  if (!canReadTransactions) {
+    return (
+      <ContentStatus
+        variant="default"
+        icon={<ReceiptText aria-hidden="true" />}
+        title="Transaction history requires wallet ledger access"
+        description="Credit Note earnings and settlements remain visible, but posted debit and credit entries require the wallet entry read permission."
+      />
+    );
+  }
+
+  return (
+    <ContentDataSurface
+      title="Transaction history"
+      description="Posted Credit Note wallet ledger activity. Entitlement credits and settlement debits are shown as separate auditable postings."
+      padded={false}
+      className="min-w-0 overflow-hidden [&>[data-slot=card-footer]]:p-0"
+      footer={
+        page === null ? undefined : (
+          <HistoryFooter
+            query={query}
+            kind="transactions"
+            itemCount={page.items.length}
+            nextCursor={page.nextCursor}
+          />
+        )
+      }
+    >
+      {page === null || page.items.length === 0 ? (
+        <div className="p-4 sm:p-6">
+          <ContentEmptyState
+            icon={<ReceiptText aria-hidden="true" />}
+            title="No Credit Note transactions yet"
+            description="Finalized entitlements and provider settlements will appear here as immutable wallet postings."
+          />
+        </div>
+      ) : (
+        <>
+          <div className="grid gap-3 p-3 md:hidden">
+            {page.items.map((item) => (
+              <TransactionHistoryCard key={item.transactionId} item={item} />
+            ))}
+          </div>
+          <div className="hidden overflow-x-auto md:block">
+            <Table className="min-w-[66rem]">
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Posted</TableHead>
+                  <TableHead>Activity</TableHead>
+                  <TableHead>Reference</TableHead>
+                  <TableHead>Offer period</TableHead>
+                  <TableHead className="text-right">Debit</TableHead>
+                  <TableHead className="text-right">Credit</TableHead>
+                  <TableHead className="text-center">Status</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {page.items.map((item) => (
+                  <TableRow key={item.transactionId}>
+                    <TableCell className="whitespace-nowrap text-caption text-tabular">
+                      {formatDateTime(item.postedAt)}
+                    </TableCell>
+                    <TableCell>
+                      <div className="min-w-[15rem] max-w-[24rem]">
+                        <p className="font-medium text-foreground">
+                          {item.entryType === "CREDIT_NOTE_ENTITLEMENT"
+                            ? "Earning posted"
+                            : "Provider settlement"}
+                        </p>
+                        <p className="mt-0.5 text-caption text-muted-readable">
+                          {item.description}
+                        </p>
+                      </div>
+                    </TableCell>
+                    <TableCell className="max-w-56">
+                      <span
+                        className="block truncate font-medium text-foreground"
+                        title={item.zohoCreditNoteNumber ?? item.cycleId}
+                      >
+                        {item.zohoCreditNoteNumber ??
+                          `Cycle ${item.cycleId.slice(0, 8)}`}
+                      </span>
+                    </TableCell>
+                    <TableCell className="whitespace-nowrap text-caption text-muted-readable">
+                      {item.offerPeriodStart === null
+                        ? "—"
+                        : formatMonth(item.offerPeriodStart)}
+                    </TableCell>
+                    <TableCell className="text-right font-medium text-tabular">
+                      {item.direction === "DEBIT"
+                        ? formatMoney(item.amount, item.currency)
+                        : "—"}
+                    </TableCell>
+                    <TableCell className="text-right font-medium text-tabular">
+                      {item.direction === "CREDIT"
+                        ? formatMoney(item.amount, item.currency)
+                        : "—"}
+                    </TableCell>
+                    <TableCell className="text-center">
+                      <Badge variant="success">Posted</Badge>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        </>
+      )}
+    </ContentDataSurface>
+  );
+}
+
+function TransactionHistoryCard({
+  item,
+}: Readonly<{ item: CreditNoteTransactionHistory }>): ReactElement {
+  return (
+    <Card className="border-border/70 shadow-none">
+      <CardContent className="grid gap-3 p-4">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="font-semibold text-foreground">
+              {item.entryType === "CREDIT_NOTE_ENTITLEMENT"
+                ? "Earning posted"
+                : "Provider settlement"}
+            </p>
+            <p className="mt-0.5 text-caption text-muted-readable">
+              {formatDateTime(item.postedAt)}
+            </p>
+          </div>
+          <Badge variant="success">Posted</Badge>
+        </div>
+        <p className="text-caption text-muted-readable">{item.description}</p>
+        <div className="grid grid-cols-2 gap-3 rounded-xl bg-muted/35 p-3">
+          <div>
+            <p className="text-caption text-muted-readable">
+              {item.direction === "CREDIT" ? "Credit" : "Debit"}
+            </p>
+            <p className="mt-0.5 font-semibold text-foreground text-tabular">
+              {formatMoney(item.amount, item.currency)}
+            </p>
+          </div>
+          <div className="text-right">
+            <p className="text-caption text-muted-readable">Reference</p>
+            <p
+              className="mt-0.5 truncate font-medium text-foreground"
+              title={item.zohoCreditNoteNumber ?? item.cycleId}
+            >
+              {item.zohoCreditNoteNumber ?? item.cycleId.slice(0, 8)}
+            </p>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function EarningHistory({
+  page,
+  query,
+}: Readonly<{
+  page: CreditNoteEarningHistoryPage | null;
+  query: WalletSearchParams;
+}>): ReactElement {
+  return (
+    <ContentDataSurface
+      title="Earning history"
+      description="Monthly qualification, approved purchase evidence, earned value, and comparable trend. Finalized amounts supersede live accrual estimates."
+      padded={false}
+      className="min-w-0 overflow-hidden [&>[data-slot=card-footer]]:p-0"
+      footer={
+        page === null ? undefined : (
+          <HistoryFooter
+            query={query}
+            kind="earnings"
+            itemCount={page.items.length}
+            nextCursor={page.nextCursor}
+          />
+        )
+      }
+    >
+      {page === null || page.items.length === 0 ? (
+        <div className="p-4 sm:p-6">
+          <ContentEmptyState
+            icon={<Gift aria-hidden="true" />}
+            title="No Credit Note earnings yet"
+            description="Monthly earning records will appear after the Credit Note lifecycle begins for this dealer."
+          />
+        </div>
+      ) : (
+        <>
+          <div className="grid gap-3 p-3 md:hidden">
+            {page.items.map((item) => (
+              <EarningHistoryCard key={item.cycleId} item={item} />
+            ))}
+          </div>
+          <div className="hidden overflow-x-auto md:block">
+            <Table className="min-w-[72rem]">
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Offer month</TableHead>
+                  <TableHead className="text-center">Qualification</TableHead>
+                  <TableHead className="text-right">
+                    Approved purchases
+                  </TableHead>
+                  <TableHead className="text-right">Credit / vehicle</TableHead>
+                  <TableHead className="text-right">Earning</TableHead>
+                  <TableHead className="text-center">MoM</TableHead>
+                  <TableHead className="text-center">State</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {page.items.map((item) => (
+                  <TableRow key={item.cycleId}>
+                    <TableCell>
+                      <p className="font-medium text-foreground">
+                        {formatMonth(item.offerPeriodStart)}
+                      </p>
+                      <p className="mt-0.5 text-caption text-muted-readable">
+                        Settlement {formatMonth(item.settlementPeriodStart)}
+                      </p>
+                    </TableCell>
+                    <TableCell className="text-center text-tabular">
+                      <span className="font-medium text-foreground">
+                        {String(item.retailSaleCount)} /{" "}
+                        {String(item.retailTargetCount)}
+                      </span>
+                      <span className="ms-1 text-caption text-muted-readable">
+                        ({String(item.qualificationPercent)}%)
+                      </span>
+                    </TableCell>
+                    <TableCell className="text-right font-medium text-tabular">
+                      {String(item.approvedPurchaseVehicleCount)}
+                    </TableCell>
+                    <TableCell className="text-right text-tabular">
+                      {formatMoney(item.creditPerVehicle, item.currency)}
+                    </TableCell>
+                    <TableCell className="text-right font-semibold text-tabular">
+                      {formatMoney(item.displayAmount, item.currency)}
+                    </TableCell>
+                    <TableCell className="text-center text-tabular">
+                      {item.changePercent === null
+                        ? "—"
+                        : signedPercent(item.changePercent)}
+                    </TableCell>
+                    <TableCell className="text-center">
+                      <Badge variant={earningStateVariant(item.earningState)}>
+                        {humanize(item.earningState)}
+                      </Badge>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        </>
+      )}
+    </ContentDataSurface>
+  );
+}
+
+function EarningHistoryCard({
+  item,
+}: Readonly<{ item: CreditNoteEarningHistory }>): ReactElement {
+  return (
+    <Card className="border-border/70 shadow-none">
+      <CardContent className="grid gap-3 p-4">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="font-semibold text-foreground">
+              {formatMonth(item.offerPeriodStart)}
+            </p>
+            <p className="mt-0.5 text-caption text-muted-readable">
+              Settlement {formatMonth(item.settlementPeriodStart)}
+            </p>
+          </div>
+          <Badge variant={earningStateVariant(item.earningState)}>
+            {humanize(item.earningState)}
+          </Badge>
+        </div>
+        <p className="text-2xl font-semibold tracking-tight text-foreground text-tabular">
+          {formatMoney(item.displayAmount, item.currency)}
+        </p>
+        <div className="grid grid-cols-2 gap-3 text-caption">
+          <div>
+            <p className="text-muted-readable">Qualification</p>
+            <p className="mt-0.5 font-medium text-foreground text-tabular">
+              {String(item.retailSaleCount)} / {String(item.retailTargetCount)}{" "}
+              · {String(item.qualificationPercent)}%
+            </p>
+          </div>
+          <div className="text-right">
+            <p className="text-muted-readable">Approved purchases</p>
+            <p className="mt-0.5 font-medium text-foreground text-tabular">
+              {String(item.approvedPurchaseVehicleCount)}
+            </p>
+          </div>
+          <div>
+            <p className="text-muted-readable">Credit / vehicle</p>
+            <p className="mt-0.5 font-medium text-foreground text-tabular">
+              {formatMoney(item.creditPerVehicle, item.currency)}
+            </p>
+          </div>
+          <div className="text-right">
+            <p className="text-muted-readable">MoM</p>
+            <p className="mt-0.5 font-medium text-foreground text-tabular">
+              {item.changePercent === null
+                ? "—"
+                : signedPercent(item.changePercent)}
+            </p>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function SettlementHistory({
+  page,
+  query,
+}: Readonly<{
+  page: CreditNoteSettlementHistoryPage | null;
+  query: WalletSearchParams;
+}>): ReactElement {
+  return (
+    <ContentDataSurface
+      title="Settlement history"
+      description="Month-close settlement lifecycle with provider reference, final benefit, posting attempts, and reconciliation state."
+      padded={false}
+      className="min-w-0 overflow-hidden [&>[data-slot=card-footer]]:p-0"
+      footer={
+        page === null ? undefined : (
+          <HistoryFooter
+            query={query}
+            kind="settlements"
+            itemCount={page.items.length}
+            nextCursor={page.nextCursor}
+          />
+        )
+      }
+    >
+      {page === null || page.items.length === 0 ? (
+        <div className="p-4 sm:p-6">
+          <ContentEmptyState
+            icon={<CalendarClock aria-hidden="true" />}
+            title="No settlement history yet"
+            description="Finalized Credit Note months and their provider settlement state will appear here."
+          />
+        </div>
+      ) : (
+        <>
+          <div className="grid gap-3 p-3 md:hidden">
+            {page.items.map((item) => (
+              <SettlementHistoryCard key={item.cycleId} item={item} />
+            ))}
+          </div>
+          <div className="hidden overflow-x-auto md:block">
+            <Table className="min-w-[78rem]">
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Settlement month</TableHead>
+                  <TableHead>Credit Note / reference</TableHead>
+                  <TableHead className="text-right">Vehicles</TableHead>
+                  <TableHead className="text-right">Final amount</TableHead>
+                  <TableHead className="text-center">Provider</TableHead>
+                  <TableHead className="text-center">Settlement</TableHead>
+                  <TableHead>Last activity</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {page.items.map((item) => (
+                  <TableRow key={item.cycleId}>
+                    <TableCell className="whitespace-nowrap font-medium text-foreground">
+                      {formatMonth(item.settlementPeriodStart)}
+                    </TableCell>
+                    <TableCell>
+                      <div className="min-w-[14rem] max-w-[24rem]">
+                        <p
+                          className="truncate font-medium text-foreground"
+                          title={
+                            item.zohoCreditNoteNumber ??
+                            item.providerReference ??
+                            undefined
+                          }
+                        >
+                          {item.zohoCreditNoteNumber ??
+                            item.providerReference ??
+                            "Pending provider document"}
+                        </p>
+                        <p className="mt-0.5 truncate text-caption text-muted-readable">
+                          {item.providerReference ??
+                            `Cycle ${item.cycleId.slice(0, 8)}`}
+                        </p>
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-right text-tabular">
+                      {item.finalPurchaseVehicleCount === null
+                        ? "—"
+                        : String(item.finalPurchaseVehicleCount)}
+                    </TableCell>
+                    <TableCell className="text-right font-semibold text-tabular">
+                      {item.finalAmount === null
+                        ? "—"
+                        : formatMoney(item.finalAmount, item.currency)}
+                    </TableCell>
+                    <TableCell className="text-center">
+                      <Badge
+                        variant={providerStatusVariant(item.providerStatus)}
+                      >
+                        {item.providerStatus === null
+                          ? "Not started"
+                          : humanize(item.providerStatus)}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-center">
+                      <Badge
+                        variant={settlementStatusVariant(item.settlementStatus)}
+                      >
+                        {humanize(item.settlementStatus)}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="whitespace-nowrap text-caption text-muted-readable">
+                      {formatOptionalDateTime(
+                        item.settledAt ??
+                          item.providerOpenedAt ??
+                          item.lastAttemptAt,
+                      )}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        </>
+      )}
+    </ContentDataSurface>
+  );
+}
+
+function SettlementHistoryCard({
+  item,
+}: Readonly<{ item: CreditNoteSettlementHistory }>): ReactElement {
+  return (
+    <Card className="border-border/70 shadow-none">
+      <CardContent className="grid gap-3 p-4">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="font-semibold text-foreground">
+              {formatMonth(item.settlementPeriodStart)}
+            </p>
+            <p
+              className="mt-0.5 truncate text-caption text-muted-readable"
+              title={item.providerReference ?? undefined}
+            >
+              {item.zohoCreditNoteNumber ??
+                item.providerReference ??
+                "Provider document pending"}
+            </p>
+          </div>
+          <Badge variant={settlementStatusVariant(item.settlementStatus)}>
+            {humanize(item.settlementStatus)}
+          </Badge>
+        </div>
+        <div className="grid grid-cols-2 gap-3 rounded-xl bg-muted/35 p-3">
+          <div>
+            <p className="text-caption text-muted-readable">Final amount</p>
+            <p className="mt-0.5 font-semibold text-foreground text-tabular">
+              {item.finalAmount === null
+                ? "—"
+                : formatMoney(item.finalAmount, item.currency)}
+            </p>
+          </div>
+          <div className="text-right">
+            <p className="text-caption text-muted-readable">Vehicles</p>
+            <p className="mt-0.5 font-medium text-foreground text-tabular">
+              {item.finalPurchaseVehicleCount === null
+                ? "—"
+                : String(item.finalPurchaseVehicleCount)}
+            </p>
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <Badge variant={providerStatusVariant(item.providerStatus)}>
+            {item.providerStatus === null
+              ? "Provider not started"
+              : humanize(item.providerStatus)}
+          </Badge>
+          <span className="text-caption text-muted-readable">
+            {formatOptionalDateTime(
+              item.settledAt ?? item.providerOpenedAt ?? item.lastAttemptAt,
+            )}
+          </span>
+        </div>
+        {item.lastErrorCode === null ? null : (
+          <p className="rounded-lg border border-warning/25 bg-warning/[0.06] px-3 py-2 text-caption text-warning-foreground">
+            Attention: {humanize(item.lastErrorCode)}
+          </p>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 function DataFreshness({
   overview,
 }: Readonly<{ overview: CreditNoteOverview }>): ReactElement {
@@ -915,6 +1742,10 @@ function DataFreshness({
 
 export function CreditNoteWorkspace({
   overview,
+  insights,
+  transactions,
+  earnings,
+  settlements,
   invoices,
   query,
   capabilities,
@@ -929,31 +1760,41 @@ export function CreditNoteWorkspace({
     );
   }
 
-  if (overview === null) {
-    return (
-      <ContentStatus
-        variant="warning"
-        icon={<TriangleAlert aria-hidden="true" />}
-        title="Credit Note eligibility is being prepared"
-        description="The current monthly Credit Note cycle is not available yet. No projected amount has been treated as a financial entitlement."
-      />
-    );
-  }
-
   return (
     <div className="grid min-w-0 gap-4">
-      <CreditNoteHero overview={overview} />
-      <CreditNoteMetrics overview={overview} />
-      <OpportunityBanner overview={overview} />
-      <EligibilityTracker overview={overview} />
-      <ProcessTimeline overview={overview} />
-      <SettlementCard overview={overview} />
+      {overview === null ? (
+        <ContentStatus
+          variant="warning"
+          icon={<TriangleAlert aria-hidden="true" />}
+          title="Credit Note eligibility is being prepared"
+          description="The current monthly Credit Note cycle is not available yet. Historical earnings, settlements, and posted transactions remain readable below. No projected amount is treated as a financial entitlement."
+        />
+      ) : (
+        <>
+          <CreditNoteHero overview={overview} />
+          <CreditNoteMetrics overview={overview} />
+          <FinancialIntelligence insights={insights} />
+          <OpportunityBanner overview={overview} />
+          <EligibilityTracker overview={overview} />
+          <ProcessTimeline overview={overview} />
+          <SettlementCard overview={overview} />
+        </>
+      )}
+
+      {overview === null ? <FinancialIntelligence insights={insights} /> : null}
+      <EarningHistory page={earnings} query={query} />
+      <SettlementHistory page={settlements} query={query} />
+      <TransactionHistory
+        page={transactions}
+        query={query}
+        canReadTransactions={capabilities.canReadEntries}
+      />
       <PurchaseInvoices
         invoices={invoices}
         query={query}
         canReadDocuments={capabilities.canReadCreditNoteDocuments}
       />
-      <DataFreshness overview={overview} />
+      {overview === null ? null : <DataFreshness overview={overview} />}
     </div>
   );
 }

@@ -417,7 +417,9 @@ export const zohoWebhookReceiptSchema = z
       "IGNORED",
     ]),
     resourceId: safeProviderIdentifierSchema.nullable(),
-    resourceType: z.enum(["item", "composite_item", "unknown"]).default("item"),
+    resourceType: z
+      .enum(["item", "composite_item", "invoice", "unknown"])
+      .default("item"),
     eventName: z.string().max(256).nullable(),
     receivedAt: isoDateTimeSchema,
     lastErrorCode: z.string().max(256).nullable(),

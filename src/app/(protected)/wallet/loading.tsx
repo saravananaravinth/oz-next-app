@@ -7,18 +7,15 @@ import { Skeleton } from "@/components/ui/skeleton";
 
 function MetricSkeleton(): ReactElement {
   return (
-    <Card className="relative min-w-0 overflow-hidden border-border/70 shadow-sm shadow-foreground/[0.04]">
-      <CardContent className="grid min-h-[9.25rem] min-w-0 content-between gap-4 p-4 sm:p-5">
+    <Card className="min-h-[6.75rem] min-w-0 overflow-hidden border-border/70 shadow-none">
+      <CardContent className="flex h-full min-w-0 flex-col justify-between gap-3 p-3.5 sm:p-4">
         <div className="flex items-start justify-between gap-3">
-          <div className="grid gap-2">
-            <Skeleton className="h-4 w-24" />
-            <Skeleton className="h-3 w-20" />
-          </div>
-          <Skeleton className="size-9 rounded-xl" />
+          <Skeleton className="h-4 w-28" />
+          <Skeleton className="size-7 rounded-lg" />
         </div>
-        <div className="grid gap-2">
-          <Skeleton className="h-8 w-40 max-w-full" />
-          <Skeleton className="h-4 w-full max-w-52" />
+        <div className="flex items-end justify-between gap-3">
+          <Skeleton className="h-9 w-36 max-w-[60%]" />
+          <Skeleton className="h-6 w-24 rounded-md" />
         </div>
       </CardContent>
     </Card>
@@ -78,22 +75,12 @@ export default function WalletLoading(): ReactElement {
             <Skeleton className="h-5 w-28" />
             <Skeleton className="h-3.5 w-80 max-w-[55vw]" />
           </div>
-          <div className="ms-auto flex items-center gap-2 ps-6">
-            <Skeleton className="h-6 w-28 rounded-full" />
-            <Skeleton className="h-6 w-20 rounded-full" />
+          <div className="ms-auto flex items-center gap-1 rounded-xl border border-border/70 bg-muted/35 p-1 ps-1">
+            <Skeleton className="h-7 w-36 rounded-lg" />
+            <Skeleton className="h-7 w-32 rounded-lg" />
           </div>
         </div>
       </header>
-
-      <div
-        aria-hidden="true"
-        className="h-12 overflow-hidden rounded-2xl border border-border/70 bg-card p-1.5 shadow-xs shadow-foreground/5"
-      >
-        <div className="flex h-full items-center gap-1">
-          <Skeleton className="h-9 w-44 rounded-xl" />
-          <Skeleton className="h-9 w-40 rounded-xl" />
-        </div>
-      </div>
 
       <Card className="relative overflow-hidden border-primary/20 shadow-sm shadow-foreground/5">
         <CardContent className="grid min-w-0 gap-5 p-5 sm:p-6 lg:grid-cols-[minmax(0,1fr)_minmax(15rem,20rem)] lg:items-center">
@@ -132,8 +119,8 @@ export default function WalletLoading(): ReactElement {
         </div>
       </section>
 
-      <TableSkeleton rows={5} />
-      <TableSkeleton rows={5} />
+      <TableSkeleton rows={6} />
+      <TableSkeleton rows={6} />
     </ContentRoot>
   );
 }

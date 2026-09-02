@@ -1,8 +1,12 @@
 // oz-next-app/src/features/integrations/zoho-inventory/ui/zoho-inventory-page.tsx
 import type { ReactElement } from "react";
 import {
+  Activity,
   CircleCheck,
   CloudCog,
+  FileCheck2,
+  Link2,
+  MapPinCheck,
   PlugZap,
   ShieldCheck,
   TriangleAlert,
@@ -12,31 +16,32 @@ import {
 import {
   ContentDataSurface,
   ContentEmptyState,
-  ContentHeader,
   ContentList,
+  ContentMetricCard,
   ContentRoot,
   ContentStatus,
 } from "@/components/common/content-shell";
+import { WorkspaceHeader } from "@/components/common/workspace-header";
 
 import type {
+  CreditNoteOperationsSnapshot,
+  ZohoConnectionOverview,
   ZohoExternalConnection,
   ZohoIntegrationSearchParams,
+  ZohoItemDetail,
+  ZohoItemsResult,
   ZohoPendingGrant,
   ZohoSyncJob,
-  ZohoConnectionOverview,
-  ZohoItemsResult,
   ZohoWebhookEndpoint,
   ZohoWebhookReceipt,
-  ZohoItemDetail,
-  CreditNoteOperationsSnapshot,
 } from "@/features/integrations/zoho-inventory/contracts/zoho-inventory.schema";
 import type { ResolvedZohoInventoryAccess } from "@/features/integrations/zoho-inventory/policies/zoho-inventory.policy";
+import { CreditNoteInvoiceSyncButton } from "@/features/integrations/zoho-inventory/ui/zoho-catalog-actions";
+import { ZohoCatalogMonitor } from "@/features/integrations/zoho-inventory/ui/zoho-catalog-monitor";
 import { ZohoConnectControl } from "@/features/integrations/zoho-inventory/ui/zoho-connect-control";
 import { ZohoConnectionCard } from "@/features/integrations/zoho-inventory/ui/zoho-connection-card";
 import { ZohoOrganizationSelector } from "@/features/integrations/zoho-inventory/ui/zoho-organization-selector";
 import { ZohoSyncHistory } from "@/features/integrations/zoho-inventory/ui/zoho-sync-history";
-import { ZohoCatalogMonitor } from "@/features/integrations/zoho-inventory/ui/zoho-catalog-monitor";
-import { CreditNoteInvoiceSyncButton } from "@/features/integrations/zoho-inventory/ui/zoho-catalog-actions";
 
 function OAuthStatus({
   status,
@@ -144,11 +149,12 @@ export function ZohoInventoryPage({
       density="compact"
       className="min-h-[calc(100dvh-8rem)]"
     >
-      <ContentHeader
+      <WorkspaceHeader
+        titleId="zoho-inventory-page-title"
         icon={<PlugZap aria-hidden="true" />}
-        iconTone="info"
+        tone="info"
         title="Zoho Inventory Integration"
-        description="Secure tenant-scoped OAuth connection management, organization verification, and durable synchronization operations. Ozotec ERP remains authoritative."
+        description="Tenant-isolated OAuth, catalogue monitoring, webhooks, and durable synchronization. Ozotec ERP remains authoritative."
         actions={
           access.capabilities.canConfigure ? (
             <ZohoConnectControl
@@ -160,7 +166,6 @@ export function ZohoInventoryPage({
             />
           ) : undefined
         }
-        surface="subtle"
       />
 
       <OAuthStatus status={query.oauth} />
@@ -174,8 +179,17 @@ export function ZohoInventoryPage({
 
       <ContentDataSurface
         title="Connections"
-        description="Each connection is isolated by ERP tenant and Zoho organization. Access and refresh credentials never enter the browser."
+        description="Operational state for tenant-bound Zoho organizations. OAuth credentials remain server-side and never enter the browser."
         padded
+        actions={
+          connections.length > 0 ? (
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-border/70 bg-muted/35 px-2.5 py-1 text-caption text-muted-readable">
+              <ShieldCheck aria-hidden="true" className="size-3.5" />
+              {connections.length.toLocaleString("en-IN")} organization
+              {connections.length === 1 ? "" : "s"}
+            </span>
+          ) : undefined
+        }
       >
         {connections.length === 0 ? (
           <ContentEmptyState
@@ -238,33 +252,64 @@ export function ZohoInventoryPage({
           }
         >
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            <OperationMetric
+            <ContentMetricCard
+              presentation="dashboard"
+              tone={creditNoteOperations.configured ? "info" : "warning"}
               label="Invoice source"
               value={
-                creditNoteOperations.configured
-                  ? (creditNoteOperations.locationName ??
-                    creditNoteOperations.locationId ??
-                    "Configured")
-                  : "Not configured"
+                <span className="block truncate text-xl leading-tight font-semibold tracking-tight sm:text-2xl">
+                  {creditNoteOperations.configured
+                    ? (creditNoteOperations.locationName ??
+                      creditNoteOperations.locationId ??
+                      "Configured")
+                    : "Not configured"}
+                </span>
               }
+              description="Zoho invoice location"
+              icon={<MapPinCheck aria-hidden="true" />}
             />
-            <OperationMetric
+            <ContentMetricCard
+              presentation="dashboard"
+              tone="primary"
               label="Coverage watermark"
-              value={creditNoteOperations.coveredThrough ?? "Sync has not run"}
+              value={
+                <span className="block whitespace-nowrap text-xl leading-none font-semibold tracking-tight sm:text-2xl">
+                  {creditNoteOperations.coveredThrough ?? "Not started"}
+                </span>
+              }
+              description="Invoice discovery coverage"
+              icon={<Activity aria-hidden="true" />}
             />
-            <OperationMetric
+            <ContentMetricCard
+              presentation="dashboard"
+              tone={
+                creditNoteOperations.excludedInvoiceCount > 0
+                  ? "warning"
+                  : "success"
+              }
               label="Invoice eligibility"
-              value={`${String(creditNoteOperations.eligibleInvoiceCount)} eligible · ${String(creditNoteOperations.excludedInvoiceCount)} excluded`}
+              value={`${String(creditNoteOperations.eligibleInvoiceCount)} / ${String(creditNoteOperations.excludedInvoiceCount)}`}
+              description="Eligible / excluded"
+              icon={<FileCheck2 aria-hidden="true" />}
             />
-            <OperationMetric
+            <ContentMetricCard
+              presentation="dashboard"
+              tone={
+                creditNoteOperations.mappedDealerCount ===
+                creditNoteOperations.activeDealerCount
+                  ? "success"
+                  : "warning"
+              }
               label="Dealer mappings"
               value={`${String(creditNoteOperations.mappedDealerCount)} / ${String(creditNoteOperations.activeDealerCount)}`}
+              description="Mapped / active"
+              icon={<Link2 aria-hidden="true" />}
             />
           </div>
           <p className="mt-3 text-caption text-muted-readable">
             {creditNoteOperations.lastSuccessfulSyncAt === null
               ? "No successful Credit Note invoice sync has completed. Configure Head Office by its stable Zoho location ID before accrual."
-              : `Last successful sync: ${new Intl.DateTimeFormat("en-IN", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Kolkata" }).format(new Date(creditNoteOperations.lastSuccessfulSyncAt))}. Manual backfills are bounded to 93 days and mapping changes require a reason and row version.`}
+              : `Last successful sync: ${formatDateTime(creditNoteOperations.lastSuccessfulSyncAt)}. Manual backfills are bounded to 93 days and mapping changes require a reason and row version.`}
           </p>
         </ContentDataSurface>
       )}
@@ -274,7 +319,7 @@ export function ZohoInventoryPage({
         description={
           selectedConnection === null
             ? "Connect Zoho Inventory to begin organization reconciliation."
-            : `Latest durable jobs for ${selectedConnection.organizationName}, including manual, scheduled, webhook, and internal work.`
+            : `Latest 10 durable synchronization records for ${selectedConnection.organizationName}.`
         }
         padded
         actions={
@@ -298,14 +343,13 @@ function creditNoteBackfillStart(): string {
   return date.toISOString().slice(0, 10);
 }
 
-function OperationMetric({
-  label,
-  value,
-}: Readonly<{ label: string; value: string }>): ReactElement {
-  return (
-    <div className="rounded-xl border border-border/70 bg-muted/20 p-3.5">
-      <p className="text-caption text-muted-readable">{label}</p>
-      <p className="mt-1 text-body-sm font-semibold text-foreground">{value}</p>
-    </div>
-  );
+function formatDateTime(value: string): string {
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return "Unavailable";
+
+  return new Intl.DateTimeFormat("en-IN", {
+    dateStyle: "medium",
+    timeStyle: "short",
+    timeZone: "Asia/Kolkata",
+  }).format(date);
 }

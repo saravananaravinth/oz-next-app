@@ -8,6 +8,7 @@ import {
   CalendarClock,
   CircleDollarSign,
   Clock3,
+  FileText,
   Landmark,
   ReceiptText,
   ShieldCheck,
@@ -17,6 +18,7 @@ import {
 import {
   ContentDataSurface,
   ContentEmptyState,
+  ContentMetricCard,
   ContentRoot,
   ContentStatus,
 } from "@/components/common/content-shell";
@@ -31,13 +33,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import {
-  Tabs,
-  TabsBadge,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-} from "@/components/ui/tabs";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 
 import { CreditNoteWorkspace } from "@/features/wallet/ui/credit-note-workspace";
@@ -46,7 +42,7 @@ import { WalletWorkspaceHeader } from "@/features/wallet/ui/wallet-workspace-hea
 import { formatMoney } from "@/features/wallet/utils/wallet-money";
 
 import {
-  WALLET_TABLE_PAGE_SIZE,
+  WALLET_ACTIVITY_PAGE_SIZE,
   type WalletEntry,
   type WalletEntryType,
   type WalletSearchParams,
@@ -146,6 +142,23 @@ function accrualStatusVariant(
     case "REVERSED":
       return "outline";
   }
+}
+
+function invoiceStatusVariant(status: string): BadgeProps["variant"] {
+  switch (status) {
+    case "ISSUED":
+      return "success";
+    case "PENDING_OTP":
+      return "warning";
+    case "CANCELLED":
+      return "destructive";
+    default:
+      return "outline";
+  }
+}
+
+function welfareInvoiceDocumentHref(accrualId: string): string {
+  return `/api/welfare/accruals/${encodeURIComponent(accrualId)}/invoice-document`;
 }
 
 function walletQuery(
@@ -290,102 +303,6 @@ function WalletHero({
   );
 }
 
-type WalletMetricTone = "default" | "info" | "warning" | "success";
-
-type WalletMetricBaseProps = Readonly<{
-  label: string;
-  description: string;
-  icon: ReactElement;
-  tone?: WalletMetricTone;
-}>;
-
-type WalletMetricProps =
-  | (WalletMetricBaseProps &
-      Readonly<{
-        kind: "money";
-        amount: string;
-        currency: string;
-        animationDelayMs?: number | undefined;
-      }>)
-  | (WalletMetricBaseProps &
-      Readonly<{
-        kind: "text";
-        value: string;
-      }>);
-
-function WalletMetric(props: WalletMetricProps): ReactElement {
-  const tone = props.tone ?? "default";
-
-  return (
-    <Card
-      data-tone={tone}
-      className={cn(
-        "group relative min-w-0 overflow-hidden border-border/70 bg-gradient-to-br shadow-sm shadow-foreground/[0.04] transition-[border-color,box-shadow,transform] duration-[var(--motion-duration-fast)] ease-enterprise motion-reduce:transition-none",
-        "hover:-translate-y-0.5 hover:shadow-md hover:shadow-foreground/[0.06] motion-reduce:hover:translate-y-0",
-        tone === "default" && "from-card via-card to-muted/25",
-        tone === "info" && "from-info/[0.08] via-card to-card",
-        tone === "warning" && "from-warning/[0.07] via-card to-card",
-        tone === "success" && "from-success/[0.07] via-card to-card",
-      )}
-    >
-      <div
-        aria-hidden="true"
-        className={cn(
-          "absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent to-transparent",
-          tone === "default" && "via-border",
-          tone === "info" && "via-info/70",
-          tone === "warning" && "via-warning/70",
-          tone === "success" && "via-success/70",
-        )}
-      />
-      <CardContent className="relative grid min-h-[9.25rem] min-w-0 content-between gap-4 p-4 sm:p-5">
-        <div className="flex min-w-0 items-start justify-between gap-3">
-          <div className="grid min-w-0 gap-1">
-            <span className="truncate text-caption font-medium text-muted-readable">
-              {props.label}
-            </span>
-            <span className="text-[0.6875rem] font-medium uppercase tracking-[0.12em] text-muted-readable/80">
-              Wallet position
-            </span>
-          </div>
-          <span
-            className={cn(
-              "grid size-9 shrink-0 place-items-center rounded-xl border shadow-xs [&_svg]:size-4",
-              tone === "default" &&
-                "border-border/70 bg-background/80 text-muted-readable",
-              tone === "info" && "border-info/20 bg-info/10 text-info",
-              tone === "warning" &&
-                "border-warning/20 bg-warning/10 text-warning",
-              tone === "success" &&
-                "border-success/20 bg-success/10 text-success",
-            )}
-            aria-hidden="true"
-          >
-            {props.icon}
-          </span>
-        </div>
-
-        <div className="grid min-w-0 gap-1.5">
-          <strong className="max-w-full whitespace-nowrap text-[clamp(1.45rem,2vw,1.9rem)] leading-none font-semibold tracking-tight text-foreground">
-            {props.kind === "money" ? (
-              <WalletAnimatedAmount
-                amount={props.amount}
-                currency={props.currency}
-                delayMs={props.animationDelayMs}
-              />
-            ) : (
-              props.value
-            )}
-          </strong>
-          <span className="min-h-8 text-caption leading-4 text-muted-readable">
-            {props.description}
-          </span>
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
 function BalanceMetrics({
   wallet,
 }: Readonly<{ wallet: WalletSummary }>): ReactElement {
@@ -410,45 +327,157 @@ function BalanceMetrics({
       </div>
 
       <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <WalletMetric
-          kind="money"
+        <ContentMetricCard
+          presentation="dashboard"
+          tone="primary"
           label="Posted balance"
-          amount={wallet.postedBalance}
-          currency={wallet.currency}
-          animationDelayMs={80}
-          description="Ledger balance after posted entries"
+          value={
+            <WalletAnimatedAmount
+              amount={wallet.postedBalance}
+              currency={wallet.currency}
+              delayMs={80}
+            />
+          }
+          description="Posted ledger"
           icon={<CircleDollarSign aria-hidden="true" />}
         />
-        <WalletMetric
-          kind="money"
-          label="Pending credit"
-          amount={wallet.pendingCredit}
-          currency={wallet.currency}
-          animationDelayMs={140}
-          description="Accrued value waiting to be posted"
-          icon={<Clock3 aria-hidden="true" />}
+        <ContentMetricCard
+          presentation="dashboard"
           tone={wallet.pendingCredit === "0.00" ? "default" : "info"}
+          label="Pending credit"
+          value={
+            <WalletAnimatedAmount
+              amount={wallet.pendingCredit}
+              currency={wallet.currency}
+              delayMs={140}
+            />
+          }
+          description="Awaiting posting"
+          icon={<Clock3 aria-hidden="true" />}
         />
-        <WalletMetric
-          kind="money"
-          label="Reserved"
-          amount={wallet.reservedBalance}
-          currency={wallet.currency}
-          animationDelayMs={200}
-          description="Amount temporarily unavailable"
-          icon={<ShieldCheck aria-hidden="true" />}
+        <ContentMetricCard
+          presentation="dashboard"
           tone={wallet.reservedBalance === "0.00" ? "default" : "warning"}
+          label="Reserved"
+          value={
+            <WalletAnimatedAmount
+              amount={wallet.reservedBalance}
+              currency={wallet.currency}
+              delayMs={200}
+            />
+          }
+          description="Temporarily held"
+          icon={<ShieldCheck aria-hidden="true" />}
         />
-        <WalletMetric
-          kind="text"
-          label="Wallet status"
-          value={humanize(wallet.status)}
-          description="Backend-controlled account operating state"
-          icon={<WalletCards aria-hidden="true" />}
+        <ContentMetricCard
+          presentation="dashboard"
           tone={wallet.status === "ACTIVE" ? "success" : "warning"}
+          label="Wallet status"
+          value={
+            <span className="block truncate text-xl leading-tight font-semibold tracking-tight sm:text-2xl">
+              {humanize(wallet.status)}
+            </span>
+          }
+          description="Account state"
+          icon={<WalletCards aria-hidden="true" />}
         />
       </div>
     </section>
+  );
+}
+
+function walletMoneyMinorUnits(value: string): bigint {
+  const [whole, fraction = ""] = value.split(".");
+  if (
+    whole === undefined ||
+    !/^\d+$/u.test(whole) ||
+    !/^\d*$/u.test(fraction)
+  ) {
+    throw new Error("Wallet monetary value is invalid.");
+  }
+  return BigInt(whole) * 100n + BigInt(fraction.padEnd(2, "0").slice(0, 2));
+}
+
+function walletRatioPercent(numerator: bigint, denominator: bigint): number {
+  if (denominator <= 0n) return 0;
+  const rounded = (numerator * 100n + denominator / 2n) / denominator;
+  return Number(rounded > 100n ? 100n : rounded);
+}
+
+function WalletFinancialSignals({
+  wallet,
+}: Readonly<{ wallet: WalletSummary }>): ReactElement {
+  const posted = walletMoneyMinorUnits(wallet.postedBalance);
+  const available = walletMoneyMinorUnits(wallet.availableBalance);
+  const reserved = walletMoneyMinorUnits(wallet.reservedBalance);
+  const pending = walletMoneyMinorUnits(wallet.pendingCredit);
+  const liquidityPercent = walletRatioPercent(available, posted);
+  const reservedPercent = walletRatioPercent(reserved, posted);
+  const pipelineBase = posted + pending;
+  const pendingPercent = walletRatioPercent(pending, pipelineBase);
+
+  const nextAction =
+    wallet.status !== "ACTIVE"
+      ? "Review wallet account state"
+      : reserved > 0n
+        ? "Monitor reserved funds"
+        : pending > 0n
+          ? "Track pending settlement"
+          : "Wallet is fully operational";
+
+  return (
+    <ContentDataSurface
+      title="Wallet intelligence"
+      description="Deterministic liquidity and settlement signals calculated from the authoritative wallet balances."
+      padded
+    >
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="grid gap-1 rounded-xl border border-border/70 bg-muted/20 p-3.5">
+          <span className="text-caption text-muted-readable">
+            Liquidity readiness
+          </span>
+          <span className="text-xl font-semibold text-foreground text-tabular">
+            {String(liquidityPercent)}%
+          </span>
+          <span className="text-caption text-muted-readable">
+            Available from posted balance
+          </span>
+        </div>
+        <div className="grid gap-1 rounded-xl border border-border/70 bg-muted/20 p-3.5">
+          <span className="text-caption text-muted-readable">
+            Pending pipeline
+          </span>
+          <span className="text-xl font-semibold text-foreground text-tabular">
+            {formatMoney(wallet.pendingCredit, wallet.currency)}
+          </span>
+          <span className="text-caption text-muted-readable">
+            {String(pendingPercent)}% of posted + pending funds
+          </span>
+        </div>
+        <div className="grid gap-1 rounded-xl border border-border/70 bg-muted/20 p-3.5">
+          <span className="text-caption text-muted-readable">
+            Reserved exposure
+          </span>
+          <span className="text-xl font-semibold text-foreground text-tabular">
+            {formatMoney(wallet.reservedBalance, wallet.currency)}
+          </span>
+          <span className="text-caption text-muted-readable">
+            {String(reservedPercent)}% of posted balance protected
+          </span>
+        </div>
+        <div className="grid gap-1 rounded-xl border border-border/70 bg-muted/20 p-3.5">
+          <span className="text-caption text-muted-readable">
+            Next attention
+          </span>
+          <span className="text-body-sm font-semibold text-foreground">
+            {nextAction}
+          </span>
+          <span className="text-caption text-muted-readable">
+            Rule-based signal, not a financial recommendation
+          </span>
+        </div>
+      </div>
+    </ContentDataSurface>
   );
 }
 
@@ -608,7 +637,7 @@ function CursorPagination({
     <div className="flex min-w-0 flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-5">
       <p className="text-caption text-muted-readable">
         Showing {itemCount.toLocaleString("en-IN")} of up to{" "}
-        {WALLET_TABLE_PAGE_SIZE.toLocaleString("en-IN")} {itemLabel} on this
+        {WALLET_ACTIVITY_PAGE_SIZE.toLocaleString("en-IN")} {itemLabel} on this
         page.
       </p>
 
@@ -622,7 +651,7 @@ function CursorPagination({
               }}
               scroll={false}
             >
-              First {WALLET_TABLE_PAGE_SIZE}
+              First {WALLET_ACTIVITY_PAGE_SIZE}
             </Link>
           </Button>
         )}
@@ -638,7 +667,7 @@ function CursorPagination({
               }}
               scroll={false}
             >
-              Next {WALLET_TABLE_PAGE_SIZE}
+              Next {WALLET_ACTIVITY_PAGE_SIZE}
               <ArrowRight aria-hidden="true" className="size-4" />
             </Link>
           </Button>
@@ -720,25 +749,84 @@ function Transactions({
   );
 }
 
+function InvoiceDocumentAction({
+  accrual,
+  compact = false,
+}: Readonly<{
+  accrual: WelfareAccrual;
+  compact?: boolean;
+}>): ReactElement {
+  if (!accrual.invoicePdfAvailable) {
+    return (
+      <span
+        className="text-caption text-muted-readable"
+        aria-label="Invoice PDF unavailable"
+      >
+        Not available
+      </span>
+    );
+  }
+
+  return (
+    <Button
+      asChild
+      variant="outline"
+      size="sm"
+      className={compact ? "w-full" : undefined}
+    >
+      <a
+        href={welfareInvoiceDocumentHref(accrual.accrualId)}
+        target="_blank"
+        rel="noopener noreferrer"
+        aria-label={`View PDF for invoice ${accrual.invoiceNumber}`}
+      >
+        <FileText aria-hidden="true" className="size-4" />
+        View PDF
+      </a>
+    </Button>
+  );
+}
+
 function AccrualCard({
   accrual,
 }: Readonly<{ accrual: WelfareAccrual }>): ReactElement {
   return (
     <Card className="shadow-none">
       <CardContent className="grid gap-4 p-4">
-        <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="flex min-w-0 items-start justify-between gap-3">
           <div className="min-w-0">
             <p className="truncate text-body-sm font-semibold text-tabular">
               {accrual.invoiceNumber}
             </p>
             <p className="text-caption text-muted-readable text-tabular">
-              Invoice date {formatDate(accrual.invoiceCreatedAt)}
+              Invoice date {formatDate(accrual.invoiceDate)}
             </p>
           </div>
           <Badge variant={accrualStatusVariant(accrual.status)}>
             {humanize(accrual.status)}
           </Badge>
         </div>
+
+        <div className="grid gap-2">
+          <div className="min-w-0">
+            <p className="text-caption text-muted-readable">Customer</p>
+            <p
+              className="truncate text-body-sm font-medium"
+              title={accrual.customerName ?? undefined}
+            >
+              {accrual.customerName ?? "Customer unavailable"}
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className="text-caption text-muted-readable">
+              Invoice status
+            </span>
+            <Badge variant={invoiceStatusVariant(accrual.invoiceStatus)}>
+              {humanize(accrual.invoiceStatus)}
+            </Badge>
+          </div>
+        </div>
+
         <div className="grid grid-cols-2 gap-3 rounded-xl bg-muted/45 p-3">
           <div>
             <p className="text-caption text-muted-readable">Welfare amount</p>
@@ -753,6 +841,9 @@ function AccrualCard({
             </p>
           </div>
         </div>
+
+        <InvoiceDocumentAction accrual={accrual} compact />
+
         {accrual.blockedReason !== null ? (
           <p className="text-caption text-warning-foreground">
             {accrual.blockedReason}
@@ -768,45 +859,54 @@ function AccrualTable({
 }: Readonly<{ accruals: readonly WelfareAccrual[] }>): ReactElement {
   return (
     <div className="hidden overflow-x-auto md:block">
-      <Table className="min-w-[76rem]">
+      <Table className="min-w-[86rem]">
         <TableHeader>
           <TableRow>
             <TableHead>Invoice date</TableHead>
             <TableHead>Invoice number</TableHead>
-            <TableHead className="text-center">Status</TableHead>
-            <TableHead className="text-right">Base price</TableHead>
-            <TableHead className="text-right">Rate</TableHead>
+            <TableHead>Customer</TableHead>
+            <TableHead className="text-center">Invoice status</TableHead>
+            <TableHead className="text-center">Welfare status</TableHead>
             <TableHead className="text-right">Welfare amount</TableHead>
             <TableHead className="text-center">Credit due</TableHead>
+            <TableHead className="text-center">Invoice</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
           {accruals.map((accrual) => (
             <TableRow key={accrual.accrualId}>
-              <TableCell className="text-body-sm text-tabular">
-                {formatDate(accrual.invoiceCreatedAt)}
+              <TableCell className="whitespace-nowrap text-body-sm text-tabular">
+                {formatDate(accrual.invoiceDate)}
               </TableCell>
               <TableCell className="max-w-64 truncate text-body-sm font-medium text-tabular">
                 {accrual.invoiceNumber}
+              </TableCell>
+              <TableCell className="max-w-80 text-body-sm">
+                <span
+                  className="block truncate"
+                  title={accrual.customerName ?? undefined}
+                >
+                  {accrual.customerName ?? "Customer unavailable"}
+                </span>
+              </TableCell>
+              <TableCell className="text-center">
+                <Badge variant={invoiceStatusVariant(accrual.invoiceStatus)}>
+                  {humanize(accrual.invoiceStatus)}
+                </Badge>
               </TableCell>
               <TableCell className="text-center">
                 <Badge variant={accrualStatusVariant(accrual.status)}>
                   {humanize(accrual.status)}
                 </Badge>
               </TableCell>
-              <TableCell className="text-right text-body-sm text-tabular">
-                {formatMoney(accrual.totalBasePrice, accrual.currency)}
-              </TableCell>
-              <TableCell className="text-right text-body-sm text-muted-readable text-tabular">
-                {accrual.ratePercentageSnapshot === null
-                  ? "—"
-                  : `${accrual.ratePercentageSnapshot}%`}
-              </TableCell>
               <TableCell className="text-right text-body-sm font-semibold text-tabular">
                 {formatMoney(accrual.welfareAmount, accrual.currency)}
               </TableCell>
-              <TableCell className="text-center text-caption text-muted-readable text-tabular">
+              <TableCell className="whitespace-nowrap text-center text-caption text-muted-readable text-tabular">
                 {formatDate(accrual.creditDueAt)}
+              </TableCell>
+              <TableCell className="text-center">
+                <InvoiceDocumentAction accrual={accrual} />
               </TableCell>
             </TableRow>
           ))}
@@ -962,55 +1062,37 @@ export function WalletPage({
       aria-labelledby="wallet-page-title"
       className="min-w-0"
     >
-      <WalletWorkspaceHeader
-        titleId="wallet-page-title"
-        title="Wallet"
-        description="Track Welfare Fund balances and the full Credit Note performance, offer, purchase, and settlement cycle."
-        actions={
-          <div className="flex flex-wrap items-center gap-2">
-            <Badge variant="success">Welfare Fund live</Badge>
-            {capabilities.canReadCreditNoteOverview ? (
-              <Badge variant="info">Credit Note live</Badge>
-            ) : null}
-            <Badge variant="outline">Read only</Badge>
-          </div>
-        }
-      />
-
       <Tabs
         defaultValue={query.tab ?? "welfare-fund"}
         className="min-w-0 gap-4"
       >
-        <div className="overflow-hidden rounded-2xl border border-border/70 bg-card shadow-xs shadow-foreground/5">
-          <div className="no-scrollbar overflow-x-auto overscroll-x-contain">
+        <WalletWorkspaceHeader
+          titleId="wallet-page-title"
+          title="Wallet"
+          description="Track Welfare Fund balances and the full Credit Note performance, offer, purchase, and settlement cycle."
+          actions={
             <TabsList
               variant="workspace"
               aria-label="Wallet types"
-              className="group-data-[orientation=horizontal]/tabs:h-12 w-max min-w-full gap-1 rounded-none border-0 bg-transparent p-1.5 shadow-none"
+              className="h-10 w-auto min-w-0 !gap-2 rounded-xl border border-border/70 bg-muted/35 !p-1.5 shadow-none"
             >
               <TabsTrigger
                 value="welfare-fund"
-                className="min-w-[10.5rem] flex-none justify-start gap-2 px-4"
+                className="h-7 min-w-[8.75rem] !flex-none justify-center gap-2 rounded-lg border border-transparent px-3 data-[state=active]:border-border/80"
               >
                 <CircleDollarSign aria-hidden="true" className="size-4" />
                 <span>Welfare Fund</span>
-                <TabsBadge>Live</TabsBadge>
               </TabsTrigger>
               <TabsTrigger
                 value="credit-note"
-                className="min-w-[9.5rem] flex-none justify-start gap-2 px-4"
+                className="h-7 min-w-[8.25rem] !flex-none justify-center gap-2 rounded-lg border border-transparent px-3 data-[state=active]:border-border/80"
               >
                 <ReceiptText aria-hidden="true" className="size-4" />
                 <span>Credit Note</span>
-                <TabsBadge>
-                  {capabilities.canReadCreditNoteOverview
-                    ? "Live"
-                    : "Restricted"}
-                </TabsBadge>
               </TabsTrigger>
             </TabsList>
-          </div>
-        </div>
+          }
+        />
 
         <TabsContent value="welfare-fund" className="grid min-w-0 gap-4">
           {wallet === null ? (
@@ -1027,6 +1109,7 @@ export function WalletPage({
               />
               <WalletHero wallet={wallet} />
               <BalanceMetrics wallet={wallet} />
+              <WalletFinancialSignals wallet={wallet} />
 
               {wallet.status !== "ACTIVE" ? (
                 <ContentStatus
@@ -1054,6 +1137,10 @@ export function WalletPage({
         <TabsContent value="credit-note" className="grid min-w-0 gap-4">
           <CreditNoteWorkspace
             overview={data.creditNoteOverview}
+            insights={data.creditNoteInsights}
+            transactions={data.creditNoteTransactions}
+            earnings={data.creditNoteEarnings}
+            settlements={data.creditNoteSettlements}
             invoices={data.creditNotePurchaseInvoices}
             query={query}
             capabilities={capabilities}

@@ -9,9 +9,15 @@ import {
 } from "@/lib/api/endpoints";
 
 import {
-  WALLET_TABLE_PAGE_SIZE,
+  CREDIT_NOTE_HISTORY_PAGE_SIZE,
+  CREDIT_NOTE_PURCHASE_INVOICE_PAGE_SIZE,
+  WALLET_ACTIVITY_PAGE_SIZE,
+  creditNoteEarningHistoryPageSchema,
+  creditNoteFinancialInsightsSchema,
   creditNoteOverviewSchema,
   creditNotePurchaseInvoicePageSchema,
+  creditNoteSettlementHistoryPageSchema,
+  creditNoteTransactionHistoryPageSchema,
   walletEntryPageSchema,
   walletPageSchema,
   welfareAccrualPageSchema,
@@ -78,7 +84,7 @@ export async function readWalletWorkspace(
       ? walletClient.request({
           path: `/${selectedWallet.walletId}/entries`,
           query: {
-            limit: WALLET_TABLE_PAGE_SIZE,
+            limit: WALLET_ACTIVITY_PAGE_SIZE,
             ...(input.query.entryCursor !== undefined
               ? { cursor: input.query.entryCursor }
               : {}),
@@ -90,9 +96,9 @@ export async function readWalletWorkspace(
   const accrualsPromise =
     selectedWallet !== null && input.capabilities.canReadWelfareAccruals
       ? welfareClient.request({
-          path: "/v2/accruals",
+          path: "/v3/accruals",
           query: {
-            limit: WALLET_TABLE_PAGE_SIZE,
+            limit: WALLET_ACTIVITY_PAGE_SIZE,
             ...(input.query.accrualCursor !== undefined
               ? { cursor: input.query.accrualCursor }
               : {}),
@@ -111,12 +117,61 @@ export async function readWalletWorkspace(
       })
     : Promise.resolve(null);
 
+  const creditNoteInsightsPromise = input.capabilities.canReadCreditNoteOverview
+    ? creditNoteClient.request({
+        path: "/insights",
+        schema: creditNoteFinancialInsightsSchema.nullable(),
+      })
+    : Promise.resolve(null);
+
+  const creditNoteTransactionsPromise =
+    input.capabilities.canReadCreditNoteOverview &&
+    input.capabilities.canReadEntries
+      ? creditNoteClient.request({
+          path: "/history/transactions",
+          query: {
+            limit: CREDIT_NOTE_HISTORY_PAGE_SIZE,
+            ...(input.query.creditNoteTransactionCursor !== undefined
+              ? { cursor: input.query.creditNoteTransactionCursor }
+              : {}),
+          },
+          schema: creditNoteTransactionHistoryPageSchema,
+        })
+      : Promise.resolve(null);
+
+  const creditNoteEarningsPromise = input.capabilities.canReadCreditNoteOverview
+    ? creditNoteClient.request({
+        path: "/history/earnings",
+        query: {
+          limit: CREDIT_NOTE_HISTORY_PAGE_SIZE,
+          ...(input.query.creditNoteEarningCursor !== undefined
+            ? { cursor: input.query.creditNoteEarningCursor }
+            : {}),
+        },
+        schema: creditNoteEarningHistoryPageSchema,
+      })
+    : Promise.resolve(null);
+
+  const creditNoteSettlementsPromise = input.capabilities
+    .canReadCreditNoteOverview
+    ? creditNoteClient.request({
+        path: "/history/settlements",
+        query: {
+          limit: CREDIT_NOTE_HISTORY_PAGE_SIZE,
+          ...(input.query.creditNoteSettlementCursor !== undefined
+            ? { cursor: input.query.creditNoteSettlementCursor }
+            : {}),
+        },
+        schema: creditNoteSettlementHistoryPageSchema,
+      })
+    : Promise.resolve(null);
+
   const creditNotePurchaseInvoicesPromise = input.capabilities
     .canReadCreditNotePurchaseInvoices
     ? creditNoteClient.request({
         path: "/purchase-invoices",
         query: {
-          limit: WALLET_TABLE_PAGE_SIZE,
+          limit: CREDIT_NOTE_PURCHASE_INVOICE_PAGE_SIZE,
           ...(input.query.creditNoteInvoiceCursor !== undefined
             ? { cursor: input.query.creditNoteInvoiceCursor }
             : {}),
@@ -125,13 +180,25 @@ export async function readWalletWorkspace(
       })
     : Promise.resolve(null);
 
-  const [entries, accruals, creditNoteOverview, creditNotePurchaseInvoices] =
-    await Promise.all([
-      entriesPromise,
-      accrualsPromise,
-      creditNoteOverviewPromise,
-      creditNotePurchaseInvoicesPromise,
-    ]);
+  const [
+    entries,
+    accruals,
+    creditNoteOverview,
+    creditNoteInsights,
+    creditNoteTransactions,
+    creditNoteEarnings,
+    creditNoteSettlements,
+    creditNotePurchaseInvoices,
+  ] = await Promise.all([
+    entriesPromise,
+    accrualsPromise,
+    creditNoteOverviewPromise,
+    creditNoteInsightsPromise,
+    creditNoteTransactionsPromise,
+    creditNoteEarningsPromise,
+    creditNoteSettlementsPromise,
+    creditNotePurchaseInvoicesPromise,
+  ]);
 
   return {
     welfareWallets,
@@ -141,6 +208,10 @@ export async function readWalletWorkspace(
     accruals,
     creditNoteOverview,
     creditNotePurchaseInvoices,
+    creditNoteInsights,
+    creditNoteTransactions,
+    creditNoteEarnings,
+    creditNoteSettlements,
   };
 }
 
@@ -162,4 +233,20 @@ export async function readCreditNotePurchaseInvoiceDocumentResponse(
     timeoutMs: 120_000,
     accept: CT.PDF,
   });
+}
+
+export async function readWelfareInvoiceDocumentResponse(
+  input: Readonly<{ accrualId: string }>,
+): Promise<Response> {
+  return await serverApiClient.raw(
+    WELFARE_ENDPOINTS.accrualInvoiceDocument(input.accrualId),
+    {
+      method: HTTP_METHODS.GET,
+      auth: true,
+      refreshOnUnauthorized: true,
+      cache: "no-store",
+      timeoutMs: 30_000,
+      accept: CT.PDF,
+    },
+  );
 }

@@ -55,6 +55,20 @@ function scalar(value: string | string[] | undefined): string | undefined {
   return typeof value === "string" ? value : undefined;
 }
 
+function optionalFilterScalar(
+  value: string | string[] | undefined,
+): string | undefined {
+  const candidate = scalar(value)?.trim();
+  if (
+    candidate === undefined ||
+    candidate.length === 0 ||
+    candidate === "__all__"
+  ) {
+    return undefined;
+  }
+  return candidate;
+}
+
 function parseSearchParams(raw: RawSearchParams) {
   const allowed = new Set([
     "oauth",
@@ -63,6 +77,8 @@ function parseSearchParams(raw: RawSearchParams) {
     "search",
     "membership",
     "mapping",
+    "entity",
+    "category",
     "itemStatus",
     "cursor",
   ]);
@@ -75,7 +91,15 @@ function parseSearchParams(raw: RawSearchParams) {
     (Array.isArray(raw["oauth"]) && raw["oauth"].length > 0) ||
     (Array.isArray(raw["connection"]) && raw["connection"].length > 0) ||
     (Array.isArray(raw["item"]) && raw["item"].length > 0) ||
-    ["search", "membership", "mapping", "itemStatus", "cursor"].some((key) => {
+    [
+      "search",
+      "membership",
+      "mapping",
+      "entity",
+      "category",
+      "itemStatus",
+      "cursor",
+    ].some((key) => {
       const value = raw[key];
       return Array.isArray(value) && value.length > 0;
     })
@@ -91,21 +115,27 @@ function parseSearchParams(raw: RawSearchParams) {
       ? {}
       : { connection: scalar(raw["connection"]) }),
     ...(scalar(raw["item"]) === undefined ? {} : { item: scalar(raw["item"]) }),
-    ...(scalar(raw["search"]) === undefined
+    ...(optionalFilterScalar(raw["search"]) === undefined
       ? {}
-      : { search: scalar(raw["search"]) }),
-    ...(scalar(raw["membership"]) === undefined
+      : { search: optionalFilterScalar(raw["search"]) }),
+    ...(optionalFilterScalar(raw["membership"]) === undefined
       ? {}
-      : { membership: scalar(raw["membership"]) }),
-    ...(scalar(raw["mapping"]) === undefined
+      : { membership: optionalFilterScalar(raw["membership"]) }),
+    ...(optionalFilterScalar(raw["mapping"]) === undefined
       ? {}
-      : { mapping: scalar(raw["mapping"]) }),
-    ...(scalar(raw["itemStatus"]) === undefined
+      : { mapping: optionalFilterScalar(raw["mapping"]) }),
+    ...(optionalFilterScalar(raw["entity"]) === undefined
       ? {}
-      : { itemStatus: scalar(raw["itemStatus"]) }),
-    ...(scalar(raw["cursor"]) === undefined
+      : { entity: optionalFilterScalar(raw["entity"]) }),
+    ...(optionalFilterScalar(raw["category"]) === undefined
       ? {}
-      : { cursor: scalar(raw["cursor"]) }),
+      : { category: optionalFilterScalar(raw["category"]) }),
+    ...(optionalFilterScalar(raw["itemStatus"]) === undefined
+      ? {}
+      : { itemStatus: optionalFilterScalar(raw["itemStatus"]) }),
+    ...(optionalFilterScalar(raw["cursor"]) === undefined
+      ? {}
+      : { cursor: optionalFilterScalar(raw["cursor"]) }),
   });
 }
 
@@ -200,7 +230,7 @@ export default async function ZohoInventoryIntegrationRoutePage({
           readZohoSyncJobs({
             access,
             connectionId: selectedConnection.connectionId,
-            limit: 50,
+            limit: 10,
           }),
           readZohoConnectionOverview({
             access,
@@ -209,7 +239,7 @@ export default async function ZohoInventoryIntegrationRoutePage({
           readZohoItems({
             access,
             connectionId: selectedConnection.connectionId,
-            limit: 50,
+            limit: 10,
             ...(parsedQuery.data.cursor === undefined
               ? {}
               : { cursor: parsedQuery.data.cursor }),
