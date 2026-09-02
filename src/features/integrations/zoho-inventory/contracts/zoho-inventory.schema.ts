@@ -566,6 +566,7 @@ export const creditNoteOperationsSnapshotSchema = z
     invoiceCount: z.number().int().nonnegative(),
     eligibleInvoiceCount: z.number().int().nonnegative(),
     excludedInvoiceCount: z.number().int().nonnegative(),
+    reconciliationRequiredInvoiceCount: z.number().int().nonnegative(),
     openIssueCount: z.number().int().nonnegative(),
     activeDealerCount: z.number().int().nonnegative(),
     mappedDealerCount: z.number().int().nonnegative(),

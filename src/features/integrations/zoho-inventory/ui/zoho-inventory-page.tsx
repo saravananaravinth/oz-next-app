@@ -283,13 +283,13 @@ export function ZohoInventoryPage({
             <ContentMetricCard
               presentation="dashboard"
               tone={
-                creditNoteOperations.excludedInvoiceCount > 0
+                creditNoteOperations.reconciliationRequiredInvoiceCount > 0
                   ? "warning"
                   : "success"
               }
-              label="Invoice eligibility"
-              value={`${String(creditNoteOperations.eligibleInvoiceCount)} / ${String(creditNoteOperations.excludedInvoiceCount)}`}
-              description="Eligible / excluded"
+              label="Invoice outcomes"
+              value={`${String(creditNoteOperations.eligibleInvoiceCount)} / ${String(creditNoteOperations.excludedInvoiceCount)} / ${String(creditNoteOperations.reconciliationRequiredInvoiceCount)}`}
+              description="Eligible / excluded / review"
               icon={<FileCheck2 aria-hidden="true" />}
             />
             <ContentMetricCard
