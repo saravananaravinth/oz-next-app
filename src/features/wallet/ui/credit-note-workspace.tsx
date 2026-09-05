@@ -728,7 +728,7 @@ function PurchaseInvoices({
   if (invoices === null) {
     return (
       <ContentDataSurface
-        title="Approved purchase invoices"
+        title="Zoho purchase invoices"
         description="Purchase invoice visibility requires the Credit Note purchase-invoice permission."
         padded
       >
@@ -785,8 +785,8 @@ function PurchaseInvoices({
 
   return (
     <ContentDataSurface
-      title="Approved purchase invoices"
-      description="Zoho Inventory FG/ invoices for the active offer month. Provider status is authoritative; qualifying Zoho states, including DUE and OVERDUE families, contribute to the benefit."
+      title="Zoho purchase invoices"
+      description="Your purchase benefit includes eligible Zoho purchases and issued, non-cancelled dealer-to-dealer purchases, counting each VIN once per buyer per month. This table shows only Zoho Inventory FG/ invoices; qualifying Zoho states include DUE and OVERDUE."
       padded={false}
       className="min-w-0 overflow-hidden [&>[data-slot=card-footer]]:p-0"
       footer={footer}
