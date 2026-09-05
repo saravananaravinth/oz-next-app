@@ -13,9 +13,7 @@ import {
   CREDIT_NOTE_PURCHASE_INVOICE_PAGE_SIZE,
   WALLET_ACTIVITY_PAGE_SIZE,
   creditNoteEarningHistoryPageSchema,
-  creditNoteFinancialInsightsSchema,
   creditNoteOverviewSchema,
-  creditNotePurchaseInvoicePageSchema,
   creditNoteSettlementHistoryPageSchema,
   creditNoteTransactionHistoryPageSchema,
   walletEntryPageSchema,
@@ -25,6 +23,10 @@ import {
   type WalletSummary,
   type WalletWorkspaceData,
 } from "@/features/wallet/contracts/wallet.schema";
+import {
+  purchasesPageSchema,
+  purchaseDetailSchema,
+} from "../contracts/purchases.schema";
 import type { WalletCapabilities } from "@/features/wallet/policies/wallet.policy";
 import { CT, HTTP_METHODS } from "@/lib/api/http-contract";
 import { serverApiClient } from "@/server/api/edge-api-client";
@@ -117,13 +119,6 @@ export async function readWalletWorkspace(
       })
     : Promise.resolve(null);
 
-  const creditNoteInsightsPromise = input.capabilities.canReadCreditNoteOverview
-    ? creditNoteClient.request({
-        path: "/insights",
-        schema: creditNoteFinancialInsightsSchema.nullable(),
-      })
-    : Promise.resolve(null);
-
   const creditNoteTransactionsPromise =
     input.capabilities.canReadCreditNoteOverview &&
     input.capabilities.canReadEntries
@@ -166,38 +161,75 @@ export async function readWalletWorkspace(
       })
     : Promise.resolve(null);
 
+  const purchaseQuery = {
+    limit: CREDIT_NOTE_PURCHASE_INVOICE_PAGE_SIZE,
+    ...(input.query.purchaseCycleId
+      ? { cycleId: input.query.purchaseCycleId }
+      : {}),
+    ...(input.query.purchaseSource
+      ? { source: input.query.purchaseSource }
+      : {}),
+  };
   const creditNotePurchaseInvoicesPromise = input.capabilities
     .canReadCreditNotePurchaseInvoices
     ? creditNoteClient.request({
-        path: "/purchase-invoices",
+        path: "/purchases",
         query: {
-          limit: CREDIT_NOTE_PURCHASE_INVOICE_PAGE_SIZE,
-          ...(input.query.creditNoteInvoiceCursor !== undefined
+          ...purchaseQuery,
+          approvedOnly: input.query.purchaseApprovedOnly ?? "false",
+          ...(input.query.creditNoteInvoiceCursor
             ? { cursor: input.query.creditNoteInvoiceCursor }
             : {}),
         },
-        schema: creditNotePurchaseInvoicePageSchema,
+        schema: purchasesPageSchema,
       })
     : Promise.resolve(null);
+  const creditNotePurchaseActivityPromise = input.capabilities
+    .canReadCreditNotePurchaseInvoices
+    ? creditNoteClient.request({
+        path: "/purchases",
+        query: {
+          ...purchaseQuery,
+          approvedOnly: "true",
+          ...(input.query.creditNotePurchaseActivityCursor
+            ? { cursor: input.query.creditNotePurchaseActivityCursor }
+            : {}),
+        },
+        schema: purchasesPageSchema,
+      })
+    : Promise.resolve(null);
+  const creditNotePurchaseDetailPromise =
+    input.capabilities.canReadCreditNotePurchaseInvoices &&
+    input.query.purchaseCycleId &&
+    input.query.purchaseInvoiceId &&
+    input.query.purchaseInvoiceSource
+      ? creditNoteClient.request({
+          path: `/purchases/${input.query.purchaseInvoiceSource}/${input.query.purchaseInvoiceId}`,
+          query: { cycleId: input.query.purchaseCycleId },
+          schema: purchaseDetailSchema,
+        })
+      : Promise.resolve(null);
 
   const [
     entries,
     accruals,
     creditNoteOverview,
-    creditNoteInsights,
     creditNoteTransactions,
     creditNoteEarnings,
     creditNoteSettlements,
     creditNotePurchaseInvoices,
+    creditNotePurchaseActivity,
+    creditNotePurchaseDetail,
   ] = await Promise.all([
     entriesPromise,
     accrualsPromise,
     creditNoteOverviewPromise,
-    creditNoteInsightsPromise,
     creditNoteTransactionsPromise,
     creditNoteEarningsPromise,
     creditNoteSettlementsPromise,
     creditNotePurchaseInvoicesPromise,
+    creditNotePurchaseActivityPromise,
+    creditNotePurchaseDetailPromise,
   ]);
 
   return {
@@ -208,7 +240,8 @@ export async function readWalletWorkspace(
     accruals,
     creditNoteOverview,
     creditNotePurchaseInvoices,
-    creditNoteInsights,
+    creditNotePurchaseActivity,
+    creditNotePurchaseDetail,
     creditNoteTransactions,
     creditNoteEarnings,
     creditNoteSettlements,
@@ -246,6 +279,25 @@ export async function readWelfareInvoiceDocumentResponse(
       refreshOnUnauthorized: true,
       cache: "no-store",
       timeoutMs: 30_000,
+      accept: CT.PDF,
+    },
+  );
+}
+
+export async function readPurchaseDocumentResponse(input: {
+  source: "ZOHO" | "D2D";
+  invoiceId: string;
+  cycleId: string;
+  disposition: "inline" | "attachment";
+}): Promise<Response> {
+  return await serverApiClient.raw(
+    `${CREDIT_NOTE_ENDPOINTS.base}/purchases/${input.source}/${encodeURIComponent(input.invoiceId)}/document?cycleId=${encodeURIComponent(input.cycleId)}&disposition=${input.disposition}`,
+    {
+      method: HTTP_METHODS.GET,
+      auth: true,
+      refreshOnUnauthorized: true,
+      cache: "no-store",
+      timeoutMs: 120_000,
       accept: CT.PDF,
     },
   );

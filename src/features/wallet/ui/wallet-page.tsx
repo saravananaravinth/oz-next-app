@@ -1137,11 +1137,12 @@ export function WalletPage({
         <TabsContent value="credit-note" className="grid min-w-0 gap-4">
           <CreditNoteWorkspace
             overview={data.creditNoteOverview}
-            insights={data.creditNoteInsights}
             transactions={data.creditNoteTransactions}
             earnings={data.creditNoteEarnings}
             settlements={data.creditNoteSettlements}
             invoices={data.creditNotePurchaseInvoices}
+            purchaseActivity={data.creditNotePurchaseActivity}
+            purchaseDetail={data.creditNotePurchaseDetail}
             query={query}
             capabilities={capabilities}
           />

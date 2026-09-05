@@ -1,15 +1,24 @@
 // oz-next-app/src/features/wallet/ui/credit-note-workspace.tsx
 import Link from "next/link";
+import {
+  PurchaseInvoices,
+  PurchaseTable,
+  PurchaseEvidenceDetail,
+} from "./purchase-invoices";
+import { CreditNotePolicyGuide } from "./credit-note-policy-guide";
+import { purchaseCycleLink, walletQuery } from "../utils/purchase-links";
+import type {
+  PurchasePage,
+  PurchaseDetail,
+} from "../contracts/purchases.schema";
 import type { ReactElement } from "react";
 import {
   ArrowRight,
   BadgeIndianRupee,
   CalendarClock,
   CheckCircle2,
-  CircleGauge,
   Clock3,
-  Eye,
-  FileDown,
+  CircleGauge,
   Gift,
   Info,
   ReceiptText,
@@ -44,11 +53,8 @@ import { cn } from "@/lib/utils";
 import type {
   CreditNoteEarningHistory,
   CreditNoteEarningHistoryPage,
-  CreditNoteFinancialInsights,
   CreditNoteOfferStatus,
   CreditNoteOverview,
-  CreditNotePurchaseInvoice,
-  CreditNotePurchaseInvoicePage,
   CreditNoteSettlementHistory,
   CreditNoteSettlementHistoryPage,
   CreditNoteSettlementStatus,
@@ -61,11 +67,12 @@ import { formatMoney } from "@/features/wallet/utils/wallet-money";
 
 export type CreditNoteWorkspaceProps = Readonly<{
   overview: CreditNoteOverview | null;
-  insights: CreditNoteFinancialInsights | null;
   transactions: CreditNoteTransactionHistoryPage | null;
   earnings: CreditNoteEarningHistoryPage | null;
   settlements: CreditNoteSettlementHistoryPage | null;
-  invoices: CreditNotePurchaseInvoicePage | null;
+  invoices: PurchasePage | null;
+  purchaseActivity: PurchasePage | null;
+  purchaseDetail: PurchaseDetail | null;
   query: WalletSearchParams;
   capabilities: WalletCapabilities;
 }>;
@@ -139,29 +146,6 @@ function settlementStatusVariant(
     case "NO_BENEFIT":
       return "outline";
   }
-}
-
-function purchaseInvoiceStatusVariant(
-  invoice: CreditNotePurchaseInvoice,
-): BadgeProps["variant"] {
-  switch (invoice.eligibilityStatus) {
-    case "ELIGIBLE":
-      return "success";
-    case "RECONCILIATION_REQUIRED":
-      return "warning";
-    case "PENDING":
-      return "info";
-    case "EXCLUDED":
-      return "outline";
-  }
-}
-
-function purchaseInvoiceStatusLabel(
-  invoice: CreditNotePurchaseInvoice,
-): string {
-  return invoice.providerStatus === null
-    ? "Unknown"
-    : humanize(invoice.providerStatus);
 }
 
 function OpportunityBanner({
@@ -588,295 +572,6 @@ function SettlementCard({
   );
 }
 
-function documentHref(
-  invoiceProjectionId: string,
-  disposition: "inline" | "attachment",
-): string {
-  return `/api/credit-notes/invoices/${encodeURIComponent(invoiceProjectionId)}/document?disposition=${disposition}`;
-}
-
-function InvoiceActions({
-  invoice,
-  canReadDocuments,
-}: Readonly<{
-  invoice: CreditNotePurchaseInvoice;
-  canReadDocuments: boolean;
-}>): ReactElement | null {
-  if (!canReadDocuments) return null;
-
-  return (
-    <div className="flex items-center justify-end gap-1.5">
-      <Button asChild size="sm" variant="ghost">
-        <a
-          href={documentHref(invoice.invoiceProjectionId, "inline")}
-          target="_blank"
-          rel="noopener noreferrer"
-          aria-label={`View invoice ${invoice.invoiceNumber ?? invoice.providerInvoiceId}`}
-        >
-          <Eye aria-hidden="true" />
-          <span className="hidden xl:inline">View</span>
-        </a>
-      </Button>
-      <Button asChild size="sm" variant="outline">
-        <a
-          href={documentHref(invoice.invoiceProjectionId, "attachment")}
-          aria-label={`Download invoice ${invoice.invoiceNumber ?? invoice.providerInvoiceId}`}
-        >
-          <FileDown aria-hidden="true" />
-          <span className="hidden xl:inline">Download</span>
-        </a>
-      </Button>
-    </div>
-  );
-}
-
-function InvoiceCard({
-  invoice,
-  canReadDocuments,
-}: Readonly<{
-  invoice: CreditNotePurchaseInvoice;
-  canReadDocuments: boolean;
-}>): ReactElement {
-  return (
-    <Card className="border-border/70 shadow-none">
-      <CardContent className="grid gap-3 p-4">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <p className="truncate text-body-sm font-semibold text-foreground">
-              {invoice.invoiceNumber ?? "Zoho invoice"}
-            </p>
-            <p className="mt-0.5 truncate text-caption text-muted-readable">
-              {invoice.referenceNumber ??
-                invoice.locationName ??
-                "Provider-discovered invoice"}
-            </p>
-          </div>
-          <Badge variant={purchaseInvoiceStatusVariant(invoice)}>
-            {purchaseInvoiceStatusLabel(invoice)}
-          </Badge>
-        </div>
-        <div className="grid grid-cols-2 gap-3 text-caption">
-          <div>
-            <p className="text-muted-readable">Invoice date</p>
-            <p className="mt-0.5 font-medium text-foreground">
-              {invoice.invoiceDate === null
-                ? "Pending sync"
-                : formatDate(invoice.invoiceDate)}
-            </p>
-          </div>
-          <div>
-            <p className="text-muted-readable">Vehicles counted</p>
-            <p className="mt-0.5 font-medium text-foreground text-tabular">
-              {String(invoice.countedVehicleCount)} /{" "}
-              {String(invoice.vehicleCount)}
-            </p>
-          </div>
-          <div>
-            <p className="text-muted-readable">Invoice total</p>
-            <p className="mt-0.5 font-medium text-foreground text-tabular">
-              {invoice.total === null || invoice.currency === null
-                ? "—"
-                : formatMoney(invoice.total, invoice.currency)}
-            </p>
-          </div>
-          <div>
-            <p className="text-muted-readable">Provider status</p>
-            <p className="mt-0.5 font-medium text-foreground">
-              {invoice.providerStatus === null
-                ? "Unknown"
-                : humanize(invoice.providerStatus)}
-            </p>
-          </div>
-          <div>
-            <p className="text-muted-readable">Invoice location</p>
-            <p className="mt-0.5 font-medium text-foreground">
-              {invoice.locationName ?? invoice.locationId ?? "Not supplied"}
-            </p>
-          </div>
-          <div>
-            <p className="text-muted-readable">Eligibility</p>
-            <p className="mt-0.5 font-medium text-foreground">
-              {humanize(invoice.exclusionReason ?? invoice.eligibilityStatus)}
-            </p>
-          </div>
-        </div>
-        <InvoiceActions invoice={invoice} canReadDocuments={canReadDocuments} />
-      </CardContent>
-    </Card>
-  );
-}
-
-function invoicePaginationQuery(
-  query: WalletSearchParams,
-  cursor: string | null,
-): Record<string, string> {
-  const next: Record<string, string> = { tab: "credit-note" };
-  if (query.walletId !== undefined) next["walletId"] = query.walletId;
-  if (cursor !== null) next["creditNoteInvoiceCursor"] = cursor;
-  return next;
-}
-
-function PurchaseInvoices({
-  invoices,
-  query,
-  canReadDocuments,
-}: Readonly<{
-  invoices: CreditNotePurchaseInvoicePage | null;
-  query: WalletSearchParams;
-  canReadDocuments: boolean;
-}>): ReactElement {
-  if (invoices === null) {
-    return (
-      <ContentDataSurface
-        title="Zoho purchase invoices"
-        description="Purchase invoice visibility requires the Credit Note purchase-invoice permission."
-        padded
-      >
-        <ContentEmptyState
-          icon={<ReceiptText aria-hidden="true" />}
-          title="Purchase invoices are not available"
-          description="Your account can view Credit Note eligibility, but it does not currently have permission to inspect dealer purchase invoices."
-        />
-      </ContentDataSurface>
-    );
-  }
-
-  const footer =
-    query.creditNoteInvoiceCursor !== undefined ||
-    invoices.nextCursor !== null ? (
-      <div className="flex w-full items-center justify-between gap-3 px-4 py-3">
-        {query.creditNoteInvoiceCursor === undefined ? (
-          <Button variant="ghost" size="sm" disabled>
-            First page
-          </Button>
-        ) : (
-          <Button asChild variant="ghost" size="sm">
-            <Link
-              href={{
-                pathname: "/wallet",
-                query: invoicePaginationQuery(query, null),
-              }}
-              scroll={false}
-            >
-              First page
-            </Link>
-          </Button>
-        )}
-        {invoices.nextCursor === null ? (
-          <Button variant="outline" size="sm" disabled>
-            End of list
-          </Button>
-        ) : (
-          <Button asChild variant="outline" size="sm">
-            <Link
-              href={{
-                pathname: "/wallet",
-                query: invoicePaginationQuery(query, invoices.nextCursor),
-              }}
-              scroll={false}
-            >
-              Next invoices
-              <ArrowRight aria-hidden="true" />
-            </Link>
-          </Button>
-        )}
-      </div>
-    ) : undefined;
-
-  return (
-    <ContentDataSurface
-      title="Zoho purchase invoices"
-      description="Your purchase benefit includes eligible Zoho purchases and issued, non-cancelled dealer-to-dealer purchases, counting each VIN once per buyer per month. This table shows only Zoho Inventory FG/ invoices; qualifying Zoho states include DUE and OVERDUE."
-      padded={false}
-      className="min-w-0 overflow-hidden [&>[data-slot=card-footer]]:p-0"
-      footer={footer}
-    >
-      {invoices.items.length === 0 ? (
-        <div className="p-4 sm:p-6">
-          <ContentEmptyState
-            icon={<ReceiptText aria-hidden="true" />}
-            title="No purchase invoices yet"
-            description="Qualifying Zoho FG/ purchase invoices will appear here after synchronization and dealer mapping."
-          />
-        </div>
-      ) : (
-        <>
-          <div className="grid gap-3 p-3 md:hidden">
-            {invoices.items.map((invoice) => (
-              <InvoiceCard
-                key={invoice.invoiceProjectionId}
-                invoice={invoice}
-                canReadDocuments={canReadDocuments}
-              />
-            ))}
-          </div>
-          <div className="hidden overflow-x-auto md:block">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Invoice</TableHead>
-                  <TableHead className="text-center">Date</TableHead>
-                  <TableHead className="text-center">Zoho status</TableHead>
-                  <TableHead className="text-right">Vehicles</TableHead>
-                  <TableHead className="text-right">Invoice total</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {invoices.items.map((invoice) => (
-                  <TableRow key={invoice.invoiceProjectionId}>
-                    <TableCell>
-                      <div className="min-w-[12rem]">
-                        <p className="font-medium text-foreground">
-                          {invoice.invoiceNumber ?? "Zoho invoice"}
-                        </p>
-                        <p className="mt-0.5 text-caption text-muted-readable">
-                          {invoice.referenceNumber ??
-                            invoice.locationName ??
-                            "Provider-discovered invoice"}
-                        </p>
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-center text-tabular">
-                      {invoice.invoiceDate === null
-                        ? "—"
-                        : formatDate(invoice.invoiceDate)}
-                    </TableCell>
-                    <TableCell className="text-center">
-                      <Badge variant={purchaseInvoiceStatusVariant(invoice)}>
-                        {purchaseInvoiceStatusLabel(invoice)}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-right text-tabular">
-                      <span className="font-medium text-foreground">
-                        {String(invoice.countedVehicleCount)}
-                      </span>
-                      <span className="text-muted-readable">
-                        {` / ${String(invoice.vehicleCount)}`}
-                      </span>
-                    </TableCell>
-                    <TableCell className="text-right text-tabular">
-                      {invoice.total === null || invoice.currency === null
-                        ? "—"
-                        : formatMoney(invoice.total, invoice.currency)}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <InvoiceActions
-                        invoice={invoice}
-                        canReadDocuments={canReadDocuments}
-                      />
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        </>
-      )}
-    </ContentDataSurface>
-  );
-}
-
 type CreditNoteHistoryKind = "transactions" | "earnings" | "settlements";
 
 const MONTH_FORMATTER = new Intl.DateTimeFormat("en-IN", {
@@ -896,162 +591,6 @@ function formatOptionalDateTime(value: string | null): string {
 function signedPercent(value: string | null): string {
   if (value === null) return "—";
   return `${value.startsWith("-") ? "" : "+"}${value}%`;
-}
-
-type QualificationStatus =
-  CreditNoteFinancialInsights["qualification"]["status"] | "COMPLETE";
-
-function insightTone(
-  status: QualificationStatus,
-): "success" | "warning" | "info" | "default" {
-  switch (status) {
-    case "COMPLETE":
-    case "AHEAD":
-      return "success";
-    case "ON_TRACK":
-      return "info";
-    case "AT_RISK":
-      return "warning";
-    default:
-      return "default";
-  }
-}
-
-function qualificationSignal(
-  qualification:
-    | CreditNoteFinancialInsights["qualification"]
-    | { status: "COMPLETE"; paceDeltaPoints: number },
-): string {
-  if (qualification.status === "COMPLETE") return "Target achieved";
-  const delta = qualification.paceDeltaPoints;
-  const points = `${delta >= 0 ? "+" : ""}${String(delta)} pts`;
-  switch (qualification.status) {
-    case "AHEAD":
-      return `Ahead ${points}`;
-    case "ON_TRACK":
-      return `On track ${points}`;
-    case "AT_RISK":
-      return `Behind ${points}`;
-    default:
-      return "Target achieved";
-  }
-}
-
-function FinancialIntelligence({
-  insights,
-}: Readonly<{ insights: CreditNoteFinancialInsights | null }>): ReactElement {
-  if (insights === null) {
-    return (
-      <ContentStatus
-        variant="default"
-        icon={<CircleGauge aria-hidden="true" />}
-        title="Financial intelligence is building"
-        description="Current-cycle intelligence becomes available when the active Credit Note lifecycle is initialized. Historical records remain available below."
-      />
-    );
-  }
-
-  const reliability = insights.settlementReliability;
-  const trend = insights.earningTrend;
-  const trendValue =
-    trend.latestComparableAmount === null
-      ? "Building history"
-      : formatMoney(trend.latestComparableAmount, insights.currency);
-  const reliabilityValue =
-    reliability.successRatePercent === null
-      ? "Building history"
-      : `${String(reliability.successRatePercent)}%`;
-  const lag =
-    reliability.averageSettlementLagDays === null
-      ? "lag not available"
-      : `${reliability.averageSettlementLagDays.toFixed(1)} day avg lag`;
-
-  return (
-    <ContentDataSurface
-      title="Financial intelligence"
-      description="Deterministic decision signals derived from authoritative Credit Note lifecycle and wallet history. Forecast values are estimates, never ledger balances."
-      padded
-    >
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <ContentMetricCard
-          presentation="dashboard"
-          tone={insightTone(insights.qualification.status)}
-          label="Qualification pace"
-          value={
-            <span className="block truncate text-xl leading-tight font-semibold tracking-tight sm:text-2xl">
-              {qualificationSignal(insights.qualification)}
-            </span>
-          }
-          description={`${String(insights.qualification.progressPercent)}% progress vs ${String(insights.qualification.elapsedPercent)}% month elapsed · ${String(insights.qualification.vehiclesRemaining)} remaining`}
-          icon={<Target aria-hidden="true" />}
-        />
-        <ContentMetricCard
-          presentation="dashboard"
-          tone={
-            insights.offerProjection.confidence === "HIGH" ? "success" : "info"
-          }
-          label="Month-end earning estimate"
-          value={
-            <span className="block whitespace-nowrap text-xl leading-tight font-semibold tracking-tight text-tabular sm:text-2xl">
-              {formatMoney(
-                insights.offerProjection.projectedAmount,
-                insights.currency,
-              )}
-            </span>
-          }
-          description={`${String(insights.offerProjection.projectedVehicleCount)} projected vehicles · ${humanize(insights.offerProjection.confidence)} confidence`}
-          icon={<BadgeIndianRupee aria-hidden="true" />}
-        />
-        <ContentMetricCard
-          presentation="dashboard"
-          tone={
-            reliability.successRatePercent === null
-              ? "default"
-              : reliability.successRatePercent >= 95
-                ? "success"
-                : reliability.successRatePercent >= 80
-                  ? "info"
-                  : "warning"
-          }
-          label="Settlement reliability"
-          value={
-            <span className="block truncate text-xl leading-tight font-semibold tracking-tight sm:text-2xl">
-              {reliabilityValue}
-            </span>
-          }
-          description={`${String(reliability.settledCycles)} of ${String(reliability.observedCycles)} observed cycles settled · ${lag}`}
-          icon={<CheckCircle2 aria-hidden="true" />}
-        />
-        <ContentMetricCard
-          presentation="dashboard"
-          tone={
-            trend.direction === "DOWN"
-              ? "warning"
-              : trend.direction === "UP"
-                ? "success"
-                : "default"
-          }
-          label="Earning trend"
-          value={
-            <span className="block truncate text-xl leading-tight font-semibold tracking-tight text-tabular sm:text-2xl">
-              {trendValue}
-            </span>
-          }
-          description={
-            trend.monthOverMonthPercent === null
-              ? "Comparable finalized month is not available yet"
-              : `${signedPercent(trend.monthOverMonthPercent)} vs previous comparable month`
-          }
-          icon={<Trophy aria-hidden="true" />}
-        />
-      </div>
-      <p className="mt-3 text-caption text-muted-readable">
-        Projection confidence increases only as the offer month advances and
-        approved purchase evidence accumulates. Finalized cycle amounts and
-        posted wallet entries remain the financial source of truth.
-      </p>
-    </ContentDataSurface>
-  );
 }
 
 function earningStateVariant(
@@ -1096,7 +635,7 @@ function historyQuery(
   kind: CreditNoteHistoryKind,
   cursor: string | null,
 ): Record<string, string> {
-  const next: Record<string, string> = { tab: "credit-note" };
+  const next: Record<string, string> = walletQuery(query);
   if (query.walletId !== undefined) next["walletId"] = query.walletId;
   if (query.creditNoteInvoiceCursor !== undefined) {
     next["creditNoteInvoiceCursor"] = query.creditNoteInvoiceCursor;
@@ -1113,6 +652,9 @@ function historyQuery(
       ? cursor
       : (query.creditNoteSettlementCursor ?? null);
 
+  delete next["creditNoteTransactionCursor"];
+  delete next["creditNoteEarningCursor"];
+  delete next["creditNoteSettlementCursor"];
   if (transactionCursor !== null)
     next["creditNoteTransactionCursor"] = transactionCursor;
   if (earningCursor !== null) next["creditNoteEarningCursor"] = earningCursor;
@@ -1222,7 +764,7 @@ function TransactionHistory({
 
   return (
     <ContentDataSurface
-      title="Transaction history"
+      title="Wallet postings"
       description="Posted Credit Note wallet ledger activity. Entitlement credits and settlement debits are shown as separate auditable postings."
       padded={false}
       className="min-w-0 overflow-hidden [&>[data-slot=card-footer]]:p-0"
@@ -1249,7 +791,11 @@ function TransactionHistory({
         <>
           <div className="grid gap-3 p-3 md:hidden">
             {page.items.map((item) => (
-              <TransactionHistoryCard key={item.transactionId} item={item} />
+              <TransactionHistoryCard
+                key={item.transactionId}
+                item={item}
+                query={query}
+              />
             ))}
           </div>
           <div className="hidden overflow-x-auto md:block">
@@ -1288,8 +834,13 @@ function TransactionHistory({
                         className="block truncate font-medium text-foreground"
                         title={item.zohoCreditNoteNumber ?? item.cycleId}
                       >
-                        {item.zohoCreditNoteNumber ??
-                          `Cycle ${item.cycleId.slice(0, 8)}`}
+                        <Link
+                          className="underline underline-offset-4"
+                          href={purchaseCycleLink(query, item.cycleId)}
+                        >
+                          {item.zohoCreditNoteNumber ??
+                            `Cycle ${item.cycleId.slice(0, 8)}`}
+                        </Link>
                       </span>
                     </TableCell>
                     <TableCell className="whitespace-nowrap text-caption text-muted-readable">
@@ -1323,7 +874,11 @@ function TransactionHistory({
 
 function TransactionHistoryCard({
   item,
-}: Readonly<{ item: CreditNoteTransactionHistory }>): ReactElement {
+  query,
+}: Readonly<{
+  item: CreditNoteTransactionHistory;
+  query: WalletSearchParams;
+}>): ReactElement {
   return (
     <Card className="border-border/70 shadow-none">
       <CardContent className="grid gap-3 p-4">
@@ -1360,6 +915,12 @@ function TransactionHistoryCard({
             </p>
           </div>
         </div>
+        <Link
+          className="text-sm underline underline-offset-4"
+          href={purchaseCycleLink(query, item.cycleId)}
+        >
+          View supporting purchases
+        </Link>
       </CardContent>
     </Card>
   );
@@ -1401,7 +962,11 @@ function EarningHistory({
         <>
           <div className="grid gap-3 p-3 md:hidden">
             {page.items.map((item) => (
-              <EarningHistoryCard key={item.cycleId} item={item} />
+              <EarningHistoryCard
+                key={item.cycleId}
+                item={item}
+                query={query}
+              />
             ))}
           </div>
           <div className="hidden overflow-x-auto md:block">
@@ -1440,7 +1005,17 @@ function EarningHistory({
                       </span>
                     </TableCell>
                     <TableCell className="text-right font-medium text-tabular">
-                      {String(item.approvedPurchaseVehicleCount)}
+                      {item.approvedPurchaseVehicleCount > 0 ? (
+                        <Link
+                          className="underline underline-offset-4"
+                          href={purchaseCycleLink(query, item.cycleId)}
+                          aria-label={`View ${String(item.approvedPurchaseVehicleCount)} approved purchases for ${formatMonth(item.offerPeriodStart)}`}
+                        >
+                          {item.approvedPurchaseVehicleCount}
+                        </Link>
+                      ) : (
+                        "0"
+                      )}
                     </TableCell>
                     <TableCell className="text-right text-tabular">
                       {formatMoney(item.creditPerVehicle, item.currency)}
@@ -1471,7 +1046,11 @@ function EarningHistory({
 
 function EarningHistoryCard({
   item,
-}: Readonly<{ item: CreditNoteEarningHistory }>): ReactElement {
+  query,
+}: Readonly<{
+  item: CreditNoteEarningHistory;
+  query: WalletSearchParams;
+}>): ReactElement {
   return (
     <Card className="border-border/70 shadow-none">
       <CardContent className="grid gap-3 p-4">
@@ -1502,7 +1081,17 @@ function EarningHistoryCard({
           <div className="text-right">
             <p className="text-muted-readable">Approved purchases</p>
             <p className="mt-0.5 font-medium text-foreground text-tabular">
-              {String(item.approvedPurchaseVehicleCount)}
+              {item.approvedPurchaseVehicleCount > 0 ? (
+                <Link
+                  className="underline underline-offset-4"
+                  href={purchaseCycleLink(query, item.cycleId)}
+                  aria-label={`View ${String(item.approvedPurchaseVehicleCount)} approved purchases for ${formatMonth(item.offerPeriodStart)}`}
+                >
+                  {item.approvedPurchaseVehicleCount}
+                </Link>
+              ) : (
+                "0"
+              )}
             </p>
           </div>
           <div>
@@ -1748,11 +1337,12 @@ function DataFreshness({
 
 export function CreditNoteWorkspace({
   overview,
-  insights,
   transactions,
   earnings,
   settlements,
   invoices,
+  purchaseActivity,
+  purchaseDetail,
   query,
   capabilities,
 }: CreditNoteWorkspaceProps): ReactElement {
@@ -1779,7 +1369,12 @@ export function CreditNoteWorkspace({
         <>
           <CreditNoteHero overview={overview} />
           <CreditNoteMetrics overview={overview} />
-          <FinancialIntelligence insights={insights} />
+          <CreditNotePolicyGuide
+            overview={overview}
+            page={invoices}
+            query={query}
+          />
+
           <OpportunityBanner overview={overview} />
           <EligibilityTracker overview={overview} />
           <ProcessTimeline overview={overview} />
@@ -1787,16 +1382,86 @@ export function CreditNoteWorkspace({
         </>
       )}
 
-      {overview === null ? <FinancialIntelligence insights={insights} /> : null}
+      {overview === null ? (
+        <CreditNotePolicyGuide
+          overview={overview}
+          page={invoices}
+          query={query}
+        />
+      ) : null}
       <EarningHistory page={earnings} query={query} />
-      <SettlementHistory page={settlements} query={query} />
-      <TransactionHistory
-        page={transactions}
-        query={query}
-        canReadTransactions={capabilities.canReadEntries}
-      />
+      <section id="credit-note-settlements">
+        <SettlementHistory page={settlements} query={query} />
+      </section>
+      <section id="credit-note-transactions" className="min-w-0">
+        <ContentDataSurface
+          title="Transaction history"
+          description="Inspect approved purchase activity or posted wallet credits and debits."
+          padded={false}
+        >
+          <nav
+            aria-label="Transaction history views"
+            className="flex gap-2 border-b p-3"
+          >
+            {(
+              [
+                ["purchases", "Purchases"],
+                ["postings", "Wallet postings"],
+              ] as const
+            ).map(([value, label]) => (
+              <Button
+                key={value}
+                variant={
+                  (query.creditNoteActivityTab ?? "purchases") === value
+                    ? "default"
+                    : "outline"
+                }
+                size="sm"
+                asChild
+              >
+                <Link
+                  aria-current={
+                    (query.creditNoteActivityTab ?? "purchases") === value
+                      ? "page"
+                      : undefined
+                  }
+                  href={{
+                    pathname: "/wallet",
+                    query: {
+                      ...walletQuery(query),
+                      creditNoteActivityTab: value,
+                    },
+                    hash: "credit-note-transactions",
+                  }}
+                >
+                  {label}
+                </Link>
+              </Button>
+            ))}
+          </nav>
+          {query.creditNoteActivityTab === "postings" ? (
+            <TransactionHistory
+              page={transactions}
+              query={query}
+              canReadTransactions={capabilities.canReadEntries}
+            />
+          ) : (
+            <PurchaseTable
+              page={purchaseActivity}
+              query={query}
+              canReadDocuments={capabilities.canReadCreditNoteDocuments}
+              activity
+            />
+          )}
+        </ContentDataSurface>
+      </section>
       <PurchaseInvoices
-        invoices={invoices}
+        page={invoices}
+        query={query}
+        canReadDocuments={capabilities.canReadCreditNoteDocuments}
+      />
+      <PurchaseEvidenceDetail
+        detail={purchaseDetail}
         query={query}
         canReadDocuments={capabilities.canReadCreditNoteDocuments}
       />

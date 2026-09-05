@@ -1,3 +1,4 @@
+import type { PurchasePage, PurchaseDetail } from "./purchases.schema";
 // oz-next-app/src/features/wallet/contracts/wallet.schema.ts
 import { z } from "zod";
 
@@ -505,6 +506,16 @@ export const walletSearchParamsSchema = z
     entryCursor: optionalCursorQuerySchema,
     accrualCursor: optionalCursorQuerySchema,
     accrualStatus: welfareAccrualStatusSchema.optional(),
+    purchaseCycleId: optionalUuidQuerySchema,
+    purchaseSource: z.preprocess(
+      (value) => (value === "" ? undefined : value),
+      z.enum(["ZOHO", "D2D"]).optional(),
+    ),
+    purchaseApprovedOnly: z.enum(["true", "false"]).optional(),
+    purchaseInvoiceId: optionalUuidQuerySchema,
+    purchaseInvoiceSource: z.enum(["ZOHO", "D2D"]).optional(),
+    creditNoteActivityTab: z.enum(["purchases", "postings"]).optional(),
+    creditNotePurchaseActivityCursor: optionalCursorQuerySchema,
     creditNoteInvoiceCursor: optionalCursorQuerySchema,
     creditNoteTransactionCursor: optionalCursorQuerySchema,
     creditNoteEarningCursor: optionalCursorQuerySchema,
@@ -569,8 +580,9 @@ export type WalletWorkspaceData = Readonly<{
   entries: WalletEntryPageData | null;
   accruals: WelfareAccrualPageData | null;
   creditNoteOverview: CreditNoteOverview | null;
-  creditNotePurchaseInvoices: CreditNotePurchaseInvoicePage | null;
-  creditNoteInsights: CreditNoteFinancialInsights | null;
+  creditNotePurchaseInvoices: PurchasePage | null;
+  creditNotePurchaseActivity: PurchasePage | null;
+  creditNotePurchaseDetail: PurchaseDetail | null;
   creditNoteTransactions: CreditNoteTransactionHistoryPage | null;
   creditNoteEarnings: CreditNoteEarningHistoryPage | null;
   creditNoteSettlements: CreditNoteSettlementHistoryPage | null;
@@ -588,6 +600,15 @@ function singleSearchParam(
 
 export function parseWalletSearchParams(raw: WalletRawSearchParams) {
   return walletSearchParamsSchema.safeParse({
+    purchaseCycleId: singleSearchParam(raw["purchaseCycleId"]),
+    purchaseSource: singleSearchParam(raw["purchaseSource"]),
+    purchaseApprovedOnly: singleSearchParam(raw["purchaseApprovedOnly"]),
+    purchaseInvoiceId: singleSearchParam(raw["purchaseInvoiceId"]),
+    purchaseInvoiceSource: singleSearchParam(raw["purchaseInvoiceSource"]),
+    creditNoteActivityTab: singleSearchParam(raw["creditNoteActivityTab"]),
+    creditNotePurchaseActivityCursor: singleSearchParam(
+      raw["creditNotePurchaseActivityCursor"],
+    ),
     tab: singleSearchParam(raw["tab"]),
     walletId: singleSearchParam(raw["walletId"]),
     entryCursor: singleSearchParam(raw["entryCursor"]),
