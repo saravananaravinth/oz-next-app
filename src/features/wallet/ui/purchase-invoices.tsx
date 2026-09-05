@@ -177,10 +177,12 @@ export function PurchaseTable({
           role="status"
           className="m-4 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950"
         >
-          The recorded earning total does not match the available invoice
-          evidence. Showing {page.evidenceVehicleCount} evidenced vehicles.
-          Contact support to reconcile this cycle; the recorded amount has not
-          been changed.
+          The recorded earning total does not match the available saved
+          evidence. Saved evidence currently accounts for{" "}
+          {page.evidenceVehicleCount} vehicles and{" "}
+          {formatMoney(page.evidenceAmount, cycle.currency)}. Contact support to
+          reconcile this cycle; the recorded vehicle count and financial amount
+          have not been changed.
         </div>
       ) : null}
       {page.items.length === 0 ? (
@@ -204,12 +206,12 @@ export function PurchaseTable({
                   <h3 className="mt-2 font-semibold">
                     {invoice.invoiceNumber ?? "Invoice reference unavailable"}
                   </h3>
+                  <p className="text-xs text-muted-foreground">
+                    Source reference: {invoice.sourceInvoiceIdentifier}
+                  </p>
                   <p className="text-sm text-muted-foreground">
                     {invoiceDate(invoice.invoiceDate)} ·{" "}
-                    {invoice.seller ??
-                      (invoice.source === "ZOHO"
-                        ? "Zoho purchase"
-                        : "Seller unavailable")}
+                    {invoice.seller ?? "Seller unavailable"}
                   </p>
                 </div>
                 <dl className="grid grid-cols-2 gap-2 text-sm">
@@ -220,7 +222,8 @@ export function PurchaseTable({
                   <div>
                     <dt>Approved / total vehicles</dt>
                     <dd>
-                      {invoice.approvedVehicleCount} / {invoice.vehicleCount}
+                      {invoice.approvedVehicleCount} /{" "}
+                      {invoice.vehicleCount ?? "Unavailable"}
                     </dd>
                   </div>
                   <div>
@@ -276,14 +279,15 @@ export function PurchaseTable({
                       <p className="text-xs text-muted-foreground">
                         {invoiceDate(invoice.invoiceDate)}
                       </p>
+                      <p
+                        className="max-w-56 truncate text-xs text-muted-foreground"
+                        title={invoice.sourceInvoiceIdentifier}
+                      >
+                        Source reference: {invoice.sourceInvoiceIdentifier}
+                      </p>
                     </TableCell>
                     <TableCell>
-                      <p>
-                        {invoice.seller ??
-                          (invoice.source === "ZOHO"
-                            ? "Zoho purchase"
-                            : "Seller unavailable")}
-                      </p>
+                      <p>{invoice.seller ?? "Seller unavailable"}</p>
                       <Badge variant="outline">
                         {sourceLabel(invoice.source)}
                       </Badge>
@@ -293,7 +297,8 @@ export function PurchaseTable({
                       <CountExplanation invoice={invoice} />
                     </TableCell>
                     <TableCell className="text-right">
-                      {invoice.approvedVehicleCount} / {invoice.vehicleCount}
+                      {invoice.approvedVehicleCount} /{" "}
+                      {invoice.vehicleCount ?? "Unavailable"}
                     </TableCell>
                     <TableCell className="text-right whitespace-nowrap">
                       {invoice.total === null
@@ -402,7 +407,7 @@ export function PurchaseInvoices({
                 defaultValue={page.cycle?.cycleId ?? ""}
                 className={selectClass}
               >
-                <option value="">Current offer</option>
+                <option value="">Active offer</option>
                 {page.cycles.map((cycle) => (
                   <option key={cycle.cycleId} value={cycle.cycleId}>
                     {purchaseMonth(cycle.offerStart)}
@@ -471,6 +476,10 @@ export function PurchaseEvidenceDetail({
             canReadDocuments={canReadDocuments}
           />
         </div>
+        <div className="mb-3 grid gap-1 text-sm text-muted-foreground">
+          <p>Source reference: {detail.invoice.sourceInvoiceIdentifier}</p>
+          <p>Seller: {detail.invoice.seller ?? "Seller unavailable"}</p>
+        </div>
         <CountExplanation invoice={detail.invoice} />
         {detail.vehicles.length === 0 ? (
           <p className="text-sm text-muted-foreground">
@@ -478,32 +487,61 @@ export function PurchaseEvidenceDetail({
             earnings.
           </p>
         ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Approved VIN</TableHead>
-                <TableHead>Evidence state</TableHead>
-                <TableHead className="text-right">
-                  Credit contribution
-                </TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
+          <>
+            <div className="grid gap-2 md:hidden">
               {detail.vehicles.map((vehicle, index) => (
-                <TableRow key={`${vehicle.vin ?? "missing"}:${String(index)}`}>
-                  <TableCell className="font-mono">
+                <article
+                  key={`${vehicle.vin ?? "missing"}:${String(index)}`}
+                  className="grid gap-2 rounded-lg border p-3"
+                >
+                  <p className="break-all font-mono text-sm">
                     {vehicle.vin ?? "VIN unavailable in saved evidence"}
-                  </TableCell>
-                  <TableCell>
-                    {vehicle.finalized ? "Finalized" : "Accruing"}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    {formatMoney(vehicle.contribution, detail.cycle.currency)}
-                  </TableCell>
-                </TableRow>
+                  </p>
+                  <div className="flex items-center justify-between gap-3 text-sm">
+                    <Badge variant="outline">
+                      {vehicle.finalized ? "Finalized" : "Accruing"}
+                    </Badge>
+                    <span className="font-semibold text-tabular">
+                      {formatMoney(vehicle.contribution, detail.cycle.currency)}
+                    </span>
+                  </div>
+                </article>
               ))}
-            </TableBody>
-          </Table>
+            </div>
+            <div className="hidden overflow-x-auto md:block">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Approved VIN</TableHead>
+                    <TableHead>Evidence state</TableHead>
+                    <TableHead className="text-right">
+                      Credit contribution
+                    </TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {detail.vehicles.map((vehicle, index) => (
+                    <TableRow
+                      key={`${vehicle.vin ?? "missing"}:${String(index)}`}
+                    >
+                      <TableCell className="font-mono">
+                        {vehicle.vin ?? "VIN unavailable in saved evidence"}
+                      </TableCell>
+                      <TableCell>
+                        {vehicle.finalized ? "Finalized" : "Accruing"}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {formatMoney(
+                          vehicle.contribution,
+                          detail.cycle.currency,
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </>
         )}
         <p className="mt-3 text-xs text-muted-foreground">
           Counts and credit contributions use saved cycle evidence. Invoice

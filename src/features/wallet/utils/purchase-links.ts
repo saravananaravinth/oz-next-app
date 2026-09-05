@@ -7,6 +7,7 @@ export function walletQuery(query: WalletSearchParams): Record<string, string> {
     ),
   );
 }
+
 export function purchaseCycleLink(query: WalletSearchParams, cycleId: string) {
   const next = walletQuery(query);
   delete next["creditNoteInvoiceCursor"];
@@ -18,6 +19,18 @@ export function purchaseCycleLink(query: WalletSearchParams, cycleId: string) {
   delete next["purchaseSource"];
   return { pathname: "/wallet", query: next, hash: "purchase-invoices" };
 }
+
+export function creditNoteActivityLink(
+  query: WalletSearchParams,
+  tab: "purchases" | "postings",
+) {
+  const next = walletQuery(query);
+  delete next["creditNotePurchaseActivityCursor"];
+  delete next["creditNoteTransactionCursor"];
+  next["creditNoteActivityTab"] = tab;
+  return { pathname: "/wallet", query: next, hash: "credit-note-transactions" };
+}
+
 export function purchaseDocumentHref(
   cycleId: string,
   source: "ZOHO" | "D2D",

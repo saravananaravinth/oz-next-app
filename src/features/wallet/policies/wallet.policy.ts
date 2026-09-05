@@ -64,6 +64,9 @@ export function resolveWalletAccess(me: MeResponse): WalletAccess {
   }
 
   const permissions = effectivePermissions(me);
+  const canReadCreditNotePurchaseInvoices = permissions.has(
+    PERMISSION.CREDIT_NOTE_PURCHASE_INVOICE_READ,
+  );
   const capabilities = {
     canViewWallets: permissions.has(PERMISSION.WALLET_READ),
     canReadEntries: permissions.has(PERMISSION.WALLET_ENTRY_READ),
@@ -71,12 +74,10 @@ export function resolveWalletAccess(me: MeResponse): WalletAccess {
     canReadCreditNoteOverview: permissions.has(
       PERMISSION.CREDIT_NOTE_ELIGIBILITY_READ,
     ),
-    canReadCreditNotePurchaseInvoices: permissions.has(
-      PERMISSION.CREDIT_NOTE_PURCHASE_INVOICE_READ,
-    ),
-    canReadCreditNoteDocuments: permissions.has(
-      PERMISSION.CREDIT_NOTE_PURCHASE_INVOICE_DOCUMENT_READ,
-    ),
+    canReadCreditNotePurchaseInvoices,
+    canReadCreditNoteDocuments:
+      canReadCreditNotePurchaseInvoices &&
+      permissions.has(PERMISSION.CREDIT_NOTE_PURCHASE_INVOICE_DOCUMENT_READ),
   } satisfies WalletCapabilities;
 
   return {

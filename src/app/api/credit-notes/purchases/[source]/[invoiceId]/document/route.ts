@@ -1,4 +1,4 @@
-// oz-next-app/src/app/api/credit-notes/invoices/[invoiceProjectionId]/document/route.ts
+// oz-next-app/src/app/api/credit-notes/purchases/[source]/[invoiceId]/document/route.ts
 import "server-only";
 
 import type { NextRequest } from "next/server";
@@ -99,6 +99,7 @@ export async function GET(
   const access = resolveWalletAccess(me);
   if (
     access.kind === "forbidden" ||
+    !access.capabilities.canReadCreditNotePurchaseInvoices ||
     !access.capabilities.canReadCreditNoteDocuments
   ) {
     return problemResponse({
@@ -146,7 +147,7 @@ export async function GET(
       contentDisposition,
     )
       ? contentDisposition
-      : `${query.data.disposition}; filename="zoho-invoice.pdf"`;
+      : `${query.data.disposition}; filename="purchase-invoice.pdf"`;
     const requestId = upstream.headers.get("x-request-id")?.trim() ?? "";
     const headers = new Headers({
       "Cache-Control": NO_STORE,

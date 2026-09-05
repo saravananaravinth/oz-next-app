@@ -6,7 +6,11 @@ import {
   PurchaseEvidenceDetail,
 } from "./purchase-invoices";
 import { CreditNotePolicyGuide } from "./credit-note-policy-guide";
-import { purchaseCycleLink, walletQuery } from "../utils/purchase-links";
+import {
+  creditNoteActivityLink,
+  purchaseCycleLink,
+  walletQuery,
+} from "../utils/purchase-links";
 import type {
   PurchasePage,
   PurchaseDetail,
@@ -14,7 +18,6 @@ import type {
 import type { ReactElement } from "react";
 import {
   ArrowRight,
-  BadgeIndianRupee,
   CalendarClock,
   CheckCircle2,
   Clock3,
@@ -33,7 +36,6 @@ import {
 import {
   ContentDataSurface,
   ContentEmptyState,
-  ContentMetricCard,
   ContentStatus,
 } from "@/components/common/content-shell";
 import { Badge, type BadgeProps } from "@/components/ui/badge";
@@ -250,79 +252,13 @@ function CreditNoteHero({
               aria-hidden="true"
             />
             <span>
-              Offer closes {formatDate(overview.offer.closesAt)}. Final
-              settlement is scheduled in {overview.settlement.period.label}.
+              Offer closes {formatDate(overview.offer.closesAt)}. The configured
+              settlement period is {overview.settlement.period.label}.
             </span>
           </div>
         </div>
       </CardContent>
     </Card>
-  );
-}
-
-function CreditNoteMetrics({
-  overview,
-}: Readonly<{ overview: CreditNoteOverview }>): ReactElement {
-  return (
-    <section
-      aria-labelledby="credit-note-performance-summary-title"
-      className="grid min-w-0 gap-3"
-    >
-      <div className="min-w-0 px-0.5">
-        <h2
-          id="credit-note-performance-summary-title"
-          className="text-card-title"
-        >
-          Credit Note performance summary
-        </h2>
-        <p className="text-caption text-muted-readable">
-          Current benefit, offer accrual, qualification progress, and lifetime
-          settlement.
-        </p>
-      </div>
-
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <ContentMetricCard
-          presentation="dashboard"
-          tone="info"
-          label="Pending Credit Note"
-          value={formatMoney(
-            overview.unsettledCreditNoteBalance,
-            overview.currency,
-          )}
-          description="Awaiting settlement"
-          icon={<BadgeIndianRupee aria-hidden="true" />}
-        />
-        <ContentMetricCard
-          presentation="dashboard"
-          tone={overview.offer.isActive ? "success" : "default"}
-          label="Current offer earned"
-          value={formatMoney(overview.offer.accruedAmount, overview.currency)}
-          description={`${String(overview.offer.approvedPurchaseVehicleCount)} approved vehicles`}
-          icon={<ShoppingCart aria-hidden="true" />}
-        />
-        <ContentMetricCard
-          presentation="dashboard"
-          tone={overview.performance.targetAchieved ? "success" : "warning"}
-          label="Next offer progress"
-          value={`${String(overview.performance.eligibleRetailVehicleCount)} / ${String(overview.performance.targetRetailVehicleCount)}`}
-          description={
-            overview.performance.targetAchieved
-              ? "Target achieved"
-              : `${String(overview.performance.vehiclesRemaining)} remaining`
-          }
-          icon={<Target aria-hidden="true" />}
-        />
-        <ContentMetricCard
-          presentation="dashboard"
-          tone="success"
-          label="Lifetime settled"
-          value={formatMoney(overview.lifetimeSettledAmount, overview.currency)}
-          description="Provider settled"
-          icon={<Trophy aria-hidden="true" />}
-        />
-      </div>
-    </section>
   );
 }
 
@@ -452,11 +388,11 @@ function ProcessTimeline({
     },
     {
       title: "3. Credit Note settlement",
-      period: formatDate(overview.settlement.period.start),
+      period: overview.settlement.period.label,
       description:
         overview.settlement.status === "SETTLED"
           ? `Settled as ${overview.settlement.zohoCreditNoteNumber ?? "Zoho Credit Note"}.`
-          : `Finalized benefit is scheduled for settlement on ${formatDate(overview.settlement.period.start)}.`,
+          : `Finalized benefit is processed during the configured ${overview.settlement.period.label} settlement period. Current status: ${humanize(overview.settlement.status)}.`,
       icon: <ReceiptText aria-hidden="true" />,
       complete: overview.settlement.status === "SETTLED",
     },
@@ -929,9 +865,11 @@ function TransactionHistoryCard({
 function EarningHistory({
   page,
   query,
+  canReadPurchases,
 }: Readonly<{
   page: CreditNoteEarningHistoryPage | null;
   query: WalletSearchParams;
+  canReadPurchases: boolean;
 }>): ReactElement {
   return (
     <ContentDataSurface
@@ -966,6 +904,7 @@ function EarningHistory({
                 key={item.cycleId}
                 item={item}
                 query={query}
+                canReadPurchases={canReadPurchases}
               />
             ))}
           </div>
@@ -1005,7 +944,8 @@ function EarningHistory({
                       </span>
                     </TableCell>
                     <TableCell className="text-right font-medium text-tabular">
-                      {item.approvedPurchaseVehicleCount > 0 ? (
+                      {item.approvedPurchaseVehicleCount > 0 &&
+                      canReadPurchases ? (
                         <Link
                           className="underline underline-offset-4"
                           href={purchaseCycleLink(query, item.cycleId)}
@@ -1014,7 +954,7 @@ function EarningHistory({
                           {item.approvedPurchaseVehicleCount}
                         </Link>
                       ) : (
-                        "0"
+                        item.approvedPurchaseVehicleCount
                       )}
                     </TableCell>
                     <TableCell className="text-right text-tabular">
@@ -1047,9 +987,11 @@ function EarningHistory({
 function EarningHistoryCard({
   item,
   query,
+  canReadPurchases,
 }: Readonly<{
   item: CreditNoteEarningHistory;
   query: WalletSearchParams;
+  canReadPurchases: boolean;
 }>): ReactElement {
   return (
     <Card className="border-border/70 shadow-none">
@@ -1081,7 +1023,7 @@ function EarningHistoryCard({
           <div className="text-right">
             <p className="text-muted-readable">Approved purchases</p>
             <p className="mt-0.5 font-medium text-foreground text-tabular">
-              {item.approvedPurchaseVehicleCount > 0 ? (
+              {item.approvedPurchaseVehicleCount > 0 && canReadPurchases ? (
                 <Link
                   className="underline underline-offset-4"
                   href={purchaseCycleLink(query, item.cycleId)}
@@ -1090,7 +1032,7 @@ function EarningHistoryCard({
                   {item.approvedPurchaseVehicleCount}
                 </Link>
               ) : (
-                "0"
+                item.approvedPurchaseVehicleCount
               )}
             </p>
           </div>
@@ -1346,126 +1288,146 @@ export function CreditNoteWorkspace({
   query,
   capabilities,
 }: CreditNoteWorkspaceProps): ReactElement {
-  if (!capabilities.canReadCreditNoteOverview) {
+  const canReadOverview = capabilities.canReadCreditNoteOverview;
+  const canReadPurchases = capabilities.canReadCreditNotePurchaseInvoices;
+  const canReadPostings = canReadOverview && capabilities.canReadEntries;
+
+  if (!canReadOverview && !canReadPurchases) {
     return (
       <ContentEmptyState
         icon={<ReceiptText aria-hidden="true" />}
         title="Credit Note access is not enabled"
-        description="Your dealer account does not currently have Credit Note eligibility access. Contact Ozotec support if you expect this workspace."
+        description="Your dealer account does not currently have Credit Note eligibility or purchase-invoice access. Contact Ozotec support if you expect this workspace."
       />
     );
   }
 
+  const requestedActivityTab = query.creditNoteActivityTab ?? "purchases";
+  const activityTab =
+    requestedActivityTab === "postings" && canReadPostings
+      ? "postings"
+      : requestedActivityTab === "purchases" && canReadPurchases
+        ? "purchases"
+        : canReadPurchases
+          ? "purchases"
+          : "postings";
+  const activityTabs = [
+    ...(canReadPurchases ? [["purchases", "Purchases"] as const] : []),
+    ...(canReadPostings ? [["postings", "Wallet postings"] as const] : []),
+  ];
+
   return (
     <div className="grid min-w-0 gap-4">
-      {overview === null ? (
-        <ContentStatus
-          variant="warning"
-          icon={<TriangleAlert aria-hidden="true" />}
-          title="Credit Note eligibility is being prepared"
-          description="The current monthly Credit Note cycle is not available yet. Historical earnings, settlements, and posted transactions remain readable below. No projected amount is treated as a financial entitlement."
-        />
-      ) : (
-        <>
-          <CreditNoteHero overview={overview} />
-          <CreditNoteMetrics overview={overview} />
-          <CreditNotePolicyGuide
-            overview={overview}
-            page={invoices}
-            query={query}
+      {canReadOverview ? (
+        overview === null ? (
+          <ContentStatus
+            variant="warning"
+            icon={<TriangleAlert aria-hidden="true" />}
+            title="Credit Note eligibility is being prepared"
+            description="The current monthly Credit Note cycle is not available yet. Historical earnings, settlements, and posted transactions remain readable below. No projected amount is treated as a financial entitlement."
           />
-
-          <OpportunityBanner overview={overview} />
-          <EligibilityTracker overview={overview} />
-          <ProcessTimeline overview={overview} />
-          <SettlementCard overview={overview} />
-        </>
+        ) : (
+          <>
+            <CreditNoteHero overview={overview} />
+            <OpportunityBanner overview={overview} />
+            <EligibilityTracker overview={overview} />
+            <ProcessTimeline overview={overview} />
+            <SettlementCard overview={overview} />
+          </>
+        )
+      ) : (
+        <ContentStatus
+          variant="default"
+          icon={<ShoppingCart aria-hidden="true" />}
+          title="Purchase invoice access enabled"
+          description="You can inspect Credit Note purchase evidence independently of wallet-ledger and eligibility-summary permissions."
+        />
       )}
 
-      {overview === null ? (
-        <CreditNotePolicyGuide
-          overview={overview}
-          page={invoices}
-          query={query}
-        />
+      <CreditNotePolicyGuide
+        overview={canReadOverview ? overview : null}
+        page={canReadPurchases ? invoices : null}
+        query={query}
+        canReadPurchases={canReadPurchases}
+        canReadSettlements={canReadOverview}
+      />
+
+      {canReadOverview ? (
+        <>
+          <EarningHistory
+            page={earnings}
+            query={query}
+            canReadPurchases={canReadPurchases}
+          />
+          <section id="credit-note-settlements">
+            <SettlementHistory page={settlements} query={query} />
+          </section>
+        </>
       ) : null}
-      <EarningHistory page={earnings} query={query} />
-      <section id="credit-note-settlements">
-        <SettlementHistory page={settlements} query={query} />
-      </section>
-      <section id="credit-note-transactions" className="min-w-0">
-        <ContentDataSurface
-          title="Transaction history"
-          description="Inspect approved purchase activity or posted wallet credits and debits."
-          padded={false}
-        >
-          <nav
-            aria-label="Transaction history views"
-            className="flex gap-2 border-b p-3"
+
+      {activityTabs.length > 0 ? (
+        <section id="credit-note-transactions" className="min-w-0">
+          <ContentDataSurface
+            title="Transaction history"
+            description="Inspect approved purchase activity or posted wallet credits and debits according to your permissions."
+            padded={false}
           >
-            {(
-              [
-                ["purchases", "Purchases"],
-                ["postings", "Wallet postings"],
-              ] as const
-            ).map(([value, label]) => (
-              <Button
-                key={value}
-                variant={
-                  (query.creditNoteActivityTab ?? "purchases") === value
-                    ? "default"
-                    : "outline"
-                }
-                size="sm"
-                asChild
-              >
-                <Link
-                  aria-current={
-                    (query.creditNoteActivityTab ?? "purchases") === value
-                      ? "page"
-                      : undefined
-                  }
-                  href={{
-                    pathname: "/wallet",
-                    query: {
-                      ...walletQuery(query),
-                      creditNoteActivityTab: value,
-                    },
-                    hash: "credit-note-transactions",
-                  }}
+            <nav
+              aria-label="Transaction history views"
+              className="flex gap-2 border-b p-3"
+            >
+              {activityTabs.map(([value, label]) => (
+                <Button
+                  key={value}
+                  variant={activityTab === value ? "default" : "outline"}
+                  size="sm"
+                  asChild
                 >
-                  {label}
-                </Link>
-              </Button>
-            ))}
-          </nav>
-          {query.creditNoteActivityTab === "postings" ? (
-            <TransactionHistory
-              page={transactions}
-              query={query}
-              canReadTransactions={capabilities.canReadEntries}
-            />
-          ) : (
-            <PurchaseTable
-              page={purchaseActivity}
-              query={query}
-              canReadDocuments={capabilities.canReadCreditNoteDocuments}
-              activity
-            />
-          )}
-        </ContentDataSurface>
-      </section>
-      <PurchaseInvoices
-        page={invoices}
-        query={query}
-        canReadDocuments={capabilities.canReadCreditNoteDocuments}
-      />
-      <PurchaseEvidenceDetail
-        detail={purchaseDetail}
-        query={query}
-        canReadDocuments={capabilities.canReadCreditNoteDocuments}
-      />
-      {overview === null ? null : <DataFreshness overview={overview} />}
+                  <Link
+                    aria-current={activityTab === value ? "page" : undefined}
+                    href={creditNoteActivityLink(query, value)}
+                  >
+                    {label}
+                  </Link>
+                </Button>
+              ))}
+            </nav>
+            {activityTab === "postings" ? (
+              <TransactionHistory
+                page={transactions}
+                query={query}
+                canReadTransactions={canReadPostings}
+              />
+            ) : (
+              <PurchaseTable
+                page={purchaseActivity}
+                query={query}
+                canReadDocuments={capabilities.canReadCreditNoteDocuments}
+                activity
+              />
+            )}
+          </ContentDataSurface>
+        </section>
+      ) : null}
+
+      {canReadPurchases ? (
+        <>
+          <PurchaseInvoices
+            page={invoices}
+            query={query}
+            canReadDocuments={capabilities.canReadCreditNoteDocuments}
+          />
+          <PurchaseEvidenceDetail
+            detail={purchaseDetail}
+            query={query}
+            canReadDocuments={capabilities.canReadCreditNoteDocuments}
+          />
+        </>
+      ) : null}
+
+      {canReadOverview && overview !== null ? (
+        <DataFreshness overview={overview} />
+      ) : null}
     </div>
   );
 }
