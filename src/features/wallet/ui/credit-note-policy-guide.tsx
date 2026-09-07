@@ -1,10 +1,13 @@
+import type { ReactElement } from "react";
 import Link from "next/link";
-import { BookOpen } from "lucide-react";
-
 import {
-  ContentDataSurface,
-  ContentStatus,
-} from "@/components/common/content-shell";
+  CalendarClock,
+  CheckCircle2,
+  ReceiptText,
+  ShoppingCart,
+  Target,
+} from "lucide-react";
+
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 
@@ -15,6 +18,13 @@ import type {
 } from "../contracts/wallet.schema";
 import { purchaseCycleLink } from "../utils/purchase-links";
 import { formatMoney } from "../utils/wallet-money";
+import {
+  CreditNoteInset,
+  CreditNoteMetric,
+  CreditNoteMetricGrid,
+  CreditNoteSection,
+  CreditNoteToolbar,
+} from "./credit-note-ui";
 import { purchaseMonth } from "./purchase-invoices";
 
 const DATE_FORMATTER = new Intl.DateTimeFormat("en-IN", {
@@ -36,6 +46,20 @@ function humanize(value: string): string {
     .join(" ");
 }
 
+function settlementStatusLabel(status: string): string {
+  switch (status) {
+    case "BLOCKED_PROVIDER_CONFIGURATION":
+      return "Setup required";
+    case "RECONCILIATION_REQUIRED":
+      return "Review required";
+    case "ADJUSTMENT_REQUIRED":
+      return "Adjustment required";
+    case "POSTING":
+      return "Processing";
+    default:
+      return humanize(status);
+  }
+}
 export function CreditNotePolicyGuide({
   overview,
   page,
@@ -48,12 +72,12 @@ export function CreditNotePolicyGuide({
   query: WalletSearchParams;
   canReadPurchases: boolean;
   canReadSettlements: boolean;
-}) {
+}): ReactElement {
   const selected = page?.cycle;
   const qualification = overview?.offer.qualificationPerformance;
   const cycle =
     selected ??
-    (overview && qualification
+    (overview !== null && qualification !== undefined
       ? {
           cycleId: overview.cycleId,
           performanceStart: qualification.period.start,
@@ -77,14 +101,17 @@ export function CreditNotePolicyGuide({
         }
       : null);
 
-  if (!cycle) {
+  if (cycle === null) {
     return (
-      <ContentStatus
-        variant="default"
-        icon={<BookOpen aria-hidden="true" />}
+      <CreditNoteSection
         title="Your credit-note policy"
-        description="Your target, purchase benefit and settlement months will appear when a credit-note cycle is available."
-      />
+        description="Your cycle-specific target and purchase benefit will appear when a Credit Note cycle is available."
+        icon={<ReceiptText aria-hidden="true" />}
+      >
+        <CreditNoteInset className="text-body-sm text-muted-readable">
+          No policy cycle is available for this view.
+        </CreditNoteInset>
+      </CreditNoteSection>
     );
   }
 
@@ -92,133 +119,147 @@ export function CreditNotePolicyGuide({
     0,
     cycle.retailTargetCount - cycle.retailSaleCount,
   );
-  const next =
-    overview !== null && overview.cycleId === cycle.cycleId
-      ? overview.nextOfferPerformance
-      : null;
+  const selectedMonth = purchaseMonth(cycle.offerStart);
+  const currentCycleSelected = overview?.cycleId === cycle.cycleId;
 
   return (
-    <ContentDataSurface
+    <CreditNoteSection
       title="Your credit-note policy"
-      description={`Rules recorded for the ${purchaseMonth(cycle.offerStart)} purchase month`}
-      padded
+      description={`Rules recorded for the ${selectedMonth} purchase month.`}
+      icon={<ReceiptText aria-hidden="true" />}
+      actions={
+        <CreditNoteToolbar>
+          <Badge variant={cycle.qualified ? "success" : "warning"}>
+            {cycle.qualified ? "Qualified" : "Not qualified"}
+          </Badge>
+          <Badge variant="outline">
+            {settlementStatusLabel(cycle.settlementStatus)}
+          </Badge>
+        </CreditNoteToolbar>
+      }
     >
-      <div className="mb-4 flex flex-wrap gap-2">
-        <Badge variant="outline">Offer: {humanize(cycle.offerStatus)}</Badge>
-        <Badge variant="outline">
-          Settlement: {humanize(cycle.settlementStatus)}
-        </Badge>
-      </div>
+      <div className="grid gap-4">
+        <CreditNoteMetricGrid>
+          <CreditNoteMetric
+            icon={<Target aria-hidden="true" />}
+            tone={cycle.qualified ? "success" : "warning"}
+            label={`Qualify in ${purchaseMonth(cycle.performanceStart)}`}
+            value={`${String(cycle.retailSaleCount)} / ${String(cycle.retailTargetCount)}`}
+            caption={
+              cycle.qualified
+                ? "Retail target achieved"
+                : `${String(remaining)} vehicle${remaining === 1 ? "" : "s"} remaining`
+            }
+          />
+          <CreditNoteMetric
+            icon={<ShoppingCart aria-hidden="true" />}
+            tone="primary"
+            label={`Earn in ${selectedMonth}`}
+            value={`${String(cycle.approvedVehicleCount)} approved`}
+            caption={`${formatMoney(cycle.creditPerVehicle, cycle.currency)} per eligible vehicle`}
+          />
+          <CreditNoteMetric
+            icon={<ReceiptText aria-hidden="true" />}
+            tone="info"
+            label="Recorded earning"
+            value={formatMoney(cycle.amount, cycle.currency)}
+            caption={
+              cycle.finalized
+                ? "Finalized cycle evidence"
+                : "Current cycle evidence"
+            }
+            emphasis
+          />
+          <CreditNoteMetric
+            icon={<CalendarClock aria-hidden="true" />}
+            tone="default"
+            label={`Settlement in ${purchaseMonth(cycle.settlementStart)}`}
+            value={settlementStatusLabel(cycle.settlementStatus)}
+            caption={`Configured through ${inclusivePeriodEnd(cycle.settlementEndExclusive)}`}
+          />
+        </CreditNoteMetricGrid>
 
-      <ol className="grid gap-3 md:grid-cols-3">
-        <li className="rounded-xl border bg-muted/20 p-4">
-          <h3 className="font-semibold">
-            1. Qualify in {purchaseMonth(cycle.performanceStart)}
-          </h3>
-          <p className="mt-2 text-sm">
-            Sell {cycle.retailTargetCount} eligible retail vehicles by{" "}
-            {inclusivePeriodEnd(cycle.performanceEndExclusive)}.
-          </p>
-          <p className="mt-2 text-sm font-medium">
-            {cycle.retailSaleCount} / {cycle.retailTargetCount} achieved ·{" "}
-            {cycle.qualified
-              ? "Target achieved"
-              : `${String(remaining)} short of the target`}
-          </p>
-        </li>
+        <CreditNoteInset>
+          <div className="grid gap-3">
+            <div>
+              <p className="text-card-title text-foreground">
+                Which purchases count?
+              </p>
+              <p className="mt-0.5 text-caption text-muted-readable">
+                Eligibility is evaluated from saved cycle evidence.
+              </p>
+            </div>
+            <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+              {[
+                "Issued company purchase invoices",
+                "Issued, non-cancelled dealer-to-dealer invoices",
+                "Each normalized VIN counts once per buyer and purchase month",
+                "Finalized evidence remains authoritative after later source changes",
+              ].map((rule) => (
+                <div
+                  key={rule}
+                  className="flex items-start gap-2 rounded-xl border border-border/60 bg-background/55 px-3 py-2.5 text-caption text-foreground"
+                >
+                  <CheckCircle2
+                    aria-hidden="true"
+                    className="mt-0.5 size-4 shrink-0 text-success"
+                  />
+                  <span>{rule}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </CreditNoteInset>
 
-        <li className="rounded-xl border bg-muted/20 p-4">
-          <h3 className="font-semibold">
-            2. Earn on {purchaseMonth(cycle.offerStart)} purchases
-          </h3>
-          <p className="mt-2 text-sm">
-            When this cycle is qualified, each eligible purchased vehicle can
-            contribute {formatMoney(cycle.creditPerVehicle, cycle.currency)}.
-          </p>
-          <p className="mt-2 text-sm font-medium text-tabular">
-            {cycle.approvedVehicleCount} approved ×{" "}
-            {formatMoney(cycle.creditPerVehicle, cycle.currency)} ={" "}
-            {formatMoney(cycle.amount, cycle.currency)}{" "}
-            {cycle.finalized ? "finalized" : "accruing"}
-          </p>
-          <p className="mt-2 text-xs text-muted-foreground">
-            Purchase period: {purchaseMonth(cycle.offerStart)} through{" "}
-            {inclusivePeriodEnd(cycle.offerEndExclusive)}.
-          </p>
-        </li>
-
-        <li className="rounded-xl border bg-muted/20 p-4">
-          <h3 className="font-semibold">
-            3. Settlement in {purchaseMonth(cycle.settlementStart)}
-          </h3>
-          <p className="mt-2 text-sm">
-            After the purchase period closes, the saved cycle evidence is
-            finalized and processed during the configured settlement period.
-            Accruing earnings are not yet a posted wallet credit.
-          </p>
-          <p className="mt-2 text-sm">
-            Configured settlement period ends{" "}
-            {inclusivePeriodEnd(cycle.settlementEndExclusive)}. The recorded
-            settlement status is {humanize(cycle.settlementStatus)}; this period
-            is not a guaranteed payment date.
-          </p>
-        </li>
-      </ol>
-
-      <div className="mt-4 rounded-lg border p-4">
-        <h3 className="font-semibold">Which purchases count?</h3>
-        <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-muted-foreground">
-          <li>
-            Eligible Zoho purchase invoices beginning with FG/ and issued,
-            non-cancelled dealer-to-dealer invoices bought by your dealership.
-          </li>
-          <li>
-            Each normalized VIN counts once per buying dealer per purchase
-            month, even when it appears in both invoice sources.
-          </li>
-          <li>
-            D2D purchases do not require delivery confirmation or full payment.
-            Self-sales and missing or invalid VIN evidence do not qualify.
-          </li>
-          <li>
-            Invoice dates determine the purchase month. Before finalization,
-            later source changes can affect accruals; after finalization, the
-            persisted cycle evidence remains the authoritative earning record.
-          </li>
-        </ul>
-      </div>
-
-      {next ? (
-        <div className="mt-4 rounded-lg border border-dashed p-4 text-sm">
-          <h3 className="font-semibold">
-            Progress toward the next offer · {next.period.label}
-          </h3>
-          <p className="mt-1">
-            This is separate from the {purchaseMonth(cycle.offerStart)} earning
-            offer above. {next.eligibleRetailVehicleCount} /{" "}
-            {next.targetRetailVehicleCount} eligible retail vehicles are
-            recorded for the next qualification period.
-            {next.targetAchieved
-              ? " The next target is already achieved."
-              : ` ${String(next.vehiclesRemaining)} more are required to reach the target.`}
-          </p>
-        </div>
-      ) : null}
-
-      <div className="mt-4 flex flex-wrap gap-2">
-        {canReadPurchases ? (
-          <Button variant="outline" size="sm" asChild>
-            <Link href={purchaseCycleLink(query, cycle.cycleId)}>
-              View approved purchases
-            </Link>
-          </Button>
+        {currentCycleSelected ? (
+          <CreditNoteInset className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0">
+              <p className="font-semibold text-foreground">
+                Next offer progress ·{" "}
+                {overview.nextOfferPerformance.period.label}
+              </p>
+              <p className="mt-0.5 text-caption text-muted-readable">
+                {String(
+                  overview.nextOfferPerformance.eligibleRetailVehicleCount,
+                )}{" "}
+                /{" "}
+                {String(overview.nextOfferPerformance.targetRetailVehicleCount)}{" "}
+                eligible retail vehicles ·{" "}
+                {String(overview.nextOfferPerformance.vehiclesRemaining)}{" "}
+                remaining
+              </p>
+            </div>
+            <Badge
+              variant={
+                overview.nextOfferPerformance.targetAchieved
+                  ? "success"
+                  : "outline"
+              }
+            >
+              {String(overview.nextOfferPerformance.progressPercent)}%
+            </Badge>
+          </CreditNoteInset>
         ) : null}
-        {canReadSettlements ? (
-          <Button variant="ghost" size="sm" asChild>
-            <a href="#credit-note-settlements">View settlement history</a>
-          </Button>
+
+        {canReadPurchases || canReadSettlements ? (
+          <div className="flex flex-wrap gap-2">
+            {canReadPurchases ? (
+              <Button asChild size="sm" variant="outline">
+                <Link href={purchaseCycleLink(query, cycle.cycleId)}>
+                  View approved purchases
+                </Link>
+              </Button>
+            ) : null}
+            {canReadSettlements ? (
+              <Button asChild size="sm" variant="ghost">
+                <Link href="#credit-note-settlements">
+                  View settlement history
+                </Link>
+              </Button>
+            ) : null}
+          </div>
         ) : null}
       </div>
-    </ContentDataSurface>
+    </CreditNoteSection>
   );
 }

@@ -12,6 +12,8 @@ const DEFAULT_OUTPUT_DIRECTORY = "bundles";
 
 const MANIFEST_FILE_NAME = "oz-next-app-bundles.manifest.json";
 
+const BUNDLE_RELATIVE_PATH_HEADER_PREFIX = `#!${EXPECTED_REPOSITORY_NAME}/`;
+
 /**
  * These are generated artifacts and must never become inputs to another
  * generated bundle.
@@ -334,6 +336,80 @@ function comparePaths(left, right) {
 
 function normalizeRepositoryPath(path) {
   return path.replaceAll("\\", "/");
+}
+
+function assertCanonicalRepositoryRelativePath(path) {
+  const normalized = normalizeRepositoryPath(path);
+
+  if (normalized.length === 0) {
+    throw new Error("Repository-relative path must not be empty.");
+  }
+
+  if (normalized.startsWith("/")) {
+    throw new Error(`Repository-relative path must not be absolute: ${path}`);
+  }
+
+  const segments = normalized.split("/");
+
+  if (
+    segments.some(
+      (segment) => segment.length === 0 || segment === "." || segment === "..",
+    )
+  ) {
+    throw new Error(`Repository-relative path is not canonical: ${path}`);
+  }
+
+  return normalized;
+}
+
+function relativePathHeaderFor(repositoryPath) {
+  const normalized = assertCanonicalRepositoryRelativePath(repositoryPath);
+
+  return `${BUNDLE_RELATIVE_PATH_HEADER_PREFIX}${normalized}`;
+}
+
+/**
+ * Every embedded source file starts with a canonical bundle-only relative-path
+ * marker:
+ *
+ *   #!oz-next-app/<repository-relative-path>
+ *
+ * The source repository is not rewritten. This keeps JSON, JSONC, YAML,
+ * Markdown, CSS, and other source formats valid in Git while making every
+ * bundled file independently location-aware.
+ *
+ * If a tracked source already contains an oz-next-app marker, it must match
+ * its real Git path. A stale marker is treated as an integrity failure.
+ */
+function withRelativePathHeader(repositoryPath, sourceContent) {
+  const expectedHeader = relativePathHeaderFor(repositoryPath);
+  const firstLineBreak = sourceContent.indexOf("\n");
+  const firstLine =
+    firstLineBreak === -1
+      ? sourceContent
+      : sourceContent.slice(0, firstLineBreak);
+
+  if (firstLine === expectedHeader) {
+    return sourceContent;
+  }
+
+  if (firstLine.startsWith(BUNDLE_RELATIVE_PATH_HEADER_PREFIX)) {
+    throw new Error(
+      `Tracked file "${repositoryPath}" contains stale relative-path ` +
+        `header "${firstLine}". Expected "${expectedHeader}".`,
+    );
+  }
+
+  if (/^#!oz-[A-Za-z0-9._-]+\//u.test(firstLine)) {
+    throw new Error(
+      `Tracked file "${repositoryPath}" contains a relative-path header ` +
+        `for another repository: "${firstLine}".`,
+    );
+  }
+
+  return sourceContent.length === 0
+    ? expectedHeader
+    : `${expectedHeader}\n${sourceContent}`;
 }
 
 function isGeneratedBundlePath(path) {
@@ -727,7 +803,11 @@ function renderFileSection(definition, repositoryPath) {
 
   const relativePath = bundleRelativePath(definition, repositoryPath);
 
-  const content = normalizeTextContent(readFileSync(repositoryPath, "utf8"));
+  const sourceContent = normalizeTextContent(
+    readFileSync(repositoryPath, "utf8"),
+  );
+
+  const content = withRelativePathHeader(repositoryPath, sourceContent);
 
   const fence = markdownFenceFor(content);
 
@@ -827,11 +907,16 @@ function main() {
   }
 
   const manifest = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     repository: EXPECTED_REPOSITORY_NAME,
     head,
     commitTimestamp,
     trackedFileCount: trackedFiles.length,
+    contentFileHeader: {
+      required: true,
+      format: `#!${EXPECTED_REPOSITORY_NAME}/<repository-relative-path>`,
+      scope: "embedded-content-files",
+    },
     bundles: bundleResults,
   };
 
@@ -853,6 +938,7 @@ function main() {
       `HEAD:       ${head}`,
       `Commit:     ${commitTimestamp}`,
       `Tracked:    ${trackedFiles.length} files`,
+      `Path header: #!${EXPECTED_REPOSITORY_NAME}/<repository-relative-path>`,
       "",
     ].join("\n"),
   );

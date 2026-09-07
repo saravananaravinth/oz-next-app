@@ -115,10 +115,13 @@ function metrics(
   return [
     {
       id: "new-leads",
-      label: "New vehicle leads",
+      label: "Total vehicle leads",
       value: formatDashboardInteger(current.newLeads.value),
-      description: `${current.newLeads.averagePerDay.toFixed(1)} average per day`,
-      help: "Vehicle-sales leads created in the selected period. The trend compares the same metric with the configured comparison period.",
+      description:
+        current.statusCounts === undefined
+          ? `${current.newLeads.averagePerDay.toFixed(1)} average per day`
+          : `${formatDashboardInteger(current.statusCounts["OPEN"] ?? 0)} open · ${formatDashboardInteger(current.statusCounts["NO_RESPONSE"] ?? 0)} no response · ${formatDashboardInteger(current.statusCounts["CANCELLED"] ?? 0)} cancelled`,
+      help: "All vehicle-sales leads created in the selected period, including no-response and cancelled leads unless a status filter is selected. Repeat calls update existing leads.",
       icon: <Users aria-hidden="true" className="size-5" />,
       tone: "info",
       trend: {

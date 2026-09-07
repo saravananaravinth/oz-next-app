@@ -444,9 +444,9 @@ export function EngagementDashboardFilters({
         <div className="grid w-full min-w-0 gap-1.5 sm:w-[11.5rem] sm:flex-none">
           <FieldLabel
             htmlFor="engagement-from"
-            help="First day included in every dashboard metric and table."
+            help="First lead creation date included. Repeat calls do not change the creation date."
           >
-            From
+            Created from
           </FieldLabel>
           <Input
             id="engagement-from"
@@ -467,9 +467,9 @@ export function EngagementDashboardFilters({
         <div className="grid w-full min-w-0 gap-1.5 sm:w-[11.5rem] sm:flex-none">
           <FieldLabel
             htmlFor="engagement-to"
-            help="Last day included in the selected cohort and operational view."
+            help="Last lead creation date included in the selected cohort."
           >
-            To
+            Created to
           </FieldLabel>
           <Input
             id="engagement-to"

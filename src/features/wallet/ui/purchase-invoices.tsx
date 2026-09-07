@@ -1,12 +1,15 @@
+import type { ReactElement } from "react";
 import Link from "next/link";
-import { ShoppingCart } from "lucide-react";
 import {
-  ContentDataSurface,
-  ContentEmptyState,
-  ContentStatus,
-} from "@/components/common/content-shell";
-import { Button } from "@/components/ui/button";
+  Download,
+  Eye,
+  FileSearch,
+  ReceiptText,
+  ShoppingCart,
+} from "lucide-react";
+
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Table,
   TableBody,
@@ -15,48 +18,65 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+
 import type {
   PurchaseDetail,
   PurchaseInvoice,
   PurchasePage,
 } from "../contracts/purchases.schema";
 import type { WalletSearchParams } from "../contracts/wallet.schema";
-import { formatMoney } from "../utils/wallet-money";
 import { purchaseDocumentHref, walletQuery } from "../utils/purchase-links";
+import { formatMoney } from "../utils/wallet-money";
+import {
+  CreditNoteInset,
+  CreditNoteMobileList,
+  CreditNoteSection,
+  CreditNoteTableViewport,
+  CreditNoteToolbar,
+} from "./credit-note-ui";
 
-export const purchaseMonth = (date: string) =>
+export const purchaseMonth = (date: string): string =>
   new Intl.DateTimeFormat("en-IN", {
     month: "long",
     year: "numeric",
     timeZone: "Asia/Kolkata",
   }).format(new Date(`${date}T00:00:00+05:30`));
-const invoiceDate = (date: string) =>
+
+const invoiceDate = (date: string): string =>
   new Intl.DateTimeFormat("en-IN", {
     dateStyle: "medium",
     timeZone: "Asia/Kolkata",
   }).format(new Date(`${date}T00:00:00+05:30`));
-const sourceLabel = (source: PurchaseInvoice["source"]) =>
-  source === "D2D" ? "Dealer-to-dealer" : "Zoho";
+
+function purchaseTypeLabel(source: PurchaseInvoice["source"]): string {
+  return source === "D2D" ? "Dealer-to-dealer" : "Company purchase";
+}
+
+function friendlyExclusionReason(reason: string): string {
+  const normalized = reason.replaceAll("_", " ").toLowerCase();
+  return `${normalized.charAt(0).toUpperCase()}${normalized.slice(1)}`;
+}
 
 function InvoiceActions({
   invoice,
   cycleId,
   query,
   canReadDocuments,
-}: {
+}: Readonly<{
   invoice: PurchaseInvoice;
   cycleId: string;
   query: WalletSearchParams;
   canReadDocuments: boolean;
-}) {
+}>): ReactElement {
   const detailQuery = {
     ...walletQuery(query),
     purchaseCycleId: cycleId,
     purchaseInvoiceId: invoice.invoiceId,
     purchaseInvoiceSource: invoice.source,
   };
+
   return (
-    <div className="flex flex-wrap gap-2">
+    <div className="flex flex-wrap items-center gap-1.5">
       <Button variant="outline" size="sm" asChild>
         <Link
           href={{
@@ -65,60 +85,64 @@ function InvoiceActions({
             hash: "purchase-detail",
           }}
         >
+          <FileSearch aria-hidden="true" className="size-4" />
           Details
         </Link>
       </Button>
-      {canReadDocuments ? (
-        invoice.pdfAvailable ? (
-          <>
-            <Button variant="outline" size="sm" asChild>
-              <a
-                href={purchaseDocumentHref(
-                  cycleId,
-                  invoice.source,
-                  invoice.invoiceId,
-                  "inline",
-                )}
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                View PDF<span className="sr-only"> (opens in a new tab)</span>
-              </a>
-            </Button>
-            <Button variant="ghost" size="sm" asChild>
-              <a
-                href={purchaseDocumentHref(
-                  cycleId,
-                  invoice.source,
-                  invoice.invoiceId,
-                  "attachment",
-                )}
-              >
-                Download
-              </a>
-            </Button>
-          </>
-        ) : (
-          <span className="self-center text-sm text-muted-foreground">
-            PDF unavailable
-          </span>
-        )
+      {canReadDocuments && invoice.pdfAvailable ? (
+        <>
+          <Button variant="outline" size="sm" asChild>
+            <a
+              href={purchaseDocumentHref(
+                cycleId,
+                invoice.source,
+                invoice.invoiceId,
+                "inline",
+              )}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <Eye aria-hidden="true" className="size-4" />
+              View PDF<span className="sr-only"> (opens in a new tab)</span>
+            </a>
+          </Button>
+          <Button variant="ghost" size="sm" asChild>
+            <a
+              href={purchaseDocumentHref(
+                cycleId,
+                invoice.source,
+                invoice.invoiceId,
+                "attachment",
+              )}
+              aria-label={`Download invoice ${invoice.invoiceNumber ?? "document"}`}
+            >
+              <Download aria-hidden="true" className="size-4" />
+              <span className="hidden xl:inline">Download</span>
+            </a>
+          </Button>
+        </>
+      ) : canReadDocuments ? (
+        <Badge variant="outline">PDF unavailable</Badge>
       ) : null}
     </div>
   );
 }
 
-function CountExplanation({ invoice }: { invoice: PurchaseInvoice }) {
-  return (
-    <div className="text-xs text-muted-foreground">
-      {!invoice.sourceAvailable
-        ? "Original invoice unavailable; saved earning evidence is shown."
-        : invoice.exclusionReason
-          ? `${invoice.exclusionReason.replaceAll("_", " ").toLowerCase()}${invoice.approvedVehicleCount > 0 ? "; saved cycle evidence retained" : ""}`
-          : invoice.approvedVehicleCount === 0
-            ? "Not included in this cycle’s recorded earnings. Qualification, VIN eligibility and reconciliation determine the approved count."
-            : null}
-    </div>
+function CountExplanation({
+  invoice,
+}: Readonly<{ invoice: PurchaseInvoice }>): ReactElement | null {
+  const explanation = !invoice.sourceAvailable
+    ? "Original invoice unavailable; saved earning evidence is retained."
+    : invoice.exclusionReason !== null
+      ? `${friendlyExclusionReason(invoice.exclusionReason)}${invoice.approvedVehicleCount > 0 ? "; saved cycle evidence retained." : "."}`
+      : invoice.approvedVehicleCount === 0
+        ? "Not included in this cycle’s recorded earnings."
+        : null;
+
+  return explanation === null ? null : (
+    <p className="mt-1 text-caption leading-5 text-muted-readable">
+      {explanation}
+    </p>
   );
 }
 
@@ -127,117 +151,156 @@ export function PurchaseTable({
   query,
   canReadDocuments,
   activity = false,
-}: {
+}: Readonly<{
   page: PurchasePage | null;
   query: WalletSearchParams;
   canReadDocuments: boolean;
   activity?: boolean;
-}) {
-  if (page === null)
+}>): ReactElement {
+  if (page === null) {
     return (
-      <ContentStatus
-        variant="default"
-        icon={<ShoppingCart aria-hidden="true" />}
-        title="Purchase details are not available"
-        description="Your account needs purchase invoice access to view supporting invoices."
-      />
+      <div className="p-4 sm:p-5">
+        <CreditNoteInset className="flex items-start gap-3">
+          <ShoppingCart
+            aria-hidden="true"
+            className="mt-0.5 size-5 shrink-0 text-muted-readable"
+          />
+          <div>
+            <p className="font-semibold text-foreground">
+              Purchase details are not available
+            </p>
+            <p className="mt-1 text-caption text-muted-readable">
+              Purchase invoice access is required to inspect supporting
+              evidence.
+            </p>
+          </div>
+        </CreditNoteInset>
+      </div>
     );
+  }
+
   const cycle = page.cycle;
-  if (cycle === null)
+  if (cycle === null) {
     return (
-      <ContentEmptyState
-        icon={<ShoppingCart aria-hidden="true" />}
-        title="No purchase cycle selected"
-        description="Select a historical purchase month above when the current offer is not yet available."
-      />
+      <div className="p-4 sm:p-5">
+        <CreditNoteInset className="text-body-sm text-muted-readable">
+          No purchase cycle is selected for this view.
+        </CreditNoteInset>
+      </div>
     );
+  }
+
   const cursorKey = activity
     ? "creditNotePurchaseActivityCursor"
     : "creditNoteInvoiceCursor";
-  const next = walletQuery(query);
-  next["purchaseCycleId"] = cycle.cycleId;
-  const first = Object.fromEntries(
-    Object.entries(next).filter(([key]) => key !== cursorKey),
+  const nextQuery = walletQuery(query);
+  nextQuery["purchaseCycleId"] = cycle.cycleId;
+  const firstQuery = Object.fromEntries(
+    Object.entries(nextQuery).filter(([key]) => key !== cursorKey),
   );
-  if (page.nextCursor) next[cursorKey] = page.nextCursor;
+
+  if (page.nextCursor !== null) {
+    nextQuery[cursorKey] = page.nextCursor;
+  }
+
+  const targetHash = activity
+    ? "credit-note-transactions"
+    : "purchase-invoices";
+
   return (
     <div className="min-w-0">
-      <div className="border-b px-4 py-3 text-sm text-muted-foreground">
-        {purchaseMonth(cycle.offerStart)} · {cycle.approvedVehicleCount}{" "}
-        approved vehicles · {formatMoney(cycle.amount, cycle.currency)}{" "}
-        {cycle.finalized ? "finalized" : "accruing"}
-        <p className="mt-1 text-xs">
-          {cycle.reconciledAt
-            ? `Evidence updated ${new Date(cycle.reconciledAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}`
-            : "Purchase evidence has not been reconciled yet."}
-        </p>
+      <div className="flex flex-col gap-2 border-b border-border/65 bg-muted/20 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+        <div className="min-w-0">
+          <p className="text-body-sm font-semibold text-foreground">
+            {purchaseMonth(cycle.offerStart)}
+          </p>
+          <p className="mt-0.5 text-caption text-muted-readable">
+            {String(cycle.approvedVehicleCount)} approved ·{" "}
+            {formatMoney(cycle.amount, cycle.currency)}{" "}
+            {cycle.finalized ? "finalized" : "accruing"}
+          </p>
+        </div>
+        <Badge variant={cycle.finalized ? "success" : "info"}>
+          {cycle.reconciledAt !== null
+            ? "Evidence synced"
+            : "Awaiting evidence"}
+        </Badge>
       </div>
+
       {!page.evidenceConsistent ? (
-        <div
-          role="status"
-          className="m-4 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950"
-        >
-          The recorded earning total does not match the available saved
-          evidence. Saved evidence currently accounts for{" "}
-          {page.evidenceVehicleCount} vehicles and{" "}
-          {formatMoney(page.evidenceAmount, cycle.currency)}. Contact support to
-          reconcile this cycle; the recorded vehicle count and financial amount
-          have not been changed.
+        <div className="p-4 sm:p-5">
+          <CreditNoteInset className="border-warning/30 bg-warning/[0.06]">
+            <p className="font-semibold text-warning-foreground">
+              Historical evidence needs reconciliation
+            </p>
+            <p className="mt-1 text-caption text-muted-readable">
+              Saved evidence accounts for {String(page.evidenceVehicleCount)}{" "}
+              vehicles and {formatMoney(page.evidenceAmount, cycle.currency)}.
+              Recorded financial totals remain unchanged.
+            </p>
+          </CreditNoteInset>
         </div>
       ) : null}
+
       {page.items.length === 0 ? (
-        <div className="p-4">
-          <ContentEmptyState
-            icon={<ShoppingCart aria-hidden="true" />}
-            title="No purchases match this view"
-            description="Try another purchase month or clear the filters. Only purchases included in recorded cycle earnings appear as approved."
-          />
+        <div className="grid min-h-44 place-items-center p-5 text-center">
+          <div className="max-w-md">
+            <span className="mx-auto grid size-11 place-items-center rounded-2xl border border-border/65 bg-muted/35 text-muted-readable">
+              <ShoppingCart aria-hidden="true" className="size-5" />
+            </span>
+            <p className="mt-3 font-semibold text-foreground">
+              No purchases match this view
+            </p>
+            <p className="mt-1 text-caption text-muted-readable">
+              Choose another month or adjust the purchase filters.
+            </p>
+          </div>
         </div>
       ) : (
         <>
-          <div className="grid gap-3 p-3 md:hidden">
+          <CreditNoteMobileList>
             {page.items.map((invoice) => (
               <article
                 key={`${invoice.source}:${invoice.invoiceId}`}
-                className="grid gap-3 rounded-lg border p-4"
+                className="grid gap-3 rounded-2xl border border-border/65 bg-background/45 p-4 shadow-xs transition-[transform,border-color,box-shadow] duration-300 ease-enterprise hover:-translate-y-0.5 hover:border-primary/25 hover:shadow-sm motion-reduce:transform-none motion-reduce:transition-none"
               >
-                <div>
-                  <Badge variant="outline">{sourceLabel(invoice.source)}</Badge>
-                  <h3 className="mt-2 font-semibold">
-                    {invoice.invoiceNumber ?? "Invoice reference unavailable"}
-                  </h3>
-                  <p className="text-xs text-muted-foreground">
-                    Source reference: {invoice.sourceInvoiceIdentifier}
-                  </p>
-                  <p className="text-sm text-muted-foreground">
-                    {invoiceDate(invoice.invoiceDate)} ·{" "}
-                    {invoice.seller ?? "Seller unavailable"}
-                  </p>
-                </div>
-                <dl className="grid grid-cols-2 gap-2 text-sm">
-                  <div>
-                    <dt>Status</dt>
-                    <dd>{invoice.status ?? "Unavailable"}</dd>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="truncate font-semibold text-foreground">
+                      {invoice.invoiceNumber ?? "Invoice reference unavailable"}
+                    </p>
+                    <p className="mt-0.5 text-caption text-muted-readable">
+                      {invoiceDate(invoice.invoiceDate)} ·{" "}
+                      {invoice.seller ?? "Seller unavailable"}
+                    </p>
                   </div>
-                  <div>
-                    <dt>Approved / total vehicles</dt>
-                    <dd>
-                      {invoice.approvedVehicleCount} /{" "}
-                      {invoice.vehicleCount ?? "Unavailable"}
+                  <Badge variant="outline">
+                    {invoice.status ?? "Unavailable"}
+                  </Badge>
+                </div>
+
+                <dl className="grid grid-cols-2 gap-2 text-caption">
+                  <div className="rounded-xl bg-muted/35 p-2.5">
+                    <dt className="text-muted-readable">Approved / total</dt>
+                    <dd className="mt-0.5 font-semibold text-foreground text-tabular">
+                      {String(invoice.approvedVehicleCount)} /{" "}
+                      {invoice.vehicleCount === null
+                        ? "—"
+                        : String(invoice.vehicleCount)}
                     </dd>
                   </div>
-                  <div>
-                    <dt>Invoice total</dt>
-                    <dd>
+                  <div className="rounded-xl bg-muted/35 p-2.5 text-right">
+                    <dt className="text-muted-readable">Credit contribution</dt>
+                    <dd className="mt-0.5 font-semibold text-foreground text-tabular">
+                      {formatMoney(invoice.contribution, cycle.currency)}
+                    </dd>
+                  </div>
+                  <div className="col-span-2 rounded-xl bg-muted/35 p-2.5">
+                    <dt className="text-muted-readable">Invoice total</dt>
+                    <dd className="mt-0.5 font-medium text-foreground text-tabular">
                       {invoice.total === null
                         ? "Unavailable"
                         : formatMoney(invoice.total, invoice.currency)}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt>Credit contribution</dt>
-                    <dd className="font-semibold">
-                      {formatMoney(invoice.contribution, cycle.currency)}
                     </dd>
                   </div>
                 </dl>
@@ -250,17 +313,16 @@ export function PurchaseTable({
                 />
               </article>
             ))}
-          </div>
-          <div className="hidden overflow-x-auto md:block">
-            <Table>
+          </CreditNoteMobileList>
+
+          <CreditNoteTableViewport>
+            <Table className="min-w-[78rem]">
               <TableHeader>
                 <TableRow>
                   <TableHead>Invoice</TableHead>
-                  <TableHead>Seller / source</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">
-                    Approved / total vehicles
-                  </TableHead>
+                  <TableHead>Seller</TableHead>
+                  <TableHead className="text-center">Status</TableHead>
+                  <TableHead className="text-right">Approved / total</TableHead>
                   <TableHead className="text-right">Invoice total</TableHead>
                   <TableHead className="text-right">
                     Credit contribution
@@ -272,40 +334,43 @@ export function PurchaseTable({
                 {page.items.map((invoice) => (
                   <TableRow key={`${invoice.source}:${invoice.invoiceId}`}>
                     <TableCell>
-                      <p className="font-medium">
+                      <p className="font-medium text-foreground">
                         {invoice.invoiceNumber ??
                           "Invoice reference unavailable"}
                       </p>
-                      <p className="text-xs text-muted-foreground">
+                      <p className="mt-0.5 text-caption text-muted-readable">
                         {invoiceDate(invoice.invoiceDate)}
                       </p>
-                      <p
-                        className="max-w-56 truncate text-xs text-muted-foreground"
-                        title={invoice.sourceInvoiceIdentifier}
-                      >
-                        Source reference: {invoice.sourceInvoiceIdentifier}
-                      </p>
-                    </TableCell>
-                    <TableCell>
-                      <p>{invoice.seller ?? "Seller unavailable"}</p>
-                      <Badge variant="outline">
-                        {sourceLabel(invoice.source)}
-                      </Badge>
                     </TableCell>
                     <TableCell className="max-w-64">
-                      <p>{invoice.status ?? "Unavailable"}</p>
+                      <p
+                        className="truncate"
+                        title={invoice.seller ?? undefined}
+                      >
+                        {invoice.seller ?? "Seller unavailable"}
+                      </p>
+                      <p className="mt-0.5 text-caption text-muted-readable">
+                        {purchaseTypeLabel(invoice.source)}
+                      </p>
+                    </TableCell>
+                    <TableCell className="max-w-72 text-center">
+                      <Badge variant="outline">
+                        {invoice.status ?? "Unavailable"}
+                      </Badge>
                       <CountExplanation invoice={invoice} />
                     </TableCell>
-                    <TableCell className="text-right">
-                      {invoice.approvedVehicleCount} /{" "}
-                      {invoice.vehicleCount ?? "Unavailable"}
+                    <TableCell className="text-right text-tabular">
+                      {String(invoice.approvedVehicleCount)} /{" "}
+                      {invoice.vehicleCount === null
+                        ? "—"
+                        : String(invoice.vehicleCount)}
                     </TableCell>
-                    <TableCell className="text-right whitespace-nowrap">
+                    <TableCell className="text-right whitespace-nowrap text-tabular">
                       {invoice.total === null
                         ? "Unavailable"
                         : formatMoney(invoice.total, invoice.currency)}
                     </TableCell>
-                    <TableCell className="text-right whitespace-nowrap font-semibold">
+                    <TableCell className="text-right whitespace-nowrap font-semibold text-tabular">
                       {formatMoney(invoice.contribution, cycle.currency)}
                     </TableCell>
                     <TableCell>
@@ -320,37 +385,39 @@ export function PurchaseTable({
                 ))}
               </TableBody>
             </Table>
-          </div>
+          </CreditNoteTableViewport>
         </>
       )}
-      <div className="flex items-center justify-between border-t p-3 text-sm">
-        <span>{page.items.length} invoices shown</span>
-        <div className="flex gap-2">
-          {query[cursorKey] ? (
+
+      <div className="flex flex-col gap-2 border-t border-border/65 bg-muted/20 px-4 py-3 text-caption text-muted-readable sm:flex-row sm:items-center sm:justify-between sm:px-5">
+        <span>
+          {String(page.items.length)} invoice
+          {page.items.length === 1 ? "" : "s"} shown
+        </span>
+        <div className="flex items-center gap-2">
+          {query[cursorKey] !== undefined ? (
             <Button variant="ghost" size="sm" asChild>
               <Link
                 href={{
                   pathname: "/wallet",
-                  query: first,
-                  hash: activity
-                    ? "credit-note-transactions"
-                    : "purchase-invoices",
+                  query: firstQuery,
+                  hash: targetHash,
                 }}
+                scroll={false}
               >
                 First page
               </Link>
             </Button>
           ) : null}
-          {page.nextCursor ? (
+          {page.nextCursor !== null ? (
             <Button variant="outline" size="sm" asChild>
               <Link
                 href={{
                   pathname: "/wallet",
-                  query: next,
-                  hash: activity
-                    ? "credit-note-transactions"
-                    : "purchase-invoices",
+                  query: nextQuery,
+                  hash: targetHash,
                 }}
+                scroll={false}
               >
                 Next page
               </Link>
@@ -366,88 +433,96 @@ export function PurchaseInvoices({
   page,
   query,
   canReadDocuments,
-}: {
+}: Readonly<{
   page: PurchasePage | null;
   query: WalletSearchParams;
   canReadDocuments: boolean;
-}) {
-  const selectClass = "h-10 rounded-md border bg-background px-3 text-sm";
-  return (
-    <section id="purchase-invoices" className="min-w-0 scroll-mt-6">
-      <ContentDataSurface
-        title="Purchase invoices"
-        description="Zoho and dealer-to-dealer purchases, with the saved vehicle evidence behind your earnings."
-        padded={false}
+}>): ReactElement {
+  const selectClass =
+    "h-9 min-w-36 rounded-xl border border-border/70 bg-background px-3 text-caption text-foreground outline-none transition-[border-color,box-shadow] duration-200 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30 motion-reduce:transition-none";
+
+  const filters =
+    page === null ? undefined : (
+      <form
+        key={[
+          page.cycle?.cycleId,
+          query.purchaseSource,
+          query.purchaseApprovedOnly,
+        ].join(":")}
+        action="/wallet"
       >
-        {page ? (
-          <form
-            key={[
-              page.cycle?.cycleId,
-              query.purchaseSource,
-              query.purchaseApprovedOnly,
-            ].join(":")}
-            action="/wallet"
-            className="flex flex-wrap items-end gap-3 border-b p-4"
-          >
-            <input type="hidden" name="tab" value="credit-note" />
-            {query.walletId ? (
-              <input type="hidden" name="walletId" value={query.walletId} />
-            ) : null}
-            {query.creditNoteActivityTab ? (
-              <input
-                type="hidden"
-                name="creditNoteActivityTab"
-                value={query.creditNoteActivityTab}
-              />
-            ) : null}
-            <label className="grid gap-1 text-sm">
-              Purchase month
-              <select
-                name="purchaseCycleId"
-                defaultValue={page.cycle?.cycleId ?? ""}
-                className={selectClass}
-              >
-                <option value="">Active offer</option>
-                {page.cycles.map((cycle) => (
-                  <option key={cycle.cycleId} value={cycle.cycleId}>
-                    {purchaseMonth(cycle.offerStart)}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="grid gap-1 text-sm">
-              Source
-              <select
-                name="purchaseSource"
-                defaultValue={query.purchaseSource ?? ""}
-                className={selectClass}
-              >
-                <option value="">All sources</option>
-                <option value="ZOHO">Zoho</option>
-                <option value="D2D">Dealer-to-dealer</option>
-              </select>
-            </label>
-            <label className="grid gap-1 text-sm">
-              Show
-              <select
-                name="purchaseApprovedOnly"
-                defaultValue={query.purchaseApprovedOnly ?? "false"}
-                className={selectClass}
-              >
-                <option value="false">All purchases</option>
-                <option value="true">Approved only</option>
-              </select>
-            </label>
-            <Button type="submit">Apply filters</Button>
-          </form>
-        ) : null}
-        <PurchaseTable
-          page={page}
-          query={query}
-          canReadDocuments={canReadDocuments}
-        />
-      </ContentDataSurface>
-    </section>
+        <CreditNoteToolbar>
+          <input type="hidden" name="tab" value="credit-note" />
+          {query.walletId !== undefined ? (
+            <input type="hidden" name="walletId" value={query.walletId} />
+          ) : null}
+          {query.creditNoteActivityTab !== undefined ? (
+            <input
+              type="hidden"
+              name="creditNoteActivityTab"
+              value={query.creditNoteActivityTab}
+            />
+          ) : null}
+          <label className="grid gap-1 text-caption text-muted-readable">
+            Purchase month
+            <select
+              name="purchaseCycleId"
+              defaultValue={page.cycle?.cycleId ?? ""}
+              className={selectClass}
+            >
+              <option value="">Active offer</option>
+              {page.cycles.map((cycle) => (
+                <option key={cycle.cycleId} value={cycle.cycleId}>
+                  {purchaseMonth(cycle.offerStart)}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="grid gap-1 text-caption text-muted-readable">
+            Purchase type
+            <select
+              name="purchaseSource"
+              defaultValue={query.purchaseSource ?? ""}
+              className={selectClass}
+            >
+              <option value="">All purchases</option>
+              <option value="ZOHO">Company purchase</option>
+              <option value="D2D">Dealer-to-dealer</option>
+            </select>
+          </label>
+          <label className="grid gap-1 text-caption text-muted-readable">
+            Evidence
+            <select
+              name="purchaseApprovedOnly"
+              defaultValue={query.purchaseApprovedOnly ?? "false"}
+              className={selectClass}
+            >
+              <option value="false">All evidence</option>
+              <option value="true">Approved only</option>
+            </select>
+          </label>
+          <Button type="submit" size="sm" className="h-9 rounded-xl px-4">
+            Apply filters
+          </Button>
+        </CreditNoteToolbar>
+      </form>
+    );
+
+  return (
+    <CreditNoteSection
+      id="purchase-invoices"
+      title="Purchase invoices"
+      description="Purchase invoices with the saved vehicle evidence behind your Credit Note earnings."
+      icon={<ShoppingCart aria-hidden="true" />}
+      actions={filters}
+      padded={false}
+    >
+      <PurchaseTable
+        page={page}
+        query={query}
+        canReadDocuments={canReadDocuments}
+      />
+    </CreditNoteSection>
   );
 }
 
@@ -455,65 +530,77 @@ export function PurchaseEvidenceDetail({
   detail,
   canReadDocuments,
   query,
-}: {
+}: Readonly<{
   detail: PurchaseDetail | null;
   canReadDocuments: boolean;
   query: WalletSearchParams;
-}) {
-  if (!detail) return null;
+}>): ReactElement | null {
+  if (detail === null) {
+    return null;
+  }
+
   return (
-    <section id="purchase-detail" className="scroll-mt-6">
-      <ContentDataSurface
-        title={`Purchase details · ${detail.invoice.invoiceNumber ?? "Saved invoice"}`}
-        description={`${sourceLabel(detail.invoice.source)} · ${purchaseMonth(detail.cycle.offerStart)} purchase month`}
-        padded
-      >
-        <div className="mb-4">
-          <InvoiceActions
-            invoice={detail.invoice}
-            cycleId={detail.cycle.cycleId}
-            query={query}
-            canReadDocuments={canReadDocuments}
-          />
-        </div>
-        <div className="mb-3 grid gap-1 text-sm text-muted-foreground">
-          <p>Source reference: {detail.invoice.sourceInvoiceIdentifier}</p>
-          <p>Seller: {detail.invoice.seller ?? "Seller unavailable"}</p>
+    <CreditNoteSection
+      id="purchase-detail"
+      title={`Purchase details · ${detail.invoice.invoiceNumber ?? "Saved invoice"}`}
+      description={`${purchaseTypeLabel(detail.invoice.source)} · ${purchaseMonth(detail.cycle.offerStart)} purchase month`}
+      icon={<ReceiptText aria-hidden="true" />}
+      actions={
+        <InvoiceActions
+          invoice={detail.invoice}
+          cycleId={detail.cycle.cycleId}
+          query={query}
+          canReadDocuments={canReadDocuments}
+        />
+      }
+    >
+      <div className="grid gap-4">
+        <div className="flex flex-wrap items-center gap-2 text-caption text-muted-readable">
+          <span>{detail.invoice.seller ?? "Seller unavailable"}</span>
+          <span aria-hidden="true">•</span>
+          <span>{invoiceDate(detail.invoice.invoiceDate)}</span>
+          <span aria-hidden="true">•</span>
+          <Badge variant="outline">
+            {detail.invoice.status ?? "Status unavailable"}
+          </Badge>
         </div>
         <CountExplanation invoice={detail.invoice} />
+
         {detail.vehicles.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
+          <CreditNoteInset className="text-body-sm text-muted-readable">
             No vehicles from this invoice are included in this cycle’s recorded
             earnings.
-          </p>
+          </CreditNoteInset>
         ) : (
           <>
-            <div className="grid gap-2 md:hidden">
+            <CreditNoteMobileList className="p-0">
               {detail.vehicles.map((vehicle, index) => (
                 <article
                   key={`${vehicle.vin ?? "missing"}:${String(index)}`}
-                  className="grid gap-2 rounded-lg border p-3"
+                  className="grid gap-2 rounded-2xl border border-border/65 bg-background/45 p-3.5"
                 >
-                  <p className="break-all font-mono text-sm">
+                  <p className="break-all font-mono text-body-sm text-foreground">
                     {vehicle.vin ?? "VIN unavailable in saved evidence"}
                   </p>
-                  <div className="flex items-center justify-between gap-3 text-sm">
-                    <Badge variant="outline">
+                  <div className="flex items-center justify-between gap-3">
+                    <Badge variant={vehicle.finalized ? "success" : "info"}>
                       {vehicle.finalized ? "Finalized" : "Accruing"}
                     </Badge>
-                    <span className="font-semibold text-tabular">
+                    <span className="font-semibold text-foreground text-tabular">
                       {formatMoney(vehicle.contribution, detail.cycle.currency)}
                     </span>
                   </div>
                 </article>
               ))}
-            </div>
-            <div className="hidden overflow-x-auto md:block">
+            </CreditNoteMobileList>
+            <CreditNoteTableViewport>
               <Table>
                 <TableHeader>
                   <TableRow>
                     <TableHead>Approved VIN</TableHead>
-                    <TableHead>Evidence state</TableHead>
+                    <TableHead className="text-center">
+                      Evidence state
+                    </TableHead>
                     <TableHead className="text-right">
                       Credit contribution
                     </TableHead>
@@ -527,10 +614,12 @@ export function PurchaseEvidenceDetail({
                       <TableCell className="font-mono">
                         {vehicle.vin ?? "VIN unavailable in saved evidence"}
                       </TableCell>
-                      <TableCell>
-                        {vehicle.finalized ? "Finalized" : "Accruing"}
+                      <TableCell className="text-center">
+                        <Badge variant={vehicle.finalized ? "success" : "info"}>
+                          {vehicle.finalized ? "Finalized" : "Accruing"}
+                        </Badge>
                       </TableCell>
-                      <TableCell className="text-right">
+                      <TableCell className="text-right font-semibold text-tabular">
                         {formatMoney(
                           vehicle.contribution,
                           detail.cycle.currency,
@@ -540,15 +629,15 @@ export function PurchaseEvidenceDetail({
                   ))}
                 </TableBody>
               </Table>
-            </div>
+            </CreditNoteTableViewport>
           </>
         )}
-        <p className="mt-3 text-xs text-muted-foreground">
-          Counts and credit contributions use saved cycle evidence. Invoice
-          status and invoice total reflect the source document currently
-          available.
+
+        <p className="text-caption text-muted-readable">
+          Counts and credit contribution use saved cycle evidence. Finalized
+          evidence remains authoritative for the recorded earning.
         </p>
-      </ContentDataSurface>
-    </section>
+      </div>
+    </CreditNoteSection>
   );
 }

@@ -369,6 +369,7 @@ export const engagementDashboardSummarySchema = z
     generatedAt: isoDateTimeSchema,
     kpis: z
       .object({
+        statusCounts: z.record(z.string(), nonNegativeIntSchema).optional(),
         newLeads: comparisonSchema
           .extend({ averagePerDay: nonNegativeNumberSchema })
           .strict(),

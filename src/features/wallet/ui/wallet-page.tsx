@@ -1068,8 +1068,13 @@ export function WalletPage({
       >
         <WalletWorkspaceHeader
           titleId="wallet-page-title"
-          title="Wallet"
-          description="Track Welfare Fund balances and the full Credit Note performance, offer, purchase, and settlement cycle."
+          title={query.tab === "credit-note" ? "Credit Note" : "Wallet"}
+          description={
+            query.tab === "credit-note"
+              ? "Turn your vehicle purchases into rewards."
+              : "Track Welfare Fund balances and activity."
+          }
+          workspace={query.tab === "credit-note" ? "credit-note" : "wallet"}
           actions={
             <TabsList
               variant="workspace"
