@@ -8,36 +8,12 @@ import process from "node:process";
 
 const EXPECTED_REPOSITORY_NAME = "oz-next-app";
 
+const GENERATOR_FILE_NAME = "generate-bundles.mjs";
+
 const DEFAULT_OUTPUT_DIRECTORY = "bundles";
 
 const MANIFEST_FILE_NAME = "oz-next-app-bundles.manifest.json";
 
-const BUNDLE_RELATIVE_PATH_HEADER_PREFIX = `#!${EXPECTED_REPOSITORY_NAME}/`;
-
-/**
- * These are generated artifacts and must never become inputs to another
- * generated bundle.
- */
-const GENERATED_BUNDLE_FILE_NAMES = new Set([
-  "oz-next-app-app.md",
-  "oz-next-app-components.md",
-  "oz-next-app-components-ui.md",
-  "oz-next-app-features.md",
-  "oz-next-app-lib.md",
-  "oz-next-app-root.md",
-  "oz-next-app-server.md",
-  "oz-next-app-shared.md",
-  "oz-next-app-structure.md",
-  "oz-next-app-types.md",
-  MANIFEST_FILE_NAME,
-]);
-
-/**
- * Large/generated dependency resolution files are intentionally omitted from
- * content bundles.
- *
- * They remain visible in oz-next-app-structure.md when tracked.
- */
 const CONTENT_EXCLUDED_FILE_NAMES = new Set([
   "package-lock.json",
   "npm-shrinkwrap.json",
@@ -45,9 +21,6 @@ const CONTENT_EXCLUDED_FILE_NAMES = new Set([
   "pnpm-lock.yaml",
 ]);
 
-/**
- * Binary formats must not be embedded into Markdown code blocks.
- */
 const BINARY_EXTENSIONS = new Set([
   ".7z",
   ".avif",
@@ -87,16 +60,6 @@ const BINARY_EXTENSIONS = new Set([
   ".zip",
 ]);
 
-/**
- * Bundle contracts.
- *
- * Prefix bundles dynamically consume every eligible tracked file under their
- * corresponding source subtree.
- *
- * Important:
- *   src/components/ui/** has its own bundle and is intentionally excluded
- *   from oz-next-app-components.md to avoid duplicated source content.
- */
 const BUNDLE_DEFINITIONS = Object.freeze([
   {
     output: "oz-next-app-app.md",
@@ -170,10 +133,16 @@ const BUNDLE_DEFINITIONS = Object.freeze([
   },
 ]);
 
+const GENERATED_BUNDLE_FILE_NAMES = new Set([
+  ...BUNDLE_DEFINITIONS.map((definition) => definition.output),
+  MANIFEST_FILE_NAME,
+]);
+
 function parseArgs(argv) {
   const result = {
     outDir: DEFAULT_OUTPUT_DIRECTORY,
     expectedHead: null,
+    fixRelativePaths: false,
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -206,18 +175,27 @@ function parseArgs(argv) {
       continue;
     }
 
+    if (argument === "--fix-relative-paths") {
+      result.fixRelativePaths = true;
+      continue;
+    }
+
     if (argument === "--help" || argument === "-h") {
       process.stdout.write(
         [
           "Usage:",
-          "  node generate-oz-next-app-bundles.mjs [options]",
+          "  node generate-bundles.mjs [options]",
           "",
           "Options:",
           "  --out <dir>",
-          "      Output directory. Default: bundles",
+          `      Output directory. Default: ${DEFAULT_OUTPUT_DIRECTORY}`,
           "",
           "  --expected-head <sha>",
           "      Fail unless HEAD equals the supplied full Git SHA.",
+          "",
+          "  --fix-relative-paths",
+          "      Add or repair first-line repository-relative path headers",
+          "      in supported tracked text files, then exit without bundling.",
           "",
           "  -h, --help",
           "      Show this help.",
@@ -246,11 +224,7 @@ function runGit(args, encoding = "utf8") {
 function assertRepository(expectedHead) {
   const repoRoot = runGit(["rev-parse", "--show-toplevel"]).trim();
 
-  const resolvedRepoRoot = resolve(repoRoot);
-
-  const resolvedWorkingDirectory = resolve(process.cwd());
-
-  if (resolvedRepoRoot !== resolvedWorkingDirectory) {
+  if (resolve(repoRoot) !== resolve(process.cwd())) {
     throw new Error("Run the generator from the repository root: " + repoRoot);
   }
 
@@ -276,16 +250,6 @@ function assertRepository(expectedHead) {
     );
   }
 
-  /**
-   * Ignore untracked files intentionally.
-   *
-   * The generator itself may be kept locally without being committed.
-   * Since source discovery uses git ls-files, untracked files can never leak
-   * into generated bundles.
-   *
-   * Tracked modifications are rejected because canonical bundles should map
-   * to a reproducible Git revision.
-   */
   const trackedStatus = runGit([
     "status",
     "--porcelain=v1",
@@ -295,7 +259,7 @@ function assertRepository(expectedHead) {
   if (trackedStatus.length > 0) {
     throw new Error(
       "Tracked working-tree changes are present. " +
-        "Commit or stash them before generating canonical bundles.",
+        "Commit or stash them before running the bundle generator.",
     );
   }
 
@@ -362,68 +326,14 @@ function assertCanonicalRepositoryRelativePath(path) {
   return normalized;
 }
 
-function relativePathHeaderFor(repositoryPath) {
-  const normalized = assertCanonicalRepositoryRelativePath(repositoryPath);
-
-  return `${BUNDLE_RELATIVE_PATH_HEADER_PREFIX}${normalized}`;
-}
-
-/**
- * Every embedded source file starts with a canonical bundle-only relative-path
- * marker:
- *
- *   #!oz-next-app/<repository-relative-path>
- *
- * The source repository is not rewritten. This keeps JSON, JSONC, YAML,
- * Markdown, CSS, and other source formats valid in Git while making every
- * bundled file independently location-aware.
- *
- * If a tracked source already contains an oz-next-app marker, it must match
- * its real Git path. A stale marker is treated as an integrity failure.
- */
-function withRelativePathHeader(repositoryPath, sourceContent) {
-  const expectedHeader = relativePathHeaderFor(repositoryPath);
-  const firstLineBreak = sourceContent.indexOf("\n");
-  const firstLine =
-    firstLineBreak === -1
-      ? sourceContent
-      : sourceContent.slice(0, firstLineBreak);
-
-  if (firstLine === expectedHeader) {
-    return sourceContent;
-  }
-
-  if (firstLine.startsWith(BUNDLE_RELATIVE_PATH_HEADER_PREFIX)) {
-    throw new Error(
-      `Tracked file "${repositoryPath}" contains stale relative-path ` +
-        `header "${firstLine}". Expected "${expectedHeader}".`,
-    );
-  }
-
-  if (/^#!oz-[A-Za-z0-9._-]+\//u.test(firstLine)) {
-    throw new Error(
-      `Tracked file "${repositoryPath}" contains a relative-path header ` +
-        `for another repository: "${firstLine}".`,
-    );
-  }
-
-  return sourceContent.length === 0
-    ? expectedHeader
-    : `${expectedHeader}\n${sourceContent}`;
-}
-
 function isGeneratedBundlePath(path) {
   const normalized = normalizeRepositoryPath(path);
 
-  if (normalized === "bundles") {
-    return true;
-  }
-
-  if (normalized.startsWith("bundles/")) {
-    return true;
-  }
-
-  return GENERATED_BUNDLE_FILE_NAMES.has(basename(normalized));
+  return (
+    normalized === DEFAULT_OUTPUT_DIRECTORY ||
+    normalized.startsWith(`${DEFAULT_OUTPUT_DIRECTORY}/`) ||
+    GENERATED_BUNDLE_FILE_NAMES.has(basename(normalized))
+  );
 }
 
 function isSecretLikePath(path) {
@@ -453,37 +363,27 @@ function isSecretLikePath(path) {
     return true;
   }
 
-  const extension = extname(fileName);
+  const extension = extname(fileName).toLowerCase();
 
-  if (
+  return (
     extension === ".pem" ||
     extension === ".p12" ||
     extension === ".pfx" ||
     extension === ".key" ||
     extension === ".keystore" ||
     extension === ".jks"
-  ) {
-    return true;
-  }
-
-  return false;
+  );
 }
 
 function isBinaryExtension(path) {
   return BINARY_EXTENSIONS.has(extname(path).toLowerCase());
 }
 
-function isContentExcludedByName(path) {
-  return CONTENT_EXCLUDED_FILE_NAMES.has(basename(path));
-}
-
-function assertRegularContentFile(path) {
-  const absolutePath = resolve(path);
-
-  const stat = lstatSync(absolutePath);
+function assertRegularTrackedFile(path) {
+  const stat = lstatSync(resolve(path));
 
   if (stat.isSymbolicLink()) {
-    throw new Error(`Refusing to bundle symlink content: ${path}`);
+    throw new Error(`Refusing to process tracked symlink content: ${path}`);
   }
 
   if (!stat.isFile()) {
@@ -505,6 +405,331 @@ function hasBinaryContent(path) {
   return false;
 }
 
+function isTextFile(path) {
+  if (isBinaryExtension(path)) {
+    return false;
+  }
+
+  assertRegularTrackedFile(path);
+
+  return !hasBinaryContent(path);
+}
+
+function isHashCommentFile(path) {
+  const fileName = basename(path);
+
+  return (
+    fileName === ".dockerignore" ||
+    fileName === ".gitignore" ||
+    fileName === ".gitattributes" ||
+    fileName === ".prettierignore" ||
+    fileName === ".eslintignore" ||
+    fileName === ".npmignore" ||
+    fileName === ".editorconfig" ||
+    fileName === "Makefile" ||
+    fileName.startsWith("Dockerfile")
+  );
+}
+
+function relativePathHeaderFor(repositoryPath) {
+  const normalized = assertCanonicalRepositoryRelativePath(repositoryPath);
+
+  const canonicalPath = `${EXPECTED_REPOSITORY_NAME}/${normalized}`;
+
+  if (normalized === GENERATOR_FILE_NAME) {
+    return `#!${canonicalPath}`;
+  }
+
+  const fileName = basename(normalized);
+  const extension = extname(normalized).toLowerCase();
+
+  if (
+    extension === ".ts" ||
+    extension === ".tsx" ||
+    extension === ".js" ||
+    extension === ".jsx" ||
+    extension === ".mjs" ||
+    extension === ".cjs" ||
+    extension === ".jsonc"
+  ) {
+    return `// ${canonicalPath}`;
+  }
+
+  if (extension === ".md" || extension === ".mdx" || extension === ".html") {
+    return `<!-- ${canonicalPath} -->`;
+  }
+
+  if (extension === ".css" || extension === ".scss" || extension === ".less") {
+    return `/* ${canonicalPath} */`;
+  }
+
+  if (extension === ".sql") {
+    return `-- ${canonicalPath}`;
+  }
+
+  if (
+    extension === ".yml" ||
+    extension === ".yaml" ||
+    extension === ".toml" ||
+    extension === ".graphql" ||
+    extension === ".gql" ||
+    extension === ".env" ||
+    isHashCommentFile(fileName)
+  ) {
+    return `# ${canonicalPath}`;
+  }
+
+  return null;
+}
+
+function relativePathExemptionReason(repositoryPath) {
+  const normalized = normalizeRepositoryPath(repositoryPath);
+
+  const fileName = basename(normalized);
+  const extension = extname(normalized).toLowerCase();
+
+  if (isGeneratedBundlePath(normalized)) {
+    return "generated-bundle-artifact";
+  }
+
+  if (CONTENT_EXCLUDED_FILE_NAMES.has(fileName)) {
+    return "generated-lock-file";
+  }
+
+  if (isBinaryExtension(normalized)) {
+    return "binary-file";
+  }
+
+  if (extension === ".json") {
+    return "strict-json";
+  }
+
+  if (fileName === ".nvmrc" || fileName === ".node-version") {
+    return "toolchain-literal-file";
+  }
+
+  if (fileName === "LICENSE" || fileName.startsWith("LICENSE.")) {
+    return "license-text";
+  }
+
+  return null;
+}
+
+function normalizeTextContent(content) {
+  return content.replaceAll("\r\n", "\n").replaceAll("\r", "\n");
+}
+
+function stripUtf8Bom(content) {
+  return content.startsWith("\uFEFF") ? content.slice(1) : content;
+}
+
+function firstLineOf(content) {
+  const normalized = stripUtf8Bom(normalizeTextContent(content));
+
+  const lineBreak = normalized.indexOf("\n");
+
+  return lineBreak === -1 ? normalized : normalized.slice(0, lineBreak);
+}
+
+function isRepositoryPathHeaderLike(line) {
+  return /^(?:#!|\/\/|#|<!--|\/\*|--)\s*oz-[A-Za-z0-9._-]+\//u.test(line);
+}
+
+function buildRelativePathAudit(trackedFiles) {
+  const violations = [];
+  const exemptions = [];
+  let enforcedFileCount = 0;
+
+  for (const repositoryPath of trackedFiles) {
+    const exemptionReason = relativePathExemptionReason(repositoryPath);
+
+    if (exemptionReason !== null) {
+      exemptions.push({
+        path: repositoryPath,
+        reason: exemptionReason,
+      });
+      continue;
+    }
+
+    if (!isTextFile(repositoryPath)) {
+      exemptions.push({
+        path: repositoryPath,
+        reason: "binary-content",
+      });
+      continue;
+    }
+
+    const expectedHeader = relativePathHeaderFor(repositoryPath);
+
+    if (expectedHeader === null) {
+      violations.push({
+        path: repositoryPath,
+        reason: "unsupported-header-syntax",
+        expected: null,
+        actual: firstLineOf(readFileSync(repositoryPath, "utf8")),
+      });
+      continue;
+    }
+
+    enforcedFileCount += 1;
+
+    const actualHeader = firstLineOf(readFileSync(repositoryPath, "utf8"));
+
+    if (actualHeader !== expectedHeader) {
+      violations.push({
+        path: repositoryPath,
+        reason: isRepositoryPathHeaderLike(actualHeader)
+          ? "incorrect-relative-path-header"
+          : "missing-relative-path-header",
+        expected: expectedHeader,
+        actual: actualHeader,
+      });
+    }
+  }
+
+  return {
+    violations,
+    exemptions,
+    enforcedFileCount,
+  };
+}
+
+function formatHeaderAuditFailure(audit) {
+  const displayed = audit.violations.slice(0, 50);
+
+  const lines = [
+    "Repository relative-path header validation failed.",
+    "",
+    "Every supported tracked text file must contain its canonical",
+    "repository-relative path on line 1 before bundle generation.",
+    "",
+  ];
+
+  for (const violation of displayed) {
+    lines.push(`- ${violation.path}`);
+    lines.push(`  reason:   ${violation.reason}`);
+
+    if (violation.expected !== null) {
+      lines.push(`  expected: ${JSON.stringify(violation.expected)}`);
+    }
+
+    lines.push(`  actual:   ${JSON.stringify(violation.actual)}`);
+  }
+
+  if (audit.violations.length > displayed.length) {
+    lines.push(
+      "",
+      `...and ${
+        audit.violations.length - displayed.length
+      } additional violation(s).`,
+    );
+  }
+
+  lines.push(
+    "",
+    "Run:",
+    "  node generate-bundles.mjs --fix-relative-paths",
+    "",
+    "Then review, format/test as applicable, and commit the source changes",
+    "before generating canonical bundles.",
+  );
+
+  return lines.join("\n");
+}
+
+function replaceOrPrependRelativePathHeader(
+  repositoryPath,
+  rawContent,
+  expectedHeader,
+) {
+  const content = stripUtf8Bom(normalizeTextContent(rawContent));
+
+  const firstLine = firstLineOf(content);
+
+  if (firstLine === expectedHeader) {
+    return content;
+  }
+
+  if (firstLine.startsWith("#!") && !isRepositoryPathHeaderLike(firstLine)) {
+    throw new Error(
+      `Cannot automatically prepend a relative-path header to ` +
+        `"${repositoryPath}" because it has an interpreter shebang ` +
+        `on line 1: ${JSON.stringify(firstLine)}.`,
+    );
+  }
+
+  if (isRepositoryPathHeaderLike(firstLine)) {
+    const firstLineBreak = content.indexOf("\n");
+
+    return firstLineBreak === -1
+      ? `${expectedHeader}\n`
+      : `${expectedHeader}${content.slice(firstLineBreak)}`;
+  }
+
+  return content.length === 0
+    ? `${expectedHeader}\n`
+    : `${expectedHeader}\n${content}`;
+}
+
+function fixRelativePathHeaders(trackedFiles) {
+  const changedFiles = [];
+  const exemptions = [];
+
+  for (const repositoryPath of trackedFiles) {
+    const exemptionReason = relativePathExemptionReason(repositoryPath);
+
+    if (exemptionReason !== null) {
+      exemptions.push({
+        path: repositoryPath,
+        reason: exemptionReason,
+      });
+      continue;
+    }
+
+    if (!isTextFile(repositoryPath)) {
+      exemptions.push({
+        path: repositoryPath,
+        reason: "binary-content",
+      });
+      continue;
+    }
+
+    const expectedHeader = relativePathHeaderFor(repositoryPath);
+
+    if (expectedHeader === null) {
+      throw new Error(
+        `No safe first-line relative-path header syntax is configured ` +
+          `for tracked text file "${repositoryPath}".`,
+      );
+    }
+
+    const rawContent = readFileSync(repositoryPath, "utf8");
+
+    const updated = replaceOrPrependRelativePathHeader(
+      repositoryPath,
+      rawContent,
+      expectedHeader,
+    );
+
+    if (updated !== rawContent) {
+      writeFileSync(repositoryPath, updated, {
+        encoding: "utf8",
+      });
+
+      changedFiles.push(repositoryPath);
+    }
+  }
+
+  return {
+    changedFiles,
+    exemptions,
+  };
+}
+
+function isContentExcludedByName(path) {
+  return CONTENT_EXCLUDED_FILE_NAMES.has(basename(path));
+}
+
 function isEligibleContentFile(path) {
   if (isGeneratedBundlePath(path)) {
     return false;
@@ -518,36 +743,13 @@ function isEligibleContentFile(path) {
     return false;
   }
 
-  if (isBinaryExtension(path)) {
+  if (!isTextFile(path)) {
     return false;
   }
 
-  assertRegularContentFile(path);
-
-  return !hasBinaryContent(path);
+  return true;
 }
 
-/**
- * Root bundle contract.
- *
- * Automatically includes:
- *
- *   1. eligible tracked files directly in repository root;
- *   2. eligible files in .github/workflows/**;
- *   3. eligible files directly inside src/.
- *
- * This means future files such as:
- *
- *   open-next.config.ts
- *   new-build-config.mjs
- *   .github/workflows/security.yml
- *   src/instrumentation.ts
- *
- * are automatically picked up without modifying this generator.
- *
- * It does NOT recursively absorb docs/, scripts/, public/, src/features/,
- * etc. Those belong to the structure bundle or their dedicated bundles.
- */
 function isRootBundleCandidate(path) {
   const normalized = normalizeRepositoryPath(path);
 
@@ -623,7 +825,6 @@ function createTree(paths, rootLabel) {
 
     for (let index = 0; index < parts.length; index += 1) {
       const part = parts[index];
-
       const isFile = index === parts.length - 1;
 
       if (isFile) {
@@ -667,11 +868,8 @@ function createTree(paths, rootLabel) {
 
     for (let index = 0; index < entries.length; index += 1) {
       const entry = entries[index];
-
       const isLast = index === entries.length - 1;
-
       const branch = isLast ? "`-- " : "|-- ";
-
       const suffix = entry.kind === "directory" ? "/" : "";
 
       lines.push(`${prefix}${branch}${entry.name}${suffix}`);
@@ -689,7 +887,6 @@ function createTree(paths, rootLabel) {
 
 function languageFor(path) {
   const fileName = basename(path);
-
   const extension = extname(path).toLowerCase();
 
   if (fileName === "Dockerfile" || fileName.startsWith("Dockerfile.")) {
@@ -742,9 +939,6 @@ function languageFor(path) {
     case ".html":
       return "html";
 
-    case ".xml":
-      return "xml";
-
     case ".toml":
       return "toml";
 
@@ -763,20 +957,10 @@ function languageFor(path) {
   }
 }
 
-function normalizeTextContent(content) {
-  return content
-    .replaceAll("\r\n", "\n")
-    .replaceAll("\r", "\n")
-    .replace(/\s+$/u, "");
+function normalizeBundleTextContent(content) {
+  return normalizeTextContent(content).replace(/\s+$/u, "");
 }
 
-/**
- * Select a Markdown fence longer than any backtick run already present in
- * the source file.
- *
- * This prevents Markdown source, documentation examples, or embedded code
- * fences from corrupting the generated bundle structure.
- */
 function markdownFenceFor(content) {
   let longestRun = 0;
   let currentRun = 0;
@@ -793,23 +977,48 @@ function markdownFenceFor(content) {
     }
   }
 
-  const fenceLength = Math.max(3, longestRun + 1);
+  return "`".repeat(Math.max(3, longestRun + 1));
+}
 
-  return "`".repeat(fenceLength);
+function assertFileHeaderBeforeBundling(repositoryPath, content) {
+  const exemptionReason = relativePathExemptionReason(repositoryPath);
+
+  if (exemptionReason !== null) {
+    return;
+  }
+
+  const expectedHeader = relativePathHeaderFor(repositoryPath);
+
+  if (expectedHeader === null) {
+    throw new Error(
+      `No relative-path header policy exists for ` + `"${repositoryPath}".`,
+    );
+  }
+
+  const actualHeader = firstLineOf(content);
+
+  if (actualHeader !== expectedHeader) {
+    throw new Error(
+      `Repository file "${repositoryPath}" does not contain its ` +
+        `canonical relative-path header on line 1. ` +
+        `Expected ${JSON.stringify(expectedHeader)}, ` +
+        `received ${JSON.stringify(actualHeader)}.`,
+    );
+  }
 }
 
 function renderFileSection(definition, repositoryPath) {
-  assertRegularContentFile(repositoryPath);
+  assertRegularTrackedFile(repositoryPath);
 
   const relativePath = bundleRelativePath(definition, repositoryPath);
 
-  const sourceContent = normalizeTextContent(
+  const sourceContent = normalizeBundleTextContent(
     readFileSync(repositoryPath, "utf8"),
   );
 
-  const content = withRelativePathHeader(repositoryPath, sourceContent);
+  assertFileHeaderBeforeBundling(repositoryPath, sourceContent);
 
-  const fence = markdownFenceFor(content);
+  const fence = markdownFenceFor(sourceContent);
 
   const language = languageFor(repositoryPath);
 
@@ -817,7 +1026,7 @@ function renderFileSection(definition, repositoryPath) {
     `## File: ${relativePath}`,
     "",
     `${fence}${language}`,
-    content,
+    sourceContent,
     fence,
   ].join("\n");
 }
@@ -865,13 +1074,22 @@ function writeBundle(outputDirectory, definition, files) {
 
   return {
     bundle: definition.output,
-
     fileCount: files.length,
-
     bytes: Buffer.byteLength(content, "utf8"),
-
     sha256: sha256(content),
   };
+}
+
+function summarizeExemptions(exemptions) {
+  const counts = new Map();
+
+  for (const exemption of exemptions) {
+    counts.set(exemption.reason, (counts.get(exemption.reason) ?? 0) + 1);
+  }
+
+  return Object.fromEntries(
+    [...counts.entries()].sort(([left], [right]) => comparePaths(left, right)),
+  );
 }
 
 function main() {
@@ -883,6 +1101,44 @@ function main() {
 
   if (trackedFiles.length === 0) {
     throw new Error("The repository contains no tracked files.");
+  }
+
+  if (args.fixRelativePaths) {
+    const result = fixRelativePathHeaders(trackedFiles);
+
+    process.stdout.write(
+      [
+        "",
+        "Repository relative-path header migration completed.",
+        "",
+        `Changed: ${result.changedFiles.length} file(s)`,
+        `Exempt:  ${result.exemptions.length} file(s)`,
+        "",
+      ].join("\n"),
+    );
+
+    for (const path of result.changedFiles) {
+      process.stdout.write(`- ${path}\n`);
+    }
+
+    if (result.changedFiles.length > 0) {
+      process.stdout.write(
+        [
+          "",
+          "Review the changes, run repository verification,",
+          "and commit them before generating canonical bundles.",
+          "",
+        ].join("\n"),
+      );
+    }
+
+    return;
+  }
+
+  const headerAudit = buildRelativePathAudit(trackedFiles);
+
+  if (headerAudit.violations.length > 0) {
+    throw new Error(formatHeaderAuditFailure(headerAudit));
   }
 
   const outputDirectory = resolve(args.outDir);
@@ -901,21 +1157,21 @@ function main() {
       throw new Error(`Bundle "${definition.output}" resolved no files.`);
     }
 
-    const result = writeBundle(outputDirectory, definition, files);
-
-    bundleResults.push(result);
+    bundleResults.push(writeBundle(outputDirectory, definition, files));
   }
 
   const manifest = {
-    schemaVersion: 2,
+    schemaVersion: 3,
     repository: EXPECTED_REPOSITORY_NAME,
     head,
     commitTimestamp,
     trackedFileCount: trackedFiles.length,
-    contentFileHeader: {
-      required: true,
-      format: `#!${EXPECTED_REPOSITORY_NAME}/<repository-relative-path>`,
-      scope: "embedded-content-files",
+    relativePathHeaders: {
+      sourceRepositoryEnforced: true,
+      synthesizedIntoBundles: false,
+      enforcedTrackedFileCount: headerAudit.enforcedFileCount,
+      exemptTrackedFileCount: headerAudit.exemptions.length,
+      exemptionsByReason: summarizeExemptions(headerAudit.exemptions),
     },
     bundles: bundleResults,
   };
@@ -938,7 +1194,8 @@ function main() {
       `HEAD:       ${head}`,
       `Commit:     ${commitTimestamp}`,
       `Tracked:    ${trackedFiles.length} files`,
-      `Path header: #!${EXPECTED_REPOSITORY_NAME}/<repository-relative-path>`,
+      `Headers:    ${headerAudit.enforcedFileCount} enforced`,
+      `Exempt:     ${headerAudit.exemptions.length}`,
       "",
     ].join("\n"),
   );
