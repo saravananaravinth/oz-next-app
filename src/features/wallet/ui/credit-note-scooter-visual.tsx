@@ -1,3 +1,4 @@
+// oz-next-app/src/features/wallet/ui/credit-note-scooter-visual.tsx
 import type { ReactElement } from "react";
 import { cn } from "@/lib/utils";
 

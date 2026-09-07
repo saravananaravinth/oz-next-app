@@ -1,5 +1,5 @@
-import type { PurchasePage, PurchaseDetail } from "./purchases.schema";
 // oz-next-app/src/features/wallet/contracts/wallet.schema.ts
+import type { PurchasePage, PurchaseDetail } from "./purchases.schema";
 import { z } from "zod";
 
 const MONEY_PATTERN = /^(?:0|[1-9][0-9]{0,15})(?:\.[0-9]{1,2})?$/u;

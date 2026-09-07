@@ -1,3 +1,5 @@
+<!-- oz-next-app/README.md -->
+
 # oz-next-app
 
 Enterprise frontend for the Ozotec ERP platform, built with Next.js, React, strict TypeScript, shadcn/ui, and OpenNext Cloudflare.
@@ -470,3 +472,36 @@ Then remove `.open-next`, rebuild, and rerun the Cloudflare validation.
 Proprietary and confidential. Copyright © Ozotec.
 
 This repository is marked `UNLICENSED`. Redistribution, publication, or external use is prohibited unless explicitly authorized by Ozotec.
+
+## Canonical source bundles
+
+Source headers use this repository's name followed by the tracked file path.
+Ordinary files require the header on line 1. Interpreter shebangs, leading Docker
+parser directives, and SVG XML declarations remain first; their path header goes
+immediately afterward. Strict JSON, lockfiles, binaries, and the existing literal
+and generated-artifact exemptions do not receive source headers.
+
+```sh
+node generate-bundles.mjs --check-relative-paths
+node generate-bundles.mjs --fix-relative-paths
+npm run bundles:check
+npm run test:bundles
+```
+
+Checking is read-only. Repair works with existing working-tree edits, preflights
+all tracked files before writing, preserves file bodies and executable modes,
+and is safe to repeat. Unsupported formats require an explicit safe policy;
+preflight failure writes no files. Newly added files must be tracked by Git to
+participate in checking and repair. Verification includes the header check.
+
+Review and commit repaired source files after repository verification, then run
+from the repository root:
+
+```sh
+node generate-bundles.mjs --expected-head "$(git rev-parse HEAD)"
+```
+
+Canonical generation requires a clean tracked working tree. It records the commit
+and content hashes in the existing manifest and writes to `bundles/` by default;
+`--out <directory>` selects another destination. Neither checking nor repair
+creates bundles, commits changes, or stashes existing work.

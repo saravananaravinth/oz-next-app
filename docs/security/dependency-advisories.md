@@ -1,3 +1,5 @@
+<!-- oz-next-app/docs/security/dependency-advisories.md -->
+
 # Dependency advisory register
 
 This register records accepted dependency findings that remain after upgrading to the latest

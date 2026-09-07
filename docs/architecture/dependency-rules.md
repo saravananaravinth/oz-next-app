@@ -1,3 +1,5 @@
+<!-- oz-next-app/docs/architecture/dependency-rules.md -->
+
 # Dependency rules
 
 ## App Router

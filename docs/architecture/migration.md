@@ -1,3 +1,5 @@
+<!-- oz-next-app/docs/architecture/migration.md -->
+
 # Architecture migration
 
 ## Migration characteristics

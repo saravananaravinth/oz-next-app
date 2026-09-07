@@ -1,3 +1,4 @@
+// oz-next-app/src/features/wallet/contracts/purchases.schema.ts
 import { z } from "zod";
 
 const money = z.string().regex(/^\d+(?:\.\d+)?$/u);

@@ -1,3 +1,5 @@
+<!-- oz-next-app/docs/architecture/architecture.md -->
+
 # oz-next-app architecture
 
 ## Purpose

@@ -1,3 +1,4 @@
+// oz-next-app/src/features/wallet/utils/purchase-links.ts
 import type { WalletSearchParams } from "../contracts/wallet.schema";
 
 export function walletQuery(query: WalletSearchParams): Record<string, string> {

@@ -1,3 +1,4 @@
+// oz-next-app/src/features/wallet/ui/credit-note-policy-guide.tsx
 import type { ReactElement } from "react";
 import Link from "next/link";
 import {
