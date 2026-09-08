@@ -55,7 +55,6 @@ import type { WalletCapabilities } from "@/features/wallet/policies/wallet.polic
 import { formatMoney } from "@/features/wallet/utils/wallet-money";
 
 import { CreditNotePolicyGuide } from "./credit-note-policy-guide";
-import { CreditNoteScooterVisual } from "./credit-note-scooter-visual";
 import {
   CreditNoteInset,
   CreditNoteMetric,
@@ -277,8 +276,6 @@ function CreditNoteHero({
             {qualified ? "Qualified" : "Not qualified"}
           </Badge>
         </div>
-
-        <CreditNoteScooterVisual />
 
         <CreditNoteMetricGrid>
           <CreditNoteMetric

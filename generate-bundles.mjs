@@ -683,6 +683,14 @@ function analyzeRelativePathFile(repositoryPath) {
   try {
     stat = lstatSync(resolve(normalizedPath));
   } catch (error) {
+    if (error.code === "ENOENT") {
+      return {
+        kind: "skipped",
+        path: normalizedPath,
+        reason: "missing-tracked-file",
+      };
+    }
+
     return {
       kind: "unsafe",
       path: normalizedPath,
@@ -876,9 +884,10 @@ function checkRelativePaths(trackedFiles) {
 
   const enforced = results.filter((result) => result.kind === "ok").length;
   const exempt = results.filter((result) => result.kind === "exempt").length;
+  const skipped = results.filter((result) => result.kind === "skipped").length;
 
   process.stdout.write(
-    `Relative-path check passed: ${enforced} enforced, ${exempt} exempt.\n`,
+    `Relative-path check passed: ${enforced} enforced, ${exempt} exempt, ${skipped} skipped (missing).\n`,
   );
 
   return { results, enforced, exempt };
@@ -909,6 +918,7 @@ function fixRelativePaths(trackedFiles) {
       `Changed: ${repairs.length} file(s)`,
       `Unchanged: ${results.filter((result) => result.kind === "ok").length} file(s)`,
       `Exempt: ${results.filter((result) => result.kind === "exempt").length} file(s)`,
+      `Skipped (missing): ${results.filter((result) => result.kind === "skipped").length} file(s)`,
       "",
       repairs.length > 0
         ? "Review the preserved local edits plus header repairs, run --check-relative-paths, then run repository verification before committing."

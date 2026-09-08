@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
 import {
   chmodSync,
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -355,7 +356,58 @@ test("repairs source headers without disturbing required preambles or local edit
   }
 });
 
-test("repair preflight performs zero writes when an unsupported tracked text format exists", () => {
+for (const staged of [false, true]) {
+  test(`repair and check tolerate ${staged ? "staged" : "unstaged"} deletions`, () => {
+    const fixture = createRepository();
+
+    try {
+      const { repositoryRoot } = fixture;
+      const deletedPath = "src/features/example/feature.ts";
+      rmSync(join(repositoryRoot, deletedPath));
+      if (staged) git(repositoryRoot, ["add", "--", deletedPath]);
+
+      const repair = runGenerator(repositoryRoot, ["--fix-relative-paths"]);
+      assert.equal(repair.status, 0, repair.stderr);
+      assert.ok(
+        repair.stdout.includes(`Skipped (missing): ${staged ? 0 : 1} file(s)`),
+      );
+      assert.equal(existsSync(join(repositoryRoot, deletedPath)), false);
+      assert.equal(
+        readFileSync(join(repositoryRoot, "src/lib/lib.ts"), "utf8"),
+        "// oz-next-app/src/lib/lib.ts\nexport const lib = true;\n",
+      );
+
+      const check = runGenerator(repositoryRoot, ["--check-relative-paths"]);
+      assert.equal(check.status, 0, check.stderr);
+      assert.ok(check.stdout.includes(`${staged ? 0 : 1} skipped (missing)`));
+      assert.equal(existsSync(join(repositoryRoot, deletedPath)), false);
+
+      // Commit only repairs so the deletion is the sole remaining change.
+      const remainingFiles = git(repositoryRoot, ["ls-files", "-z"])
+        .split("\0")
+        .filter((path) => path && path !== deletedPath);
+      git(repositoryRoot, ["add", "--", ...remainingFiles]);
+      git(repositoryRoot, [
+        "commit",
+        "--only",
+        "-m",
+        "repair headers",
+        "--",
+        ...remainingFiles,
+      ]);
+      const generation = runGenerator(repositoryRoot);
+      assert.notEqual(generation.status, 0);
+      assert.match(
+        generation.stderr,
+        /Tracked working-tree changes are present/u,
+      );
+    } finally {
+      fixture.cleanup();
+    }
+  });
+}
+
+test("repair preflight performs zero writes when an unsupported tracked text format and deletion exist", () => {
   const fixture = createRepository();
 
   try {
@@ -371,6 +423,8 @@ test("repair preflight performs zero writes when an unsupported tracked text for
       "opaque application-specific text\n",
     );
     commitAll(repositoryRoot, "unsafe fixture");
+    const deletedPath = join(repositoryRoot, "src/features/example/feature.ts");
+    rmSync(deletedPath);
 
     const repairableBefore = readFileSync(
       join(repositoryRoot, "src/features/example/needs-header.ts"),
@@ -383,6 +437,8 @@ test("repair preflight performs zero writes when an unsupported tracked text for
     assert.notEqual(result.status, 0);
     assert.match(result.stderr, /No files were written/u);
     assert.match(result.stderr, /unsupported-text-format/u);
+    assert.doesNotMatch(result.stderr, /file-stat-failed/u);
+    assert.equal(existsSync(deletedPath), false);
     assert.deepEqual(
       readFileSync(
         join(repositoryRoot, "src/features/example/needs-header.ts"),
