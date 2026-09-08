@@ -23,14 +23,17 @@ export default function EngagementDashboardNotFound(): ReactElement {
         actions={
           <div className="flex flex-wrap gap-2">
             <Button asChild>
-              <Link href={ENGAGEMENT_DASHBOARD_ROUTES.overview}>
+              <Link
+                href={ENGAGEMENT_DASHBOARD_ROUTES.overview}
+                prefetch={false}
+              >
                 <ArrowLeft aria-hidden="true" className="size-4" />
                 Back to overview
               </Link>
             </Button>
 
             <Button variant="outline" asChild>
-              <Link href={ENGAGEMENT_DASHBOARD_ROUTES.dealers}>
+              <Link href={ENGAGEMENT_DASHBOARD_ROUTES.dealers} prefetch={false}>
                 Open dealer performance
               </Link>
             </Button>

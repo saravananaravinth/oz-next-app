@@ -114,7 +114,7 @@ export function EngagementWorkspaceNav({
                 >
                   <Link
                     href={item.href}
-                    prefetch
+                    prefetch={false}
                     aria-current={active ? "page" : undefined}
                   >
                     <Icon aria-hidden="true" className="size-4" />

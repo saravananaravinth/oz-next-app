@@ -149,6 +149,7 @@ function MetricCard({
     content
   ) : (
     <Link
+      prefetch={false}
       href={metric.href}
       aria-describedby={metric.help === undefined ? undefined : helpId}
       className="min-w-0 rounded-2xl focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/40"

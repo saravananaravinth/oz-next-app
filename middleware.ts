@@ -6,6 +6,7 @@ import {
   evaluateUserAgentSupport,
   SUPPORTED_BROWSER_FALLBACK_PATH,
 } from "./src/lib/runtime/browser-support";
+import { buildForwardedRequestHeaders } from "./src/lib/security/forwarded-request-headers";
 
 const HDR = {
   REQUEST_ID: "x-request-id",
@@ -212,21 +213,6 @@ const MUTATION_METHODS: ReadonlySet<string> = new Set([
   "PATCH",
   "DELETE",
 ]);
-
-const STRIPPED_INBOUND_HEADERS = [
-  HDR.AUTHORIZATION,
-  "x-tenant-id",
-  "x-org-unit-id",
-  "x-dealer-org-unit-id",
-  "x-financier-id",
-  "x-customer-id",
-  "x-serverless-authorization",
-  "x-oz-task-secret",
-  "x-cloudtasks-queuename",
-  "x-cloudtasks-taskname",
-  "x-cloudtasks-taskretrycount",
-  "x-cloudtasks-taskexecutioncount",
-] as const;
 
 const SENSITIVE_QUERY_PARAM_NAMES = new Set([
   "access_token",
@@ -546,28 +532,11 @@ function isSameOriginRequest(request: NextRequest): boolean {
   const fetchSite =
     request.headers.get("sec-fetch-site")?.trim().toLowerCase() ?? "";
 
-  return fetchSite === "same-origin" || fetchSite === "none";
+  return fetchSite === "same-origin";
 }
 
 function requiresSameOrigin(request: NextRequest): boolean {
   return MUTATION_METHODS.has(request.method.toUpperCase());
-}
-
-function buildForwardedRequestHeaders(
-  request: NextRequest,
-  context: RequestContext,
-): Headers {
-  const headers = new Headers(request.headers);
-
-  for (const header of STRIPPED_INBOUND_HEADERS) {
-    headers.delete(header);
-  }
-
-  headers.set(HDR.REQUEST_ID, context.requestId);
-  headers.set(HDR.CORRELATION_ID, context.correlationId);
-  headers.set(HDR.CURRENT_PATH, context.currentPath);
-
-  return headers;
 }
 
 function appendVary(headers: Headers, value: string): void {
@@ -687,7 +656,7 @@ function nextResponse(
   return finalizeResponse(
     NextResponse.next({
       request: {
-        headers: buildForwardedRequestHeaders(request, context),
+        headers: buildForwardedRequestHeaders(request.headers, context),
       },
     }),
     {
@@ -851,6 +820,16 @@ export function middleware(request: NextRequest): NextResponse {
       status: HTTP_STATUS.NOT_FOUND,
       code: "route_not_found",
       detail: "This route is not exposed by the frontend application.",
+    });
+  }
+
+  if (pathname === "/" && requiresSameOrigin(request)) {
+    return problemResponse({
+      request,
+      context,
+      status: HTTP_STATUS.METHOD_NOT_ALLOWED,
+      code: "method_not_allowed",
+      detail: "Mutations are not supported on the application root.",
     });
   }
 

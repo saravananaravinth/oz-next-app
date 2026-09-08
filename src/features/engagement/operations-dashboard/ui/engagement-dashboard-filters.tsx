@@ -895,7 +895,7 @@ export function EngagementDashboardFilters({
         <Tooltip>
           <TooltipTrigger asChild>
             <Button variant="ghost" asChild>
-              <Link href={engagementDashboardResetHref(route)}>
+              <Link href={engagementDashboardResetHref(route)} prefetch={false}>
                 <RotateCcw aria-hidden="true" className="size-4" />
                 Reset
               </Link>

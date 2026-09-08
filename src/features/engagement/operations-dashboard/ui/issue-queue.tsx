@@ -296,7 +296,7 @@ function IssueQueuePagination({
           {firstPageHref !== null ? (
             <PaginationItem>
               <Button variant="outline" size="sm" asChild>
-                <Link href={firstPageHref} scroll={false}>
+                <Link href={firstPageHref} scroll={false} prefetch={false}>
                   <ChevronsLeft aria-hidden="true" className="size-4" />
                   First page
                 </Link>
@@ -315,7 +315,7 @@ function IssueQueuePagination({
           {result.pagination.hasMore && nextHref !== null ? (
             <PaginationItem>
               <Button variant="outline" size="sm" asChild>
-                <Link href={nextHref} scroll={false}>
+                <Link href={nextHref} scroll={false} prefetch={false}>
                   Next page
                   <ArrowRight aria-hidden="true" className="size-4" />
                 </Link>

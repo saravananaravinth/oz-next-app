@@ -64,6 +64,7 @@ export function EngagementLeadDetailPage({
         actions={
           <Button variant="outline" asChild>
             <Link
+              prefetch={false}
               href={engagementWorkspaceHref(
                 ENGAGEMENT_DASHBOARD_ROUTES.issues,
                 query,
@@ -128,6 +129,7 @@ export function EngagementLeadDetailPage({
                 "Unassigned"
               ) : (
                 <Link
+                  prefetch={false}
                   href={engagementDealerDetailHref(lead.dealer.id, query)}
                   className="underline underline-offset-4"
                 >

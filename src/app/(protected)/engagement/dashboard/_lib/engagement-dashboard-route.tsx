@@ -131,7 +131,9 @@ function capabilityRestrictedState(
         description={copy.description}
         actions={
           <Button variant="outline" asChild>
-            <Link href={fallbackHref}>Return to an authorized view</Link>
+            <Link href={fallbackHref} prefetch={false}>
+              Return to an authorized view
+            </Link>
           </Button>
         }
       />
@@ -321,7 +323,9 @@ export function renderEngagementDashboardResourceFailure(
         description="The route failed closed and did not render unvalidated engagement data."
         actions={
           <Button variant="outline" asChild>
-            <Link href={options.fallbackHref}>{options.fallbackLabel}</Link>
+            <Link href={options.fallbackHref} prefetch={false}>
+              {options.fallbackLabel}
+            </Link>
           </Button>
         }
       />

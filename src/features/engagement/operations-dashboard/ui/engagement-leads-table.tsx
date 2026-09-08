@@ -175,7 +175,7 @@ export function EngagementLeadsTable({
                 Results use stable cursor pagination.
               </p>
               <Button variant="outline" asChild>
-                <Link href={nextHref}>
+                <Link href={nextHref} prefetch={false}>
                   Next page
                   <ArrowRight aria-hidden="true" className="size-4" />
                 </Link>

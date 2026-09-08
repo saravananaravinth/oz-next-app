@@ -413,7 +413,7 @@ export function EngagementDashboardInvalidQueryState({
         description="The URL contains unsupported or unsafe filter values."
         actions={
           <Button asChild>
-            <Link href={ENGAGEMENT_DASHBOARD_ROUTES.overview}>
+            <Link href={ENGAGEMENT_DASHBOARD_ROUTES.overview} prefetch={false}>
               Open default view
             </Link>
           </Button>

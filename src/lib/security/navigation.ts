@@ -11,6 +11,14 @@ const ALLOWED_IMAGE_ORIGINS = new Set([
   "https://www.ozotecev.com",
 ]);
 
+const LEGACY_INTERNAL_ROUTE_ALIASES = new Map<string, Route>([
+  ["/engagement", "/engagement/dashboard"],
+  [
+    "/engagement/dashboard/configuration",
+    "/engagement/dashboard/configuration/video-sequences",
+  ],
+]);
+
 function pathname(value: string): string {
   const separatorIndex = value.search(/[?#]/u);
 
@@ -53,6 +61,24 @@ function isSafeInternalRoute(value: string): value is Route {
   return isSafeRelativePath(value);
 }
 
+function canonicalInternalRoute(value: Route): Route {
+  const separatorIndex = value.search(/[?#]/u);
+  const rawPath =
+    separatorIndex === -1 ? value : value.slice(0, separatorIndex);
+  const suffix = separatorIndex === -1 ? "" : value.slice(separatorIndex);
+  const normalizedPath =
+    rawPath.length > 1 ? rawPath.replace(/\/+$/u, "") : rawPath;
+  const canonicalPath = LEGACY_INTERNAL_ROUTE_ALIASES.get(normalizedPath);
+
+  if (canonicalPath === undefined) {
+    return value;
+  }
+
+  const candidate = `${canonicalPath}${suffix}`;
+
+  return isSafeInternalRoute(candidate) ? candidate : value;
+}
+
 export function safeInternalHref(
   value: string | null | undefined,
   fallback: Route = "/dashboard",
@@ -63,7 +89,9 @@ export function safeInternalHref(
 
   const trimmed = value.trim();
 
-  return isSafeInternalRoute(trimmed) ? trimmed : fallback;
+  return isSafeInternalRoute(trimmed)
+    ? canonicalInternalRoute(trimmed)
+    : fallback;
 }
 
 export function safeAssetPath(

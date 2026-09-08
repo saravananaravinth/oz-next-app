@@ -272,13 +272,20 @@ function logRefreshOutcome(
     outcome: RefreshOutcome;
   }>,
 ): void {
-  logger.warn("auth.refresh_boundary", {
+  const fields = {
     requestId: safeRequestId(input.request),
     phase: "refresh_boundary",
     accessCookiePresent: input.accessCookiePresent,
     refreshCookiePresent: input.refreshCookiePresent,
     outcome: input.outcome,
-  });
+  } as const;
+
+  if (input.outcome === "refresh_ok") {
+    logger.info("auth.refresh_boundary", fields);
+    return;
+  }
+
+  logger.warn("auth.refresh_boundary", fields);
 }
 
 async function clearAuthCookiesBestEffort(): Promise<void> {

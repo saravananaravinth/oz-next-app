@@ -180,6 +180,7 @@ export function DealerPerformanceControls({
               asChild
             >
               <Link
+                prefetch={false}
                 href={engagementWorkspaceHref(
                   ENGAGEMENT_DASHBOARD_ROUTES.dealers,
                   query,
@@ -251,6 +252,7 @@ export function DealerPerformanceControls({
           <TooltipTrigger asChild>
             <Button variant="ghost" size="icon-sm" asChild>
               <Link
+                prefetch={false}
                 href={engagementWorkspaceHref(
                   ENGAGEMENT_DASHBOARD_ROUTES.dealers,
                   query,
@@ -337,7 +339,7 @@ function DealerTablePagination({
           <PaginationContent>
             <PaginationItem>
               <Button variant="outline" size="sm" asChild>
-                <Link href={nextHref} scroll={false}>
+                <Link href={nextHref} scroll={false} prefetch={false}>
                   Next page
                   <ArrowRight aria-hidden="true" className="size-4" />
                 </Link>
