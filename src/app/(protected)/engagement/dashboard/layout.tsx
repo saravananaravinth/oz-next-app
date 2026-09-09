@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import type { ReactElement, ReactNode } from "react";
 
 const WORKSPACE_DESCRIPTION =
-  "Actor-scoped vehicle-sales lead intake, dealer performance, support, coverage, and customer video operations.";
+  "Actor-scoped vehicle-sales acquisition, re-engagement, dealer performance, support, coverage, and customer video operations.";
 
 export const metadata = {
   description: WORKSPACE_DESCRIPTION,

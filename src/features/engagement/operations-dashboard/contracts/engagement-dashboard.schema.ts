@@ -842,6 +842,17 @@ export const engagementLeadDetailSchema = z
         postalCode: z.string().trim().max(32).nullable(),
         latitude: z.number().min(-90).max(90).nullable(),
         longitude: z.number().min(-180).max(180).nullable(),
+        resolution: z
+          .object({
+            precision: z.string(),
+            status: z.string(),
+            reason: z.string(),
+            approximate: z.boolean(),
+            deadlineAt: isoDateTimeSchema.nullable(),
+          })
+          .strict()
+          .nullable()
+          .optional(),
       })
       .strict(),
     nextFollowUpAt: isoDateTimeSchema.nullable(),

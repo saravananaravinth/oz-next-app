@@ -115,13 +115,13 @@ function metrics(
   return [
     {
       id: "new-leads",
-      label: "Total vehicle leads",
+      label: "New vehicle leads",
       value: formatDashboardInteger(current.newLeads.value),
       description:
         current.statusCounts === undefined
           ? `${current.newLeads.averagePerDay.toFixed(1)} average per day`
           : `${formatDashboardInteger(current.statusCounts["OPEN"] ?? 0)} open · ${formatDashboardInteger(current.statusCounts["NO_RESPONSE"] ?? 0)} no response · ${formatDashboardInteger(current.statusCounts["CANCELLED"] ?? 0)} cancelled`,
-      help: "All vehicle-sales leads created in the selected period, including no-response and cancelled leads unless a status filter is selected. Repeat calls update existing leads.",
+      help: "Original vehicle-sales acquisitions created in the selected period, including no-response and cancelled leads unless a status filter is selected. Repeat calls re-engage the existing lead and do not inflate new-lead acquisition.",
       icon: <Users aria-hidden="true" className="size-5" />,
       tone: "info",
       trend: {
@@ -138,10 +138,10 @@ function metrics(
     },
     {
       id: "assignment",
-      label: "Assignment health",
+      label: "Dealer assignment health",
       value: formatDashboardPercentage(current.assignmentHealth.ratePct),
-      description: `${formatDashboardInteger(current.assignmentHealth.assignedCount)} assigned · ${formatDashboardInteger(current.assignmentHealth.unassignedCount)} unassigned`,
-      help: "Assigned leads divided by all assignable vehicle-sales leads. Unassigned leads usually indicate missing location, dealer eligibility, capacity, or coverage.",
+      description: `${formatDashboardInteger(current.assignmentHealth.assignedCount)} assigned · ${formatDashboardInteger(current.assignmentHealth.unassignedCount)} ready, unassigned`,
+      help: "Dealer-routing health for assignment-ready vehicle-sales leads. The denominator includes leads already assigned or holding a usable customer location; leads still waiting for location are excluded from this routing-health measure.",
       icon: <Building2 aria-hidden="true" className="size-5" />,
       tone: current.assignmentHealth.ratePct >= 90 ? "success" : "warning",
       trend: {
@@ -233,7 +233,7 @@ function Funnel({
 }: Readonly<{ funnel: EngagementFunnel }>): React.ReactElement {
   const maximum = funnel.stages[0]?.count ?? 0;
   const stageHelp = {
-    NEW: "Vehicle-sales leads created in the selected cohort.",
+    NEW: "Vehicle-sales leads originally acquired in the selected cohort. Re-engagements remain attributed to the original acquisition cohort.",
     ASSIGNED: "Leads with a current eligible dealer assignment.",
     CONTACTED: "Assigned leads with a recorded first dealer response.",
     BOOKED: "Leads with a verified booking event.",
@@ -324,8 +324,8 @@ export function EngagementDashboardPage({
 
       <ContentGrid variant="main-aside" className="items-stretch">
         <ContentDataSurface
-          title="Lead intake by source"
-          description="Vehicle-sales lead volume and source mix across the selected period."
+          title="New lead acquisition by source"
+          description="Original vehicle-sales acquisition volume and source mix across the selected period. Re-engagements do not create duplicate acquisition records."
           className="h-full"
           contentClassName="flex min-h-0 flex-1 flex-col px-[var(--card-spacing)] pb-[var(--card-spacing)]"
         >
@@ -338,7 +338,7 @@ export function EngagementDashboardPage({
 
         <ContentDataSurface
           title="Vehicle-sales funnel"
-          description="Cohort progression, drop-off, and median time between lifecycle stages."
+          description="Original acquisition-cohort progression, drop-off, and median time between lifecycle stages. Later re-engagements remain attributed to the original lead cohort."
           className="h-full"
           contentClassName="px-[var(--card-spacing)] pb-[var(--card-spacing)]"
         >
@@ -357,7 +357,7 @@ export function EngagementDashboardPage({
           capabilities={access.capabilities}
         />
       ) : (
-        sectionFailure("Vehicle-sales leads", data.leads)
+        sectionFailure("Vehicle-sales engagement queue", data.leads)
       )}
     </EngagementWorkspaceShell>
   );

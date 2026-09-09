@@ -928,6 +928,19 @@ function LeadOverview({
           <DetailItem label="Location">
             {location.length > 0 ? location : "Not available"}
           </DetailItem>
+          {lead.location.resolution ? (
+            <DetailItem label="Location resolution">
+              {lead.location.resolution.approximate
+                ? "Approximate area assignment — confirm with customer"
+                : lead.location.resolution.precision.toLowerCase()}
+              {lead.location.resolution.status === "REVIEW"
+                ? " · Dealer action recorded; assignment change needs review"
+                : null}
+              {lead.location.resolution.status === "EXCEPTION"
+                ? " · Needs follow-up"
+                : null}
+            </DetailItem>
+          ) : null}
           <DetailItem label="Coordinates">
             {lead.location.latitude === null || lead.location.longitude === null
               ? "Not available"
@@ -946,7 +959,9 @@ function LeadOverview({
               {lead.location.latitude !== null &&
               lead.location.longitude !== null
                 ? "Ready for routing"
-                : "Location required"}
+                : lead.location.resolution?.approximate
+                  ? "Assigned using approximate area"
+                  : "Location required"}
             </Badge>
           </DetailItem>
         </dl>

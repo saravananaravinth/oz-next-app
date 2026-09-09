@@ -11,7 +11,7 @@ import { resolveEngagementDashboardRoute } from "@/app/(protected)/engagement/da
 
 const PAGE_TITLE = "Vehicle sales engagement";
 const PAGE_DESCRIPTION =
-  "Focused vehicle-sales lead intake, assignment, response, follow-up, and conversion operations.";
+  "Vehicle-sales acquisition, re-engagement priority, dealer assignment, response, follow-up, and conversion operations.";
 
 type EngagementDashboardPageProps = Readonly<{
   searchParams: Promise<EngagementDashboardRawSearchParams>;

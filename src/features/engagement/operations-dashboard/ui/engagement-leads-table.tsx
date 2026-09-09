@@ -157,14 +157,15 @@ export function EngagementLeadsTable({
   return (
     <>
       <ContentDataSurface
-        title="Vehicle-sales leads"
-        description="Operational lead queue for assignment, response, follow-up, booking, conversion, and authorized interventions."
+        title="Vehicle-sales engagement queue"
+        description="Priority queue for new and re-engaged vehicle-sales opportunities in the selected period. The backend owns engagement ordering while original acquisition history remains immutable."
         actions={
           <div className="flex flex-wrap items-center gap-2">
             <Badge variant="outline">
               {formatDashboardInteger(result.items.length)} shown
             </Badge>
-            <Badge variant="secondary">Select a row for details</Badge>
+            <Badge variant="secondary">Re-engagements prioritized</Badge>
+            <Badge variant="outline">Select a row for details</Badge>
           </div>
         }
         contentClassName="px-[var(--card-spacing)] pb-[var(--card-spacing)]"
@@ -193,7 +194,7 @@ export function EngagementLeadsTable({
         ) : (
           <div
             role="region"
-            aria-label="Vehicle-sales leads table"
+            aria-label="Vehicle-sales engagement queue table"
             tabIndex={0}
             className="scrollbar-compact scrollbar-stable max-w-full overflow-x-auto overscroll-x-contain rounded-xl outline-none focus-visible:ring-3 focus-visible:ring-inset focus-visible:ring-ring/45"
           >
@@ -221,7 +222,12 @@ export function EngagementLeadsTable({
                       help="Displays the strongest verified lifecycle outcome: converted, booked, closed, or current status."
                     />
                   </TableHead>
-                  <TableHead>Last activity</TableHead>
+                  <TableHead>
+                    <HeaderHelp
+                      label="Latest activity"
+                      help="Most recent recorded lead activity. Queue priority is determined by the backend engagement order; original acquisition time is retained separately."
+                    />
+                  </TableHead>
                   <TableHead className="w-14">
                     <span className="sr-only">Actions</span>
                   </TableHead>
@@ -270,7 +276,7 @@ export function EngagementLeadsTable({
                             {lead.leadNo}
                           </button>
                           <span className="text-caption text-muted-readable">
-                            {lead.source.name} ·{" "}
+                            {lead.source.name} · Acquired{" "}
                             {formatDashboardDateTime(lead.createdAt)}
                           </span>
                         </div>
