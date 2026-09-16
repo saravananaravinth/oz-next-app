@@ -11,6 +11,7 @@ import type {
 } from "@/features/engagement/operations-dashboard/contracts/engagement-dashboard.schema";
 
 export const ENGAGEMENT_DASHBOARD_ROUTES = {
+  vehicleEnquiries: "/engagement/vehicle-enquiries",
   overview: "/engagement/dashboard",
   dealers: "/engagement/dashboard/dealers",
   issues: "/engagement/dashboard/issues",

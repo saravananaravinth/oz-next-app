@@ -398,11 +398,17 @@ export function EngagementDashboardFilters({
   filterOptions,
 }: EngagementDashboardFiltersProps): React.ReactElement {
   const router = useRouter();
+  const isVehicleEnquiriesRoute =
+    route === ENGAGEMENT_DASHBOARD_ROUTES.vehicleEnquiries;
   const [open, setOpen] = React.useState(false);
   const [draft, setDraft] = React.useState<FilterDraft>(() =>
     draftFromQuery(query),
   );
-  const count = activeFilterCount(query);
+  const count = Math.max(
+    0,
+    activeFilterCount(query) -
+      (isVehicleEnquiriesRoute ? query.ivrFlowCodes.length : 0),
+  );
 
   function navigate(
     patch: Parameters<typeof engagementWorkspaceHref>[2],
@@ -418,10 +424,14 @@ export function EngagementDashboardFilters({
   }
 
   const options = filterOptions.status === "ready" ? filterOptions.data : null;
-  const draftCount = draftFilterCount(draft);
+  const draftCount = Math.max(
+    0,
+    draftFilterCount(draft) -
+      (isVehicleEnquiriesRoute ? draft.ivrFlowCodes.length : 0),
+  );
   const leadFilterCount =
     draft.leadSourceIds.length +
-    draft.ivrFlowCodes.length +
+    (isVehicleEnquiriesRoute ? 0 : draft.ivrFlowCodes.length) +
     draft.statuses.length;
   const assignmentFilterCount =
     draft.dealerOrgUnitIds.length +
@@ -487,7 +497,8 @@ export function EngagementDashboardFilters({
             }}
           />
         </div>
-        {route === ENGAGEMENT_DASHBOARD_ROUTES.overview ? (
+        {route === ENGAGEMENT_DASHBOARD_ROUTES.overview ||
+        isVehicleEnquiriesRoute ? (
           <>
             <div className="grid w-full min-w-0 gap-1.5 sm:w-[11.5rem] sm:flex-none">
               <FieldLabel help="Adds KPI trend context using the immediately preceding period of equal length.">
@@ -541,6 +552,52 @@ export function EngagementDashboardFilters({
               </Select>
             </div>
           </>
+        ) : null}
+
+        {isVehicleEnquiriesRoute ? (
+          <form
+            className="grid w-full min-w-0 gap-1.5 sm:w-[18rem] sm:flex-none"
+            onSubmit={(event) => {
+              event.preventDefault();
+              const formData = new FormData(event.currentTarget);
+              const value = formData.get("vehicle-enquiries-search");
+
+              navigate({
+                q:
+                  typeof value === "string" && value.trim().length > 0
+                    ? value.trim()
+                    : null,
+              });
+            }}
+          >
+            <FieldLabel
+              htmlFor="vehicle-enquiries-search"
+              help="Search the backend-supported Vehicle Enquiries dashboard fields without exposing a browser-side transport path."
+            >
+              Lead / customer search
+            </FieldLabel>
+            <div className="flex min-w-0 gap-1.5">
+              <Input
+                key={query.q ?? "vehicle-enquiries-search-empty"}
+                id="vehicle-enquiries-search"
+                name="vehicle-enquiries-search"
+                type="search"
+                defaultValue={query.q ?? ""}
+                maxLength={100}
+                autoComplete="off"
+                placeholder="Lead, customer, mobile..."
+                className="min-w-0 flex-1"
+              />
+              <Button
+                type="submit"
+                variant="outline"
+                size="icon"
+                aria-label="Search Vehicle Enquiries"
+              >
+                <Search aria-hidden="true" className="size-4" />
+              </Button>
+            </div>
+          </form>
         ) : null}
 
         <Dialog
@@ -640,19 +697,37 @@ export function EngagementDashboardFilters({
                         setDraft({ ...draft, leadSourceIds });
                       }}
                     />
-                    <FilterChecklist
-                      label="Vehicle-sales flow"
-                      options={options.ivrFlows.map((item) => ({
-                        value: item.code,
-                        label: item.active
-                          ? item.name
-                          : `${item.name} · Inactive`,
-                      }))}
-                      values={draft.ivrFlowCodes}
-                      onChange={(ivrFlowCodes) => {
-                        setDraft({ ...draft, ivrFlowCodes });
-                      }}
-                    />
+                    {isVehicleEnquiriesRoute ? (
+                      <div className="grid min-h-44 content-start gap-3 rounded-2xl border border-primary/20 bg-primary/[0.035] p-3">
+                        <div>
+                          <p className="text-body-sm font-medium text-foreground">
+                            Vehicle-sales flow
+                          </p>
+                          <p className="mt-1 text-caption text-muted-readable">
+                            This command center is permanently scoped to Vehicle
+                            Enquiries. The server re-applies the flow scope on
+                            every request.
+                          </p>
+                        </div>
+                        <Badge variant="info" className="w-fit">
+                          VEHICLE_ENQUIRIES
+                        </Badge>
+                      </div>
+                    ) : (
+                      <FilterChecklist
+                        label="Vehicle-sales flow"
+                        options={options.ivrFlows.map((item) => ({
+                          value: item.code,
+                          label: item.active
+                            ? item.name
+                            : `${item.name} · Inactive`,
+                        }))}
+                        values={draft.ivrFlowCodes}
+                        onChange={(ivrFlowCodes) => {
+                          setDraft({ ...draft, ivrFlowCodes });
+                        }}
+                      />
+                    )}
                     <FilterChecklist
                       label="Lead status"
                       options={options.statuses.map((item) => ({
@@ -763,7 +838,8 @@ export function EngagementDashboardFilters({
                         });
                       }}
                     />
-                    {route === ENGAGEMENT_DASHBOARD_ROUTES.issues ? (
+                    {route === ENGAGEMENT_DASHBOARD_ROUTES.issues ||
+                    isVehicleEnquiriesRoute ? (
                       <>
                         <FilterChecklist
                           label="Issue category"

@@ -8,6 +8,7 @@ import {
   Building2,
   ChartNoAxesCombined,
   CircleAlert,
+  Gauge,
   MapPinned,
   Video,
 } from "lucide-react";
@@ -38,6 +39,17 @@ export function EngagementWorkspaceNav({
 }: EngagementWorkspaceNavProps): React.ReactElement {
   const pathname = usePathname();
   const items = [
+    {
+      label: "Command center",
+      href: engagementWorkspaceHref(
+        ENGAGEMENT_DASHBOARD_ROUTES.vehicleEnquiries,
+        query,
+      ),
+      icon: Gauge,
+      visible: true,
+      exact: true,
+      help: "Vehicle Enquiries operational health, incidents, lead monitoring, dealer risk, and safe intervention.",
+    },
     {
       label: "Overview",
       href: engagementWorkspaceHref(
