@@ -10,15 +10,11 @@ import {
   engagementCoverageResultSchema,
   engagementDashboardIssueResultSchema,
   engagementDashboardLeadListResultSchema,
-  engagementDashboardSummarySchema,
   engagementDealerDetailSchema,
   engagementDealerPerformanceResultSchema,
   engagementFilterOptionsSchema,
-  engagementFunnelSchema,
   engagementLeadDetailSchema,
-  engagementLeadSourceSeriesSchema,
   engagementVideoSequenceListResultSchema,
-  previousDashboardRange,
   type EngagementCoverageResult,
   type EngagementDashboardIssueResult,
   type EngagementDashboardSearchParams,
@@ -27,6 +23,13 @@ import {
   type EngagementLeadDetail,
   type EngagementVideoSequenceListResult,
 } from "@/features/engagement/operations-dashboard/contracts/engagement-dashboard.schema";
+import {
+  engagementJourneyFunnelResponseSchema,
+  engagementJourneyLatencyResponseSchema,
+  engagementJourneyOutcomesResponseSchema,
+  engagementJourneySummaryResponseSchema,
+  type EngagementJourneyAnalyticsSnapshot,
+} from "@/features/engagement/operations-dashboard/contracts/journey-analytics.schema";
 import type {
   EngagementCoverageWorkspaceData,
   EngagementDashboardSectionResult,
@@ -36,6 +39,10 @@ import type {
   EngagementVideoSequenceWorkspaceData,
 } from "@/features/engagement/operations-dashboard/contracts/engagement-dashboard.types";
 import type { ResolvedEngagementDashboardAccess } from "@/features/engagement/operations-dashboard/policies/engagement-dashboard.policy";
+import {
+  combineEngagementJourneySnapshot,
+  EngagementJourneySnapshotMismatchError,
+} from "@/features/engagement/operations-dashboard/utils/journey-analytics";
 
 const videoSequenceClient = createErpFeatureClient({
   featureName: "engagement.video-sequences",
@@ -140,57 +147,10 @@ export async function readEngagementOverview(
   }>,
 ): Promise<EngagementOverviewData> {
   const common = commonQuery(input.query);
-  const previousRange = previousDashboardRange(
-    input.query.from,
-    input.query.to,
-  );
   const options = actorContextOptions(input.access);
 
-  const [
-    summary,
-    comparisonSummary,
-    sourceSeries,
-    funnel,
-    filterOptions,
-    leads,
-  ] = await Promise.all([
-    settle(
-      dashboardClient.request({
-        path: "/summary",
-        query: common,
-        schema: engagementDashboardSummarySchema,
-        ...options,
-      }),
-    ),
-    input.query.comparison === "PREVIOUS_PERIOD"
-      ? settle(
-          dashboardClient.request({
-            path: "/summary",
-            query: commonQuery(input.query, previousRange),
-            schema: engagementDashboardSummarySchema,
-            ...options,
-          }),
-        )
-      : Promise.resolve(null),
-    settle(
-      dashboardClient.request({
-        path: "/lead-sources/timeseries",
-        query: compactQuery({
-          ...common,
-          ...(input.query.grain === "AUTO" ? {} : { grain: input.query.grain }),
-        }),
-        schema: engagementLeadSourceSeriesSchema,
-        ...options,
-      }),
-    ),
-    settle(
-      dashboardClient.request({
-        path: "/funnel",
-        query: common,
-        schema: engagementFunnelSchema,
-        ...options,
-      }),
-    ),
+  const [journey, filterOptions, leads] = await Promise.all([
+    settle(readJourneyAnalyticsSnapshot(input.query, input.access)),
     readFilterOptions(input.access),
     settle(
       dashboardClient.request({
@@ -206,14 +166,80 @@ export async function readEngagementOverview(
     ),
   ]);
 
+  return { journey, filterOptions, leads };
+}
+
+function journeyQuery(
+  query: EngagementDashboardSearchParams,
+): Readonly<Record<string, ErpFeatureQueryValue>> {
   return {
-    summary,
-    comparisonSummary,
-    sourceSeries,
-    funnel,
-    filterOptions,
-    leads,
+    from: query.from,
+    to: query.to,
+    maturityHours: query.maturityHours,
   };
+}
+
+async function readJourneyAnalyticsSnapshot(
+  query: EngagementDashboardSearchParams,
+  access: ResolvedEngagementDashboardAccess,
+): Promise<EngagementJourneyAnalyticsSnapshot> {
+  const options = actorContextOptions(access);
+  const requestQuery = journeyQuery(query);
+
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const [summary, funnel, outcomes, latency] = await Promise.all([
+      dashboardClient.request({
+        path: "/journey/summary",
+        query: requestQuery,
+        schema: engagementJourneySummaryResponseSchema,
+        ...options,
+      }),
+      dashboardClient.request({
+        path: "/journey/funnel",
+        query: requestQuery,
+        schema: engagementJourneyFunnelResponseSchema,
+        ...options,
+      }),
+      dashboardClient.request({
+        path: "/journey/outcomes",
+        query: requestQuery,
+        schema: engagementJourneyOutcomesResponseSchema,
+        ...options,
+      }),
+      dashboardClient.request({
+        path: "/journey/latency",
+        query: requestQuery,
+        schema: engagementJourneyLatencyResponseSchema,
+        ...options,
+      }),
+    ]);
+
+    try {
+      const snapshot = combineEngagementJourneySnapshot({
+        summary,
+        funnel,
+        outcomes,
+        latency,
+      });
+      if (
+        snapshot.cohort.from !== query.from ||
+        snapshot.cohort.to !== query.to ||
+        snapshot.cohort.maturityHours !== query.maturityHours
+      ) {
+        throw new EngagementJourneySnapshotMismatchError();
+      }
+      return snapshot;
+    } catch (error: unknown) {
+      if (
+        !(error instanceof EngagementJourneySnapshotMismatchError) ||
+        attempt === 1
+      ) {
+        throw error;
+      }
+    }
+  }
+
+  throw new EngagementJourneySnapshotMismatchError();
 }
 
 export async function readEngagementDealerWorkspace(

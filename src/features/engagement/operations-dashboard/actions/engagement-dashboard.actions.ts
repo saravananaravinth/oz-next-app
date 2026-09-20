@@ -131,7 +131,6 @@ export type CreateEngagementLeadAdminSessionActionResult =
 const DASHBOARD_PATHS = [
   "/engagement/dashboard",
   "/engagement/dashboard/dealers",
-  "/engagement/dashboard/issues",
   "/engagement/dashboard/coverage",
   "/engagement/dashboard/configuration/video-sequences",
 ] as const;

@@ -5,13 +5,11 @@ import type {
   EngagementCoverageResult,
   EngagementDashboardIssueResult,
   EngagementDashboardLeadListResult,
-  EngagementDashboardSummary,
   EngagementDealerPerformanceResult,
   EngagementFilterOptions,
-  EngagementFunnel,
-  EngagementLeadSourceSeries,
   EngagementVideoSequenceListResult,
 } from "@/features/engagement/operations-dashboard/contracts/engagement-dashboard.schema";
+import type { EngagementJourneyAnalyticsSnapshot } from "@/features/engagement/operations-dashboard/contracts/journey-analytics.schema";
 
 export type EngagementDashboardSectionResult<TData> =
   | Readonly<{ status: "ready"; data: TData }>
@@ -22,10 +20,7 @@ export type EngagementDashboardSectionResult<TData> =
     }>;
 
 export type EngagementOverviewData = Readonly<{
-  summary: EngagementDashboardSectionResult<EngagementDashboardSummary>;
-  comparisonSummary: EngagementDashboardSectionResult<EngagementDashboardSummary> | null;
-  sourceSeries: EngagementDashboardSectionResult<EngagementLeadSourceSeries>;
-  funnel: EngagementDashboardSectionResult<EngagementFunnel>;
+  journey: EngagementDashboardSectionResult<EngagementJourneyAnalyticsSnapshot>;
   filterOptions: EngagementDashboardSectionResult<EngagementFilterOptions>;
   leads: EngagementDashboardSectionResult<EngagementDashboardLeadListResult>;
 }>;

@@ -5,6 +5,7 @@ import * as React from "react";
 import Link from "next/link";
 import {
   Building2,
+  CircleAlert,
   CircleDot,
   Filter,
   Info,
@@ -13,7 +14,6 @@ import {
   RotateCcw,
   Search,
   SlidersHorizontal,
-  TriangleAlert,
   X,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -39,13 +39,6 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Tooltip,
@@ -82,8 +75,6 @@ type FilterDraft = Readonly<{
   conversionStates: EngagementDashboardSearchParams["conversionStates"];
   followUpStates: EngagementDashboardSearchParams["followUpStates"];
   issueSeverities: EngagementDashboardSearchParams["issueSeverities"];
-  issueCategories: EngagementDashboardSearchParams["issueCategories"];
-  issueStates: EngagementDashboardSearchParams["issueStates"];
 }>;
 
 type FilterOption = Readonly<{ value: string; label: string }>;
@@ -110,23 +101,6 @@ const ISSUE_SEVERITY_OPTIONS = [
   { value: "HIGH", label: "High" },
   { value: "MEDIUM", label: "Medium" },
   { value: "LOW", label: "Low" },
-] as const satisfies readonly FilterOption[];
-
-const ISSUE_CATEGORY_OPTIONS = [
-  { value: "UNASSIGNED_LEAD", label: "Unassigned lead" },
-  { value: "DEALER_RESPONSE_OVERDUE", label: "Dealer response overdue" },
-  { value: "FOLLOW_UP_OVERDUE", label: "Follow-up overdue" },
-  { value: "CUSTOMER_LOCATION_MISSING", label: "Customer location missing" },
-  { value: "DEALER_LOCATION_MISSING", label: "Dealer location missing" },
-  { value: "DEALER_INACTIVE", label: "Dealer engagement inactive" },
-  { value: "OUTBOX_FAILED", label: "Delivery failed" },
-  { value: "VIDEO_MESSAGE_FAILED", label: "Video message failed" },
-] as const satisfies readonly FilterOption[];
-
-const ISSUE_STATE_OPTIONS = [
-  { value: "OPEN", label: "Open" },
-  { value: "ACKNOWLEDGED", label: "Acknowledged" },
-  { value: "RESOLVED", label: "Resolved" },
 ] as const satisfies readonly FilterOption[];
 
 function optionIncludes(
@@ -160,18 +134,6 @@ function isIssueSeverity(
   return optionIncludes(ISSUE_SEVERITY_OPTIONS, value);
 }
 
-function isIssueCategory(
-  value: string,
-): value is EngagementDashboardSearchParams["issueCategories"][number] {
-  return optionIncludes(ISSUE_CATEGORY_OPTIONS, value);
-}
-
-function isIssueState(
-  value: string,
-): value is EngagementDashboardSearchParams["issueStates"][number] {
-  return optionIncludes(ISSUE_STATE_OPTIONS, value);
-}
-
 function draftFromQuery(query: EngagementDashboardSearchParams): FilterDraft {
   return {
     leadSourceIds: query.leadSourceIds,
@@ -184,8 +146,6 @@ function draftFromQuery(query: EngagementDashboardSearchParams): FilterDraft {
     conversionStates: query.conversionStates,
     followUpStates: query.followUpStates,
     issueSeverities: query.issueSeverities,
-    issueCategories: query.issueCategories,
-    issueStates: query.issueStates,
   };
 }
 
@@ -201,8 +161,6 @@ function emptyDraft(): FilterDraft {
     conversionStates: [],
     followUpStates: [],
     issueSeverities: [],
-    issueCategories: [],
-    issueStates: [],
   };
 }
 
@@ -224,8 +182,6 @@ function draftFilterCount(query: FilterDraft): number {
     query.conversionStates,
     query.followUpStates,
     query.issueSeverities,
-    query.issueCategories,
-    query.issueStates,
   ].reduce((sum, values) => sum + values.length, 0);
 }
 
@@ -398,17 +354,11 @@ export function EngagementDashboardFilters({
   filterOptions,
 }: EngagementDashboardFiltersProps): React.ReactElement {
   const router = useRouter();
-  const isVehicleEnquiriesRoute =
-    route === ENGAGEMENT_DASHBOARD_ROUTES.vehicleEnquiries;
   const [open, setOpen] = React.useState(false);
   const [draft, setDraft] = React.useState<FilterDraft>(() =>
     draftFromQuery(query),
   );
-  const count = Math.max(
-    0,
-    activeFilterCount(query) -
-      (isVehicleEnquiriesRoute ? query.ivrFlowCodes.length : 0),
-  );
+  const count = activeFilterCount(query);
 
   function navigate(
     patch: Parameters<typeof engagementWorkspaceHref>[2],
@@ -418,20 +368,15 @@ export function EngagementDashboardFilters({
         ...patch,
         dealerCursor: null,
         leadCursor: null,
-        issueCursor: null,
       }),
     );
   }
 
   const options = filterOptions.status === "ready" ? filterOptions.data : null;
-  const draftCount = Math.max(
-    0,
-    draftFilterCount(draft) -
-      (isVehicleEnquiriesRoute ? draft.ivrFlowCodes.length : 0),
-  );
+  const draftCount = draftFilterCount(draft);
   const leadFilterCount =
     draft.leadSourceIds.length +
-    (isVehicleEnquiriesRoute ? 0 : draft.ivrFlowCodes.length) +
+    draft.ivrFlowCodes.length +
     draft.statuses.length;
   const assignmentFilterCount =
     draft.dealerOrgUnitIds.length +
@@ -439,10 +384,8 @@ export function EngagementDashboardFilters({
     draft.conversionStates.length +
     draft.followUpStates.length;
   const locationFilterCount = draft.districts.length + draft.cities.length;
-  const exceptionFilterCount =
-    draft.issueSeverities.length +
-    draft.issueCategories.length +
-    draft.issueStates.length;
+  const attentionFilterCount = draft.issueSeverities.length;
+  const isJourneyOverview = route === ENGAGEMENT_DASHBOARD_ROUTES.overview;
 
   return (
     <ContentToolbar
@@ -454,9 +397,13 @@ export function EngagementDashboardFilters({
         <div className="grid w-full min-w-0 gap-1.5 sm:w-[11.5rem] sm:flex-none">
           <FieldLabel
             htmlFor="engagement-from"
-            help="First lead creation date included. Repeat calls do not change the creation date."
+            help={
+              isJourneyOverview
+                ? "First process-run date included in the authoritative journey cohort. The operational queue below uses the same calendar range against lead creation time."
+                : "First lead creation date included in the selected workspace cohort."
+            }
           >
-            Created from
+            {isJourneyOverview ? "Cohort from" : "Created from"}
           </FieldLabel>
           <Input
             id="engagement-from"
@@ -477,9 +424,13 @@ export function EngagementDashboardFilters({
         <div className="grid w-full min-w-0 gap-1.5 sm:w-[11.5rem] sm:flex-none">
           <FieldLabel
             htmlFor="engagement-to"
-            help="Last lead creation date included in the selected cohort."
+            help={
+              isJourneyOverview
+                ? "Last process-run date included in the authoritative journey cohort. The operational queue below uses the same calendar range against lead creation time."
+                : "Last lead creation date included in the selected workspace cohort."
+            }
           >
-            Created to
+            {isJourneyOverview ? "Cohort to" : "Created to"}
           </FieldLabel>
           <Input
             id="engagement-to"
@@ -497,70 +448,57 @@ export function EngagementDashboardFilters({
             }}
           />
         </div>
-        {route === ENGAGEMENT_DASHBOARD_ROUTES.overview ||
-        isVehicleEnquiriesRoute ? (
-          <>
-            <div className="grid w-full min-w-0 gap-1.5 sm:w-[11.5rem] sm:flex-none">
-              <FieldLabel help="Adds KPI trend context using the immediately preceding period of equal length.">
-                Comparison
-              </FieldLabel>
-              <Select
-                value={query.comparison}
-                onValueChange={(value) => {
-                  if (value === "PREVIOUS_PERIOD" || value === "NONE") {
-                    navigate({ comparison: value });
-                  }
-                }}
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Select comparison period" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="PREVIOUS_PERIOD">
-                    Previous period
-                  </SelectItem>
-                  <SelectItem value="NONE">No comparison</SelectItem>
-                </SelectContent>
-              </Select>
+        {isJourneyOverview ? (
+          <form
+            className="grid w-full min-w-0 gap-1.5 sm:w-[13rem] sm:flex-none"
+            onSubmit={(event) => {
+              event.preventDefault();
+              const formData = new FormData(event.currentTarget);
+              const rawValue = formData.get("engagement-maturity-hours");
+              const value =
+                typeof rawValue === "string" && /^\d+$/u.test(rawValue)
+                  ? Number(rawValue)
+                  : Number.NaN;
+
+              if (Number.isInteger(value) && value >= 1 && value <= 720) {
+                navigate({ maturityHours: value });
+              }
+            }}
+          >
+            <FieldLabel
+              htmlFor="engagement-maturity-hours"
+              help="Only runs older than this horizon can enter the matured conversion denominator. Current and incomplete runs remain visible as diagnostics."
+            >
+              Maturity horizon
+            </FieldLabel>
+            <div className="flex min-w-0 gap-1.5">
+              <Input
+                key={String(query.maturityHours)}
+                id="engagement-maturity-hours"
+                name="engagement-maturity-hours"
+                type="number"
+                inputMode="numeric"
+                placeholder="24"
+                min={1}
+                max={720}
+                step={1}
+                defaultValue={query.maturityHours}
+                aria-label="Journey maturity horizon in hours"
+              />
+              <Button type="submit" variant="outline">
+                Apply
+              </Button>
             </div>
-            <div className="grid w-full min-w-0 gap-1.5 sm:w-36 sm:flex-none">
-              <FieldLabel help="Controls how lead-source activity is grouped. Automatic chooses a readable interval for the date range.">
-                Chart grain
-              </FieldLabel>
-              <Select
-                value={query.grain}
-                onValueChange={(value) => {
-                  if (
-                    value === "AUTO" ||
-                    value === "DAY" ||
-                    value === "WEEK" ||
-                    value === "MONTH"
-                  ) {
-                    navigate({ grain: value });
-                  }
-                }}
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Select chart grain" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="AUTO">Automatic</SelectItem>
-                  <SelectItem value="DAY">Daily</SelectItem>
-                  <SelectItem value="WEEK">Weekly</SelectItem>
-                  <SelectItem value="MONTH">Monthly</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </>
+          </form>
         ) : null}
 
-        {isVehicleEnquiriesRoute ? (
+        {isJourneyOverview ? (
           <form
             className="grid w-full min-w-0 gap-1.5 sm:w-[18rem] sm:flex-none"
             onSubmit={(event) => {
               event.preventDefault();
               const formData = new FormData(event.currentTarget);
-              const value = formData.get("vehicle-enquiries-search");
+              const value = formData.get("engagement-lead-search");
 
               navigate({
                 q:
@@ -571,16 +509,16 @@ export function EngagementDashboardFilters({
             }}
           >
             <FieldLabel
-              htmlFor="vehicle-enquiries-search"
-              help="Search the backend-supported Vehicle Enquiries dashboard fields without exposing a browser-side transport path."
+              htmlFor="engagement-lead-search"
+              help="Search backend-supported lead and customer fields within the selected actor, tenant, date, and flow scope."
             >
               Lead / customer search
             </FieldLabel>
             <div className="flex min-w-0 gap-1.5">
               <Input
-                key={query.q ?? "vehicle-enquiries-search-empty"}
-                id="vehicle-enquiries-search"
-                name="vehicle-enquiries-search"
+                key={query.q ?? "engagement-lead-search-empty"}
+                id="engagement-lead-search"
+                name="engagement-lead-search"
                 type="search"
                 defaultValue={query.q ?? ""}
                 maxLength={100}
@@ -592,7 +530,7 @@ export function EngagementDashboardFilters({
                 type="submit"
                 variant="outline"
                 size="icon"
-                aria-label="Search Vehicle Enquiries"
+                aria-label="Search engagement leads"
               >
                 <Search aria-hidden="true" className="size-4" />
               </Button>
@@ -613,22 +551,26 @@ export function EngagementDashboardFilters({
           <DialogTrigger asChild>
             <Button type="button" variant="outline" className="self-end">
               <Filter aria-hidden="true" className="size-4" />
-              More filters
+              {isJourneyOverview ? "Queue filters" : "More filters"}
               {count > 0 ? <Badge variant="secondary">{count}</Badge> : null}
             </Button>
           </DialogTrigger>
           <DialogContent height="viewport" className="sm:max-w-6xl">
             <DialogHeader>
               <div className="flex flex-wrap items-center gap-2">
-                <DialogTitle>Filter vehicle-sales engagement</DialogTitle>
+                <DialogTitle>
+                  {isJourneyOverview
+                    ? "Filter the operational lead queue"
+                    : "Filter vehicle-sales engagement"}
+                </DialogTitle>
                 <Badge variant={draftCount > 0 ? "secondary" : "outline"}>
                   {draftCount} selected
                 </Badge>
               </div>
               <DialogDescription>
-                Filters are grouped by business purpose and apply consistently
-                across the engagement workspace. Search long option lists
-                independently without losing current selections.
+                {isJourneyOverview
+                  ? "These advanced filters apply to the operational lead queue only. Authoritative journey KPIs, outcomes, funnel, and latency use only the cohort dates and maturity horizon above."
+                  : "Filters are grouped by business purpose and apply consistently across this workspace. Search long option lists independently without losing current selections."}
               </DialogDescription>
             </DialogHeader>
 
@@ -669,12 +611,12 @@ export function EngagementDashboardFilters({
                         <Badge variant="secondary">{locationFilterCount}</Badge>
                       ) : null}
                     </TabsTrigger>
-                    <TabsTrigger value="exceptions">
-                      <TriangleAlert aria-hidden="true" />
-                      Exceptions
-                      {exceptionFilterCount > 0 ? (
+                    <TabsTrigger value="attention">
+                      <CircleAlert aria-hidden="true" />
+                      Attention
+                      {attentionFilterCount > 0 ? (
                         <Badge variant="secondary">
-                          {exceptionFilterCount}
+                          {attentionFilterCount}
                         </Badge>
                       ) : null}
                     </TabsTrigger>
@@ -697,37 +639,19 @@ export function EngagementDashboardFilters({
                         setDraft({ ...draft, leadSourceIds });
                       }}
                     />
-                    {isVehicleEnquiriesRoute ? (
-                      <div className="grid min-h-44 content-start gap-3 rounded-2xl border border-primary/20 bg-primary/[0.035] p-3">
-                        <div>
-                          <p className="text-body-sm font-medium text-foreground">
-                            Vehicle-sales flow
-                          </p>
-                          <p className="mt-1 text-caption text-muted-readable">
-                            This command center is permanently scoped to Vehicle
-                            Enquiries. The server re-applies the flow scope on
-                            every request.
-                          </p>
-                        </div>
-                        <Badge variant="info" className="w-fit">
-                          VEHICLE_ENQUIRIES
-                        </Badge>
-                      </div>
-                    ) : (
-                      <FilterChecklist
-                        label="Vehicle-sales flow"
-                        options={options.ivrFlows.map((item) => ({
-                          value: item.code,
-                          label: item.active
-                            ? item.name
-                            : `${item.name} · Inactive`,
-                        }))}
-                        values={draft.ivrFlowCodes}
-                        onChange={(ivrFlowCodes) => {
-                          setDraft({ ...draft, ivrFlowCodes });
-                        }}
-                      />
-                    )}
+                    <FilterChecklist
+                      label="Vehicle-sales flow"
+                      options={options.ivrFlows.map((item) => ({
+                        value: item.code,
+                        label: item.active
+                          ? item.name
+                          : `${item.name} · Inactive`,
+                      }))}
+                      values={draft.ivrFlowCodes}
+                      onChange={(ivrFlowCodes) => {
+                        setDraft({ ...draft, ivrFlowCodes });
+                      }}
+                    />
                     <FilterChecklist
                       label="Lead status"
                       options={options.statuses.map((item) => ({
@@ -823,11 +747,11 @@ export function EngagementDashboardFilters({
                   </TabsContent>
 
                   <TabsContent
-                    value="exceptions"
-                    className="m-0 grid gap-4 md:grid-cols-2 xl:grid-cols-3"
+                    value="attention"
+                    className="m-0 grid gap-4 md:grid-cols-2"
                   >
                     <FilterChecklist
-                      label="Issue severity"
+                      label="Attention severity"
                       options={ISSUE_SEVERITY_OPTIONS}
                       values={draft.issueSeverities}
                       onChange={(issueSeverities) => {
@@ -838,50 +762,22 @@ export function EngagementDashboardFilters({
                         });
                       }}
                     />
-                    {route === ENGAGEMENT_DASHBOARD_ROUTES.issues ||
-                    isVehicleEnquiriesRoute ? (
-                      <>
-                        <FilterChecklist
-                          label="Issue category"
-                          options={ISSUE_CATEGORY_OPTIONS}
-                          values={draft.issueCategories}
-                          onChange={(issueCategories) => {
-                            setDraft({
-                              ...draft,
-                              issueCategories:
-                                issueCategories.filter(isIssueCategory),
-                            });
-                          }}
+                    <div className="grid min-h-44 place-items-center rounded-2xl border border-dashed p-5 text-center">
+                      <div>
+                        <CircleAlert
+                          aria-hidden="true"
+                          className="mx-auto size-6 text-muted-readable"
                         />
-                        <FilterChecklist
-                          label="Issue state"
-                          options={ISSUE_STATE_OPTIONS}
-                          values={draft.issueStates}
-                          onChange={(issueStates) => {
-                            setDraft({
-                              ...draft,
-                              issueStates: issueStates.filter(isIssueState),
-                            });
-                          }}
-                        />
-                      </>
-                    ) : (
-                      <div className="grid min-h-44 place-items-center rounded-2xl border border-dashed p-5 text-center md:col-span-1 xl:col-span-2">
-                        <div>
-                          <TriangleAlert
-                            aria-hidden="true"
-                            className="mx-auto size-6 text-muted-readable"
-                          />
-                          <p className="mt-2 text-body-sm font-medium">
-                            Detailed exception filters are available in Support
-                          </p>
-                          <p className="mt-1 text-caption text-muted-readable">
-                            Severity remains available here because it affects
-                            Overview attention metrics.
-                          </p>
-                        </div>
+                        <p className="mt-2 text-body-sm font-medium">
+                          Detailed Support filters have been retired
+                        </p>
+                        <p className="mt-1 text-caption text-muted-readable">
+                          Severity remains available because it still scopes
+                          authoritative attention metrics in the current
+                          dashboard.
+                        </p>
                       </div>
-                    )}
+                    </div>
                   </TabsContent>
                 </Tabs>
               )}
@@ -978,7 +874,8 @@ export function EngagementDashboardFilters({
             </Button>
           </TooltipTrigger>
           <TooltipContent>
-            Restore the default 30-day view and clear every filter.
+            Restore the default 30-day view, 72-hour journey maturity horizon,
+            and clear every filter.
           </TooltipContent>
         </Tooltip>
       </div>

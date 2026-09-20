@@ -29,6 +29,7 @@ import {
   Wrench,
   Component,
   Network,
+  Workflow,
 } from "lucide-react";
 
 import { Badge, type BadgeProps } from "@/components/ui/badge";
@@ -94,6 +95,7 @@ const NAV_ICON_COMPONENTS = {
   Wrench,
   component: Component,
   network: Network,
+  workflow: Workflow,
 
   // Canonical persisted Lucide-style identifiers.
   "bar-chart-3": BarChart3,

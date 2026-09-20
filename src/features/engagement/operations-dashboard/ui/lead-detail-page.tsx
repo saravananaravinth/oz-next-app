@@ -66,12 +66,13 @@ export function EngagementLeadDetailPage({
             <Link
               prefetch={false}
               href={engagementWorkspaceHref(
-                ENGAGEMENT_DASHBOARD_ROUTES.issues,
+                ENGAGEMENT_DASHBOARD_ROUTES.overview,
                 query,
+                { leadCursor: null },
               )}
             >
-              <ArrowLeft aria-hidden="true" className="size-4" /> Back to
-              support
+              <ArrowLeft aria-hidden="true" className="size-4" /> Back to lead
+              workspace
             </Link>
           </Button>
         }

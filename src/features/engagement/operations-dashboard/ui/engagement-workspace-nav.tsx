@@ -4,14 +4,7 @@ import type * as React from "react";
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import {
-  Building2,
-  ChartNoAxesCombined,
-  CircleAlert,
-  Gauge,
-  MapPinned,
-  Video,
-} from "lucide-react";
+import { Building2, ChartNoAxesCombined, MapPinned, Video } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -40,17 +33,6 @@ export function EngagementWorkspaceNav({
   const pathname = usePathname();
   const items = [
     {
-      label: "Command center",
-      href: engagementWorkspaceHref(
-        ENGAGEMENT_DASHBOARD_ROUTES.vehicleEnquiries,
-        query,
-      ),
-      icon: Gauge,
-      visible: true,
-      exact: true,
-      help: "Vehicle Enquiries operational health, incidents, lead monitoring, dealer risk, and safe intervention.",
-    },
-    {
       label: "Overview",
       href: engagementWorkspaceHref(
         ENGAGEMENT_DASHBOARD_ROUTES.overview,
@@ -68,14 +50,6 @@ export function EngagementWorkspaceNav({
       visible: access.capabilities.canReadDealerPerformance,
       exact: false,
       help: "Dealer assignment load, response, follow-up, conversion, and configuration health.",
-    },
-    {
-      label: "Support",
-      href: engagementWorkspaceHref(ENGAGEMENT_DASHBOARD_ROUTES.issues, query),
-      icon: CircleAlert,
-      visible: access.capabilities.canReadIssues,
-      exact: false,
-      help: "Prioritized operational exceptions and permission-gated recovery actions.",
     },
     {
       label: "Coverage",

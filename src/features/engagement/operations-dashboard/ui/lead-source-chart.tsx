@@ -183,7 +183,6 @@ export function LeadSourceChart({
           leadSourceIds: isOther ? query.leadSourceIds : [source.id],
           dealerCursor: null,
           leadCursor: null,
-          issueCursor: null,
         }),
       );
     },

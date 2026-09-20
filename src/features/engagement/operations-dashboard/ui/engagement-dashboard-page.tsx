@@ -1,37 +1,17 @@
 // oz-next-app/src/features/engagement/operations-dashboard/ui/engagement-dashboard-page.tsx
 import type * as React from "react";
 import Link from "next/link";
-import {
-  AlarmClockCheck,
-  Building2,
-  CircleAlert,
-  Gauge,
-  Info,
-  ShoppingCart,
-  Users,
-} from "lucide-react";
+import { Building2, CircleAlert } from "lucide-react";
 
 import {
-  ContentDataSurface,
-  ContentGrid,
   ContentHeader,
   ContentRoot,
   ContentStatus,
 } from "@/components/common/content-shell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Progress } from "@/components/ui/progress";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
 
-import type {
-  EngagementDashboardSearchParams,
-  EngagementDashboardSummary,
-  EngagementFunnel,
-} from "@/features/engagement/operations-dashboard/contracts/engagement-dashboard.schema";
+import type { EngagementDashboardSearchParams } from "@/features/engagement/operations-dashboard/contracts/engagement-dashboard.schema";
 import type {
   EngagementDashboardSectionResult,
   EngagementOverviewData,
@@ -40,22 +20,11 @@ import type {
   EngagementDashboardAccess,
   ResolvedEngagementDashboardAccess,
 } from "@/features/engagement/operations-dashboard/policies/engagement-dashboard.policy";
-import {
-  EngagementMetricGrid,
-  type EngagementMetric,
-} from "@/features/engagement/operations-dashboard/ui/engagement-metric-grid";
 import { EngagementLeadsTable } from "@/features/engagement/operations-dashboard/ui/engagement-leads-table";
 import { EngagementWorkspaceShell } from "@/features/engagement/operations-dashboard/ui/engagement-workspace-shell";
-import { LeadSourceChart } from "@/features/engagement/operations-dashboard/ui/lead-source-chart";
-import {
-  formatDashboardDuration,
-  formatDashboardInteger,
-  formatDashboardPercentage,
-} from "@/features/engagement/operations-dashboard/utils/engagement-dashboard-format";
-import {
-  ENGAGEMENT_DASHBOARD_ROUTES,
-  engagementWorkspaceHref,
-} from "@/features/engagement/operations-dashboard/utils/engagement-dashboard-url";
+import { JourneyOverview } from "@/features/engagement/operations-dashboard/ui/journey-overview";
+import { formatDashboardInteger } from "@/features/engagement/operations-dashboard/utils/engagement-dashboard-format";
+import { ENGAGEMENT_DASHBOARD_ROUTES } from "@/features/engagement/operations-dashboard/utils/engagement-dashboard-url";
 
 export type EngagementDashboardPageProps = Readonly<{
   access: ResolvedEngagementDashboardAccess;
@@ -78,222 +47,10 @@ function sectionFailure(
         result.status === "forbidden"
           ? "The active role does not have permission to read this section."
           : result.error?.requestId === undefined
-            ? "This section failed independently. Refresh or narrow the filters before retrying."
+            ? "This section failed independently. Refresh the dashboard before retrying."
             : `This section failed independently. Reference: ${result.error.requestId}`
       }
     />
-  );
-}
-
-function comparisonChange(
-  current: number,
-  previous: number | null,
-): number | null {
-  if (previous === null || previous === 0) {
-    return current === 0 && previous === 0 ? 0 : null;
-  }
-
-  return ((current - previous) / previous) * 100;
-}
-
-function metrics(
-  summary: EngagementDashboardSummary,
-  comparison: EngagementDashboardSummary | null,
-  query: EngagementDashboardSearchParams,
-): readonly EngagementMetric[] {
-  const current = summary.kpis;
-  const previous = comparison?.kpis ?? null;
-  const dealers = engagementWorkspaceHref(
-    ENGAGEMENT_DASHBOARD_ROUTES.dealers,
-    query,
-  );
-  const support = engagementWorkspaceHref(
-    ENGAGEMENT_DASHBOARD_ROUTES.issues,
-    query,
-  );
-
-  return [
-    {
-      id: "new-leads",
-      label: "New vehicle leads",
-      value: formatDashboardInteger(current.newLeads.value),
-      description:
-        current.statusCounts === undefined
-          ? `${current.newLeads.averagePerDay.toFixed(1)} average per day`
-          : `${formatDashboardInteger(current.statusCounts["OPEN"] ?? 0)} open · ${formatDashboardInteger(current.statusCounts["NO_RESPONSE"] ?? 0)} no response · ${formatDashboardInteger(current.statusCounts["CANCELLED"] ?? 0)} cancelled`,
-      help: "Original vehicle-sales acquisitions created in the selected period, including no-response and cancelled leads unless a status filter is selected. Repeat calls re-engage the existing lead and do not inflate new-lead acquisition.",
-      icon: <Users aria-hidden="true" className="size-5" />,
-      tone: "info",
-      trend: {
-        value: comparisonChange(
-          current.newLeads.value,
-          previous?.newLeads.value ?? null,
-        ),
-        positiveIsGood: true,
-      },
-      href: engagementWorkspaceHref(
-        ENGAGEMENT_DASHBOARD_ROUTES.overview,
-        query,
-      ),
-    },
-    {
-      id: "assignment",
-      label: "Dealer assignment health",
-      value: formatDashboardPercentage(current.assignmentHealth.ratePct),
-      description: `${formatDashboardInteger(current.assignmentHealth.assignedCount)} assigned · ${formatDashboardInteger(current.assignmentHealth.unassignedCount)} ready, unassigned`,
-      help: "Dealer-routing health for assignment-ready vehicle-sales leads. The denominator includes leads already assigned or holding a usable customer location; leads still waiting for location are excluded from this routing-health measure.",
-      icon: <Building2 aria-hidden="true" className="size-5" />,
-      tone: current.assignmentHealth.ratePct >= 90 ? "success" : "warning",
-      trend: {
-        value: comparisonChange(
-          current.assignmentHealth.ratePct,
-          previous?.assignmentHealth.ratePct ?? null,
-        ),
-        positiveIsGood: true,
-      },
-      href: dealers,
-    },
-    {
-      id: "response-sla",
-      label: "Dealer response SLA",
-      value: formatDashboardPercentage(current.dealerResponseSla.ratePct),
-      description: `${formatDashboardInteger(current.dealerResponseSla.respondedCount)} within SLA · ${formatDashboardInteger(current.dealerResponseSla.breachedCount)} breached`,
-      help: "Share of eligible assigned leads whose first dealer response was recorded within the configured response target.",
-      icon: <Gauge aria-hidden="true" className="size-5" />,
-      tone: current.dealerResponseSla.breachedCount > 0 ? "warning" : "success",
-      trend: {
-        value: comparisonChange(
-          current.dealerResponseSla.ratePct,
-          previous?.dealerResponseSla.ratePct ?? null,
-        ),
-        positiveIsGood: true,
-      },
-      href: support,
-    },
-    {
-      id: "follow-up",
-      label: "Follow-up compliance",
-      value: formatDashboardPercentage(current.followUpCompliance.ratePct),
-      description: `${formatDashboardInteger(current.followUpCompliance.completedOnTimeCount)} on time · ${formatDashboardInteger(current.followUpCompliance.overdueCount)} overdue`,
-      help: "Follow-ups completed on or before their due time divided by follow-ups due in the selected cohort.",
-      icon: <AlarmClockCheck aria-hidden="true" className="size-5" />,
-      tone: current.followUpCompliance.overdueCount > 0 ? "warning" : "success",
-      trend: {
-        value: comparisonChange(
-          current.followUpCompliance.ratePct,
-          previous?.followUpCompliance.ratePct ?? null,
-        ),
-        positiveIsGood: true,
-      },
-      href: support,
-    },
-    {
-      id: "conversion",
-      label: "Cohort conversion",
-      value: formatDashboardPercentage(current.conversion.ratePct),
-      description: `${formatDashboardInteger(current.conversion.bookingCount)} booked · ${formatDashboardInteger(current.conversion.convertedCount)} converted`,
-      help: "Verified conversions divided by eligible leads created in the selected period. Later conversions remain attributed to their original cohort.",
-      icon: <ShoppingCart aria-hidden="true" className="size-5" />,
-      tone: "success",
-      trend: {
-        value: comparisonChange(
-          current.conversion.ratePct,
-          previous?.conversion.ratePct ?? null,
-        ),
-        positiveIsGood: true,
-      },
-      href: engagementWorkspaceHref(
-        ENGAGEMENT_DASHBOARD_ROUTES.overview,
-        query,
-      ),
-    },
-    {
-      id: "attention",
-      label: "Needs attention",
-      value: formatDashboardInteger(current.needsAttention.totalCount),
-      description: `${formatDashboardInteger(current.needsAttention.criticalCount)} critical · ${formatDashboardInteger(current.needsAttention.highCount)} high`,
-      help: "Open operational exceptions across assignment, response, follow-up, customer location, dealer configuration, and message delivery.",
-      icon: <CircleAlert aria-hidden="true" className="size-5" />,
-      tone:
-        current.needsAttention.criticalCount > 0 ? "destructive" : "warning",
-      trend: {
-        value: comparisonChange(
-          current.needsAttention.totalCount,
-          previous?.needsAttention.totalCount ?? null,
-        ),
-        positiveIsGood: false,
-      },
-      href: support,
-    },
-  ];
-}
-
-function Funnel({
-  funnel,
-}: Readonly<{ funnel: EngagementFunnel }>): React.ReactElement {
-  const maximum = funnel.stages[0]?.count ?? 0;
-  const stageHelp = {
-    NEW: "Vehicle-sales leads originally acquired in the selected cohort. Re-engagements remain attributed to the original acquisition cohort.",
-    ASSIGNED: "Leads with a current eligible dealer assignment.",
-    CONTACTED: "Assigned leads with a recorded first dealer response.",
-    BOOKED: "Leads with a verified booking event.",
-    CONVERTED: "Leads linked to a verified conversion record.",
-  } as const satisfies Readonly<
-    Record<EngagementFunnel["stages"][number]["code"], string>
-  >;
-
-  return (
-    <div className="grid gap-3">
-      {funnel.stages.map((stage, index) => {
-        const progress = maximum === 0 ? 0 : (stage.count / maximum) * 100;
-        return (
-          <div
-            key={stage.code}
-            className="grid gap-2 rounded-2xl border border-border/70 p-3.5"
-          >
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex min-w-0 items-center gap-2">
-                <Badge variant="outline" className="size-6 rounded-full px-0">
-                  {index + 1}
-                </Badge>
-                <span className="truncate text-body-sm font-medium">
-                  {stage.name}
-                </span>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <span
-                      className="inline-flex size-5 shrink-0 items-center justify-center rounded-md text-muted-readable"
-                      tabIndex={0}
-                    >
-                      <Info aria-hidden="true" className="size-3.5" />
-                    </span>
-                  </TooltipTrigger>
-                  <TooltipContent>{stageHelp[stage.code]}</TooltipContent>
-                </Tooltip>
-              </div>
-              <span className="text-section-title text-tabular">
-                {formatDashboardInteger(stage.count)}
-              </span>
-            </div>
-            <Progress
-              value={progress}
-              aria-label={`${stage.name} ${progress.toFixed(1)} percent of the starting cohort`}
-            />
-            <div className="flex flex-wrap justify-between gap-2 text-caption text-muted-readable">
-              <span>
-                {stage.dropOffPct === null
-                  ? "Starting cohort"
-                  : `${formatDashboardPercentage(stage.dropOffPct)} drop-off`}
-              </span>
-              <span>
-                Median from prior:{" "}
-                {formatDashboardDuration(stage.medianMinutesFromPrevious)}
-              </span>
-            </div>
-          </div>
-        );
-      })}
-    </div>
   );
 }
 
@@ -302,11 +59,6 @@ export function EngagementDashboardPage({
   query,
   data,
 }: EngagementDashboardPageProps): React.ReactElement {
-  const comparison =
-    data.comparisonSummary?.status === "ready"
-      ? data.comparisonSummary.data
-      : null;
-
   return (
     <EngagementWorkspaceShell
       access={access}
@@ -314,51 +66,43 @@ export function EngagementDashboardPage({
       route={ENGAGEMENT_DASHBOARD_ROUTES.overview}
       filterOptions={data.filterOptions}
     >
-      {data.summary.status !== "ready" ? (
-        sectionFailure("Overview KPIs", data.summary)
+      {data.journey.status === "ready" ? (
+        <JourneyOverview snapshot={data.journey.data} />
       ) : (
-        <EngagementMetricGrid
-          metrics={metrics(data.summary.data, comparison, query)}
-        />
+        sectionFailure("Authoritative journey analytics", data.journey)
       )}
 
-      <ContentGrid variant="main-aside" className="items-stretch">
-        <ContentDataSurface
-          title="New lead acquisition by source"
-          description="Original vehicle-sales acquisition volume and source mix across the selected period. Re-engagements do not create duplicate acquisition records."
-          className="h-full"
-          contentClassName="flex min-h-0 flex-1 flex-col px-[var(--card-spacing)] pb-[var(--card-spacing)]"
-        >
-          {data.sourceSeries.status === "ready" ? (
-            <LeadSourceChart series={data.sourceSeries.data} query={query} />
-          ) : (
-            sectionFailure("Lead-source chart", data.sourceSeries)
-          )}
-        </ContentDataSurface>
-
-        <ContentDataSurface
-          title="Vehicle-sales funnel"
-          description="Original acquisition-cohort progression, drop-off, and median time between lifecycle stages. Later re-engagements remain attributed to the original lead cohort."
-          className="h-full"
-          contentClassName="px-[var(--card-spacing)] pb-[var(--card-spacing)]"
-        >
-          {data.funnel.status === "ready" ? (
-            <Funnel funnel={data.funnel.data} />
-          ) : (
-            sectionFailure("Vehicle-sales funnel", data.funnel)
-          )}
-        </ContentDataSurface>
-      </ContentGrid>
-
-      {data.leads.status === "ready" ? (
-        <EngagementLeadsTable
-          result={data.leads.data}
-          query={query}
-          capabilities={access.capabilities}
+      <section
+        aria-labelledby="engagement-operational-queue-heading"
+        className="grid gap-3"
+      >
+        <ContentHeader
+          variant="compact"
+          eyebrow="Operational context"
+          icon={<Building2 aria-hidden="true" />}
+          iconTone="default"
+          title="Lead work queue"
+          description="This queue remains lead-based for follow-up and intervention workflows. Advanced queue filters do not change the process-run journey KPIs above; the cohort dates are shared for navigation consistency."
+          actions={
+            data.leads.status === "ready" ? (
+              <Badge variant="outline">
+                {formatDashboardInteger(data.leads.data.items.length)} shown
+              </Badge>
+            ) : undefined
+          }
+          id="engagement-operational-queue-heading"
         />
-      ) : (
-        sectionFailure("Vehicle-sales engagement queue", data.leads)
-      )}
+
+        {data.leads.status === "ready" ? (
+          <EngagementLeadsTable
+            result={data.leads.data}
+            query={query}
+            capabilities={access.capabilities}
+          />
+        ) : (
+          sectionFailure("Vehicle-sales engagement queue", data.leads)
+        )}
+      </section>
     </EngagementWorkspaceShell>
   );
 }

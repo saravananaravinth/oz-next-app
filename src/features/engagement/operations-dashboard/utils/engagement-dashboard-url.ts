@@ -6,15 +6,11 @@ import type {
   EngagementDashboardDealerSortField,
   EngagementDashboardSearchParams,
   EngagementDashboardSortDirection,
-  EngagementIssueCategory,
-  EngagementIssueState,
 } from "@/features/engagement/operations-dashboard/contracts/engagement-dashboard.schema";
 
 export const ENGAGEMENT_DASHBOARD_ROUTES = {
-  vehicleEnquiries: "/engagement/vehicle-enquiries",
   overview: "/engagement/dashboard",
   dealers: "/engagement/dashboard/dealers",
-  issues: "/engagement/dashboard/issues",
   coverage: "/engagement/dashboard/coverage",
   videoSequences: "/engagement/dashboard/configuration/video-sequences",
 } as const satisfies Readonly<Record<string, Route>>;
@@ -27,6 +23,7 @@ export type EngagementDashboardPatch = Readonly<{
   to?: string | null;
   comparison?: EngagementDashboardSearchParams["comparison"] | null;
   grain?: EngagementDashboardSearchParams["grain"] | null;
+  maturityHours?: number | null;
   leadSourceIds?: readonly string[] | null;
   ivrFlowCodes?: readonly string[] | null;
   statuses?: readonly string[] | null;
@@ -37,8 +34,6 @@ export type EngagementDashboardPatch = Readonly<{
   conversionStates?: EngagementDashboardSearchParams["conversionStates"] | null;
   followUpStates?: EngagementDashboardSearchParams["followUpStates"] | null;
   issueSeverities?: EngagementDashboardSearchParams["issueSeverities"] | null;
-  issueCategories?: readonly EngagementIssueCategory[] | null;
-  issueStates?: readonly EngagementIssueState[] | null;
   q?: string | null;
   dealerEngagementState?: EngagementDashboardDealerEngagementState | null;
   dealerSortBy?: EngagementDashboardDealerSortField | null;
@@ -47,8 +42,6 @@ export type EngagementDashboardPatch = Readonly<{
   dealerCursor?: string | null;
   leadLimit?: 25 | 50 | 100 | null;
   leadCursor?: string | null;
-  issueLimit?: 25 | 50 | 100 | null;
-  issueCursor?: string | null;
 }>;
 
 function appendMany(
@@ -80,6 +73,7 @@ export function engagementWorkspaceHref(
   const to = resolved(query.to, patch.to);
   const comparison = resolved(query.comparison, patch.comparison);
   const grain = resolved(query.grain, patch.grain);
+  const maturityHours = resolved(query.maturityHours, patch.maturityHours);
   const q = resolved(query.q, patch.q);
   const dealerEngagementState = resolved(
     query.dealerEngagementState,
@@ -94,13 +88,14 @@ export function engagementWorkspaceHref(
   const dealerCursor = resolved(query.dealerCursor, patch.dealerCursor);
   const leadLimit = resolved(query.leadLimit, patch.leadLimit);
   const leadCursor = resolved(query.leadCursor, patch.leadCursor);
-  const issueLimit = resolved(query.issueLimit, patch.issueLimit);
-  const issueCursor = resolved(query.issueCursor, patch.issueCursor);
 
   if (from !== null) search.set("from", from);
   if (to !== null) search.set("to", to);
   if (comparison !== null) search.set("comparison", comparison);
   if (grain !== null) search.set("grain", grain);
+  if (maturityHours !== null) {
+    search.set("maturityHours", String(maturityHours));
+  }
   if (q !== null && q !== undefined && q.trim().length > 0) {
     search.set("q", q.trim());
   }
@@ -118,10 +113,6 @@ export function engagementWorkspaceHref(
   if (leadLimit !== null) search.set("leadLimit", String(leadLimit));
   if (leadCursor !== null && leadCursor !== undefined) {
     search.set("leadCursor", leadCursor);
-  }
-  if (issueLimit !== null) search.set("issueLimit", String(issueLimit));
-  if (issueCursor !== null && issueCursor !== undefined) {
-    search.set("issueCursor", issueCursor);
   }
 
   appendMany(
@@ -166,16 +157,6 @@ export function engagementWorkspaceHref(
     "issueSeverity",
     resolved(query.issueSeverities, patch.issueSeverities) ?? [],
   );
-  appendMany(
-    search,
-    "issueCategory",
-    resolved(query.issueCategories, patch.issueCategories) ?? [],
-  );
-  appendMany(
-    search,
-    "issueState",
-    resolved(query.issueStates, patch.issueStates) ?? [],
-  );
 
   const serialized = search.toString();
   return serialized.length > 0 ? (`${route}?${serialized}` as Route) : route;
@@ -196,6 +177,5 @@ export function engagementDealerDetailHref(
   return engagementWorkspaceHref(route, query, {
     dealerCursor: null,
     leadCursor: null,
-    issueCursor: null,
   });
 }

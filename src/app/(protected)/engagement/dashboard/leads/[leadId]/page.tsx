@@ -43,7 +43,7 @@ export default async function EngagementLeadRoutePage({
     resolveEngagementDashboardRoute({
       searchParams,
       requiredCapability: "canReadLeads",
-      capabilityFallbackHref: ENGAGEMENT_DASHBOARD_ROUTES.issues,
+      capabilityFallbackHref: ENGAGEMENT_DASHBOARD_ROUTES.overview,
     }),
     params,
   ]);
@@ -68,8 +68,8 @@ export default async function EngagementLeadRoutePage({
   } catch (error: unknown) {
     return renderEngagementDashboardResourceFailure(error, {
       resourceLabel: "Lead details",
-      fallbackHref: ENGAGEMENT_DASHBOARD_ROUTES.issues,
-      fallbackLabel: "Back to support workbench",
+      fallbackHref: ENGAGEMENT_DASHBOARD_ROUTES.overview,
+      fallbackLabel: "Back to engagement overview",
     });
   }
 

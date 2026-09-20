@@ -9,9 +9,9 @@ import {
 } from "@/features/engagement/operations-dashboard";
 import { resolveEngagementDashboardRoute } from "@/app/(protected)/engagement/dashboard/_lib/engagement-dashboard-route";
 
-const PAGE_TITLE = "Vehicle sales engagement";
+const PAGE_TITLE = "Vehicle enquiry journey";
 const PAGE_DESCRIPTION =
-  "Vehicle-sales acquisition, re-engagement priority, dealer assignment, response, follow-up, and conversion operations.";
+  "Authoritative Vehicle Enquiries journey analytics with process-run funnel, terminal outcomes, latency, projection health, and operational lead context.";
 
 type EngagementDashboardPageProps = Readonly<{
   searchParams: Promise<EngagementDashboardRawSearchParams>;

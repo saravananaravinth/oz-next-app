@@ -1,6 +1,11 @@
 // oz-next-app/src/features/engagement/operations-dashboard/contracts/engagement-dashboard.schema.ts
 import { z } from "zod";
 
+import {
+  ENGAGEMENT_JOURNEY_MATURITY_HOURS_DEFAULT,
+  ENGAGEMENT_JOURNEY_MATURITY_HOURS_MAX,
+} from "@/features/engagement/operations-dashboard/contracts/journey-analytics.schema";
+
 const DASHBOARD_TIMEZONE = "Asia/Kolkata" as const;
 const DAY_MS = 86_400_000;
 const DEFAULT_RANGE_DAYS = 30;
@@ -170,6 +175,20 @@ function pageLimitSchema(defaultValue: 25 | 50 | 100) {
   );
 }
 
+function boundedIntegerSchema(
+  defaultValue: number,
+  minimum: number,
+  maximum: number,
+) {
+  return z.preprocess((value) => {
+    const single = firstValue(value);
+    if (single === undefined || single === "") return defaultValue;
+    return typeof single === "string" && /^\d+$/u.test(single)
+      ? Number(single)
+      : single;
+  }, z.number().int().min(minimum).max(maximum));
+}
+
 function dateInKolkata(): string {
   const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone: DASHBOARD_TIMEZONE,
@@ -232,6 +251,11 @@ const engagementDashboardSearchParamsSchema = z
       z.enum(ENGAGEMENT_DASHBOARD_COMPARISON_MODES),
     ),
     grain: optionalSingleSchema(z.enum(ENGAGEMENT_DASHBOARD_GRAINS)),
+    maturityHours: boundedIntegerSchema(
+      ENGAGEMENT_JOURNEY_MATURITY_HOURS_DEFAULT,
+      1,
+      ENGAGEMENT_JOURNEY_MATURITY_HOURS_MAX,
+    ),
     leadSourceId: csvArraySchema(uuidSchema, 20),
     ivrFlowCode: csvArraySchema(statusTokenSchema, 16),
     status: csvArraySchema(statusTokenSchema, 32),
@@ -294,6 +318,7 @@ const engagementDashboardSearchParamsSchema = z
       to,
       comparison: value.comparison ?? "PREVIOUS_PERIOD",
       grain: value.grain ?? "AUTO",
+      maturityHours: value.maturityHours,
       leadSourceIds: value.leadSourceId,
       ivrFlowCodes: value.ivrFlowCode,
       statuses: value.status,

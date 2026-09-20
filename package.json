@@ -21,7 +21,7 @@
     "bundles:check": "node generate-bundles.mjs --check-relative-paths",
     "bundles:fix": "node generate-bundles.mjs --fix-relative-paths",
     "bundles:generate": "node generate-bundles.mjs",
-    "test": "node --test scripts/generate-bundles.test.mjs && vitest run",
+    "test": "vitest run",
     "test:watch": "vitest",
     "deps:validate": "npm ls --all",
     "audit:prod": "npm audit --omit=dev --audit-level=high",

@@ -8,6 +8,14 @@ export {
   type EngagementLeadDetail,
 } from "@/features/engagement/operations-dashboard/contracts/engagement-dashboard.schema";
 export type {
+  EngagementJourneyAnalyticsSnapshot,
+  EngagementJourneyDiagnostics,
+  EngagementJourneyFunnel,
+  EngagementJourneyLatency,
+  EngagementJourneyOutcomes,
+  EngagementJourneySummary,
+} from "@/features/engagement/operations-dashboard/contracts/journey-analytics.schema";
+export type {
   EngagementCoverageWorkspaceData,
   EngagementDashboardSectionResult,
   EngagementDealerWorkspaceData,
@@ -38,7 +46,6 @@ export {
 export { CoveragePage } from "@/features/engagement/operations-dashboard/ui/coverage-page";
 export { EngagementDealerDetailPage } from "@/features/engagement/operations-dashboard/ui/dealer-detail-page";
 export { DealerPerformancePage } from "@/features/engagement/operations-dashboard/ui/dealer-performance-page";
-export { IssueWorkbenchPage } from "@/features/engagement/operations-dashboard/ui/issue-workbench-page";
 export { EngagementLeadDetailPage } from "@/features/engagement/operations-dashboard/ui/lead-detail-page";
 export { VideoSequencePage } from "@/features/engagement/operations-dashboard/ui/video-sequence-page";
 export { ENGAGEMENT_DASHBOARD_ROUTES } from "@/features/engagement/operations-dashboard/utils/engagement-dashboard-url";
