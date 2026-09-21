@@ -1,19 +1,19 @@
-// oz-next-app/src/app/(protected)/engagement/dashboard/page.tsx
+// oz-next-app/src/app/(protected)/engagement/dashboard/journey/page.tsx
 import type { Metadata } from "next";
 import type { ReactElement } from "react";
 
+import { resolveEngagementDashboardRoute } from "@/app/(protected)/engagement/dashboard/_lib/engagement-dashboard-route";
 import {
-  EngagementDashboardPage,
-  readEngagementOverview,
+  EngagementJourneyPage,
+  readEngagementJourneyWorkspace,
   type EngagementDashboardRawSearchParams,
 } from "@/features/engagement/operations-dashboard";
-import { resolveEngagementDashboardRoute } from "@/app/(protected)/engagement/dashboard/_lib/engagement-dashboard-route";
 
-const PAGE_TITLE = "Vehicle sales engagement overview";
+const PAGE_TITLE = "Vehicle enquiry journey";
 const PAGE_DESCRIPTION =
-  "Vehicle-sales engagement KPIs, lead-source trend, lifecycle funnel, and operational work queue.";
+  "Authoritative process-run journey funnel, terminal outcomes, latency, maturity, and projection health for Vehicle Enquiries.";
 
-type EngagementDashboardPageProps = Readonly<{
+type EngagementJourneyRoutePageProps = Readonly<{
   searchParams: Promise<EngagementDashboardRawSearchParams>;
 }>;
 
@@ -22,22 +22,22 @@ export const metadata = {
   description: PAGE_DESCRIPTION,
 } satisfies Metadata;
 
-export default async function EngagementDashboardRoutePage({
+export default async function EngagementJourneyRoutePage({
   searchParams,
-}: EngagementDashboardPageProps): Promise<ReactElement> {
+}: EngagementJourneyRoutePageProps): Promise<ReactElement> {
   const route = await resolveEngagementDashboardRoute({ searchParams });
 
   if (route.kind === "blocked") {
     return route.content;
   }
 
-  const data = await readEngagementOverview({
+  const data = await readEngagementJourneyWorkspace({
     query: route.query,
     access: route.access,
   });
 
   return (
-    <EngagementDashboardPage
+    <EngagementJourneyPage
       access={route.access}
       query={route.query}
       data={data}

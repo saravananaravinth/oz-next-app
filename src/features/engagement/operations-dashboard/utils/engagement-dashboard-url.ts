@@ -10,6 +10,7 @@ import type {
 
 export const ENGAGEMENT_DASHBOARD_ROUTES = {
   overview: "/engagement/dashboard",
+  journey: "/engagement/dashboard/journey",
   dealers: "/engagement/dashboard/dealers",
   coverage: "/engagement/dashboard/coverage",
   videoSequences: "/engagement/dashboard/configuration/video-sequences",

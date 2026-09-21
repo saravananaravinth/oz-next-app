@@ -50,7 +50,6 @@ export const ENGAGEMENT_ENDPOINTS = {
   operationsDashboardJourneyOutcomes: `${ERP_PREFIX}/engagement/dashboard/journey/outcomes`,
   operationsDashboardJourneyLatency: `${ERP_PREFIX}/engagement/dashboard/journey/latency`,
   operationsDashboardDealers: `${ERP_PREFIX}/engagement/dashboard/dealers`,
-  operationsDashboardIssues: `${ERP_PREFIX}/engagement/dashboard/issues`,
   operationsDashboardCoverage: `${ERP_PREFIX}/engagement/dashboard/coverage`,
   operationsDashboardFilterOptions: `${ERP_PREFIX}/engagement/dashboard/filter-options`,
   operationsDashboardDealer: (dealerOrgUnitId: string) =>
@@ -63,8 +62,6 @@ export const ENGAGEMENT_ENDPOINTS = {
     `${ERP_PREFIX}/engagement/dashboard/leads/${encodeURIComponent(leadId)}` as const,
   videoSequencesBase: `${ERP_PREFIX}/engagement/video-sequences`,
   supportBase: `${ERP_PREFIX}/engagement/support`,
-  supportIssueAction: (issueKey: string) =>
-    `${ERP_PREFIX}/engagement/support/issues/${encodeURIComponent(issueKey)}/action` as const,
   supportLeadReassign: (leadId: string) =>
     `${ERP_PREFIX}/engagement/support/leads/${encodeURIComponent(leadId)}/reassign` as const,
   supportOutboxRetry: (outboxEventId: string) =>

@@ -7,42 +7,41 @@ import { ENGAGEMENT_ENDPOINTS } from "@/lib/api/endpoints";
 import { isApiHttpError } from "@/lib/api/problem";
 
 import {
+  coverageMapResponseSchema,
+  type CoverageMapFilters,
+  type CoverageMapResponse,
+  type CoverageMapViewport,
+} from "@/features/engagement/operations-dashboard/contracts/coverage-map.schema";
+import {
   engagementCoverageResultSchema,
   engagementDashboardIssueResultSchema,
   engagementDashboardLeadListResultSchema,
+  engagementDashboardSummarySchema,
   engagementDealerDetailSchema,
   engagementDealerPerformanceResultSchema,
   engagementFilterOptionsSchema,
+  engagementFunnelSchema,
   engagementLeadDetailSchema,
+  engagementLeadSourceSeriesSchema,
   engagementVideoSequenceListResultSchema,
   type EngagementCoverageResult,
-  type EngagementDashboardIssueResult,
   type EngagementDashboardSearchParams,
   type EngagementDealerDetail,
   type EngagementDealerPerformanceResult,
   type EngagementLeadDetail,
   type EngagementVideoSequenceListResult,
 } from "@/features/engagement/operations-dashboard/contracts/engagement-dashboard.schema";
-import {
-  engagementJourneyFunnelResponseSchema,
-  engagementJourneyLatencyResponseSchema,
-  engagementJourneyOutcomesResponseSchema,
-  engagementJourneySummaryResponseSchema,
-  type EngagementJourneyAnalyticsSnapshot,
-} from "@/features/engagement/operations-dashboard/contracts/journey-analytics.schema";
+import { engagementJourneyAnalyticsSnapshotSchema } from "@/features/engagement/operations-dashboard/contracts/journey-analytics-snapshot.schema";
 import type {
   EngagementCoverageWorkspaceData,
   EngagementDashboardSectionResult,
   EngagementDealerWorkspaceData,
   EngagementIssueWorkspaceData,
+  EngagementJourneyWorkspaceData,
   EngagementOverviewData,
   EngagementVideoSequenceWorkspaceData,
 } from "@/features/engagement/operations-dashboard/contracts/engagement-dashboard.types";
 import type { ResolvedEngagementDashboardAccess } from "@/features/engagement/operations-dashboard/policies/engagement-dashboard.policy";
-import {
-  combineEngagementJourneySnapshot,
-  EngagementJourneySnapshotMismatchError,
-} from "@/features/engagement/operations-dashboard/utils/journey-analytics";
 
 const videoSequenceClient = createErpFeatureClient({
   featureName: "engagement.video-sequences",
@@ -88,7 +87,6 @@ function commonQuery(
     assignmentState: query.assignmentStates,
     conversionState: query.conversionStates,
     followUpState: query.followUpStates,
-    issueSeverity: query.issueSeverities,
     q: query.q,
   });
 }
@@ -148,25 +146,53 @@ export async function readEngagementOverview(
 ): Promise<EngagementOverviewData> {
   const common = commonQuery(input.query);
   const options = actorContextOptions(input.access);
+  const seriesQuery = compactQuery({
+    ...common,
+    grain: input.query.grain === "AUTO" ? undefined : input.query.grain,
+  });
 
-  const [journey, filterOptions, leads] = await Promise.all([
-    settle(readJourneyAnalyticsSnapshot(input.query, input.access)),
-    readFilterOptions(input.access),
-    settle(
-      dashboardClient.request({
-        path: "/leads",
-        query: compactQuery({
-          ...common,
-          limit: input.query.leadLimit,
-          cursor: input.query.leadCursor,
+  const [summary, leadSources, funnel, filterOptions, leads] =
+    await Promise.all([
+      settle(
+        dashboardClient.request({
+          path: "/summary",
+          query: common,
+          schema: engagementDashboardSummarySchema,
+          ...options,
         }),
-        schema: engagementDashboardLeadListResultSchema,
-        ...options,
-      }),
-    ),
-  ]);
+      ),
+      settle(
+        dashboardClient.request({
+          path: "/lead-sources/timeseries",
+          query: seriesQuery,
+          schema: engagementLeadSourceSeriesSchema,
+          ...options,
+        }),
+      ),
+      settle(
+        dashboardClient.request({
+          path: "/funnel",
+          query: common,
+          schema: engagementFunnelSchema,
+          ...options,
+        }),
+      ),
+      readFilterOptions(input.access),
+      settle(
+        dashboardClient.request({
+          path: "/leads",
+          query: compactQuery({
+            ...common,
+            limit: input.query.leadLimit,
+            cursor: input.query.leadCursor,
+          }),
+          schema: engagementDashboardLeadListResultSchema,
+          ...options,
+        }),
+      ),
+    ]);
 
-  return { journey, filterOptions, leads };
+  return { summary, leadSources, funnel, filterOptions, leads };
 }
 
 function journeyQuery(
@@ -179,67 +205,22 @@ function journeyQuery(
   };
 }
 
-async function readJourneyAnalyticsSnapshot(
-  query: EngagementDashboardSearchParams,
-  access: ResolvedEngagementDashboardAccess,
-): Promise<EngagementJourneyAnalyticsSnapshot> {
-  const options = actorContextOptions(access);
-  const requestQuery = journeyQuery(query);
+export async function readEngagementJourneyWorkspace(
+  input: Readonly<{
+    query: EngagementDashboardSearchParams;
+    access: ResolvedEngagementDashboardAccess;
+  }>,
+): Promise<EngagementJourneyWorkspaceData> {
+  const journey = await settle(
+    dashboardClient.request({
+      path: "/journey/snapshot",
+      query: journeyQuery(input.query),
+      schema: engagementJourneyAnalyticsSnapshotSchema,
+      ...actorContextOptions(input.access),
+    }),
+  );
 
-  for (let attempt = 0; attempt < 2; attempt += 1) {
-    const [summary, funnel, outcomes, latency] = await Promise.all([
-      dashboardClient.request({
-        path: "/journey/summary",
-        query: requestQuery,
-        schema: engagementJourneySummaryResponseSchema,
-        ...options,
-      }),
-      dashboardClient.request({
-        path: "/journey/funnel",
-        query: requestQuery,
-        schema: engagementJourneyFunnelResponseSchema,
-        ...options,
-      }),
-      dashboardClient.request({
-        path: "/journey/outcomes",
-        query: requestQuery,
-        schema: engagementJourneyOutcomesResponseSchema,
-        ...options,
-      }),
-      dashboardClient.request({
-        path: "/journey/latency",
-        query: requestQuery,
-        schema: engagementJourneyLatencyResponseSchema,
-        ...options,
-      }),
-    ]);
-
-    try {
-      const snapshot = combineEngagementJourneySnapshot({
-        summary,
-        funnel,
-        outcomes,
-        latency,
-      });
-      if (
-        snapshot.cohort.from !== query.from ||
-        snapshot.cohort.to !== query.to ||
-        snapshot.cohort.maturityHours !== query.maturityHours
-      ) {
-        throw new EngagementJourneySnapshotMismatchError();
-      }
-      return snapshot;
-    } catch (error: unknown) {
-      if (
-        !(error instanceof EngagementJourneySnapshotMismatchError) ||
-        attempt === 1
-      ) {
-        throw error;
-      }
-    }
-  }
-
-  throw new EngagementJourneySnapshotMismatchError();
+  return { journey };
 }
 
 export async function readEngagementDealerWorkspace(
@@ -283,13 +264,6 @@ export async function readEngagementIssueWorkspace(
     access: ResolvedEngagementDashboardAccess;
   }>,
 ): Promise<EngagementIssueWorkspaceData> {
-  if (!input.access.capabilities.canReadIssues) {
-    return {
-      issues: forbiddenSection<EngagementDashboardIssueResult>(),
-      filterOptions: await readFilterOptions(input.access),
-    };
-  }
-
   const [issues, filterOptions] = await Promise.all([
     settle(
       dashboardClient.request({
@@ -309,6 +283,37 @@ export async function readEngagementIssueWorkspace(
   ]);
 
   return { issues, filterOptions };
+}
+
+export async function readEngagementCoverageViewport(
+  input: Readonly<{
+    access: ResolvedEngagementDashboardAccess;
+    filters: CoverageMapFilters;
+    viewport: CoverageMapViewport;
+  }>,
+): Promise<CoverageMapResponse> {
+  return await dashboardClient.request({
+    path: "/coverage/geospatial/viewport",
+    query: compactQuery({
+      from: input.filters.from,
+      to: input.filters.to,
+      leadSourceId: input.filters.leadSourceIds,
+      ivrFlowCode: input.filters.ivrFlowCodes,
+      status: input.filters.statuses,
+      dealerOrgUnitId: input.filters.dealerOrgUnitIds,
+      district: input.filters.districts,
+      city: input.filters.cities,
+      assignmentState: input.filters.assignmentStates,
+      conversionState: input.filters.conversionStates,
+      south: input.viewport.south,
+      west: input.viewport.west,
+      north: input.viewport.north,
+      east: input.viewport.east,
+      zoom: input.viewport.zoom,
+    }),
+    schema: coverageMapResponseSchema,
+    ...actorContextOptions(input.access),
+  });
 }
 
 export async function readEngagementCoverageWorkspace(

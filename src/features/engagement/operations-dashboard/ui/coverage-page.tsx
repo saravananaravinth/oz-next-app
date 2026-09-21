@@ -57,7 +57,7 @@ export function CoveragePage({
       ) : (
         <ContentDataSurface
           title="Assigned-lead demand and dealer coverage"
-          description="Coverage analysis uses assigned VEHICLE_SALES leads only. Map and table views share the same actor-scoped dataset."
+          description="The page remains server-rendered. Google Maps is isolated to the protected map component, while the district table remains the accessible operational fallback."
           actions={<Badge variant="outline">Assigned leads only</Badge>}
           padded
           scrollable={false}

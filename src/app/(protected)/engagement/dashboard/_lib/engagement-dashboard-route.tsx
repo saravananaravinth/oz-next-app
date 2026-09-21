@@ -29,10 +29,7 @@ import { isApiHttpError } from "@/lib/api/problem";
 
 type EngagementDashboardReadCapability = Extract<
   keyof EngagementDashboardCapabilities,
-  | "canReadDealerPerformance"
-  | "canReadIssues"
-  | "canReadLeads"
-  | "canReadVideoSequences"
+  "canReadDealerPerformance" | "canReadLeads" | "canReadVideoSequences"
 >;
 
 type EngagementDashboardRouteReady = Readonly<{
@@ -80,11 +77,6 @@ const CAPABILITY_COPY = {
     title: "Dealer performance access restricted",
     description:
       "The active actor cannot read dealer-level vehicle-sales engagement performance.",
-  },
-  canReadIssues: {
-    title: "Support workbench access restricted",
-    description:
-      "The active actor cannot read vehicle-sales engagement support issues.",
   },
   canReadLeads: {
     title: "Lead access restricted",

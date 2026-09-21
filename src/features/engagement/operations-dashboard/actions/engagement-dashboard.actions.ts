@@ -15,10 +15,8 @@ import {
   dealerLocationMutationResultSchema,
   dealerSettingsActionInputSchema,
   dealerSettingsMutationResultSchema,
-  engagementSupportIssueActionResultSchema,
   engagementSupportRetryResultSchema,
   engagementVideoSequenceItemSchema,
-  issueActionInputSchema,
   leadAdminSessionActionInputSchema,
   retryOperationInputSchema,
   videoSequenceItemUpdateActionInputSchema,
@@ -27,7 +25,6 @@ import {
   type EngagementDealerPerformanceResult,
   type EngagementLeadDetail,
   type DealerSettingsActionInput,
-  type IssueActionInput,
   type RetryOperationInput,
   type VideoSequenceItemUpdateActionInput,
 } from "@/features/engagement/operations-dashboard/contracts/engagement-dashboard.schema";
@@ -71,10 +68,6 @@ const dealerDialogQuerySchema = z
       .readonly(),
     followUpStates: z
       .array(z.enum(["OVERDUE", "DUE_TODAY", "DUE_TOMORROW", "SCHEDULED"]))
-      .max(4)
-      .readonly(),
-    issueSeverities: z
-      .array(z.enum(["CRITICAL", "HIGH", "MEDIUM", "LOW"]))
       .max(4)
       .readonly(),
     q: z.string().trim().min(1).max(100).optional(),
@@ -183,7 +176,6 @@ async function requestDistrictDealerPage(
       assignmentState: ["ASSIGNED"],
       conversionState: input.values.conversionStates,
       followUpState: input.values.followUpStates,
-      issueSeverity: input.values.issueSeverities,
       engagementState: "ALL",
       sortBy: "ASSIGNED_COUNT",
       sortDirection: "DESC",
@@ -402,7 +394,6 @@ export async function readEngagementDealerDetailAction(
         assignmentState: values.assignmentStates,
         conversionState: values.conversionStates,
         followUpState: values.followUpStates,
-        issueSeverity: values.issueSeverities,
         ...(values.q !== undefined ? { q: values.q } : {}),
       },
       schema: engagementDealerDetailSchema,
@@ -463,42 +454,6 @@ export async function createEngagementLeadAdminSessionAction(
       href: `/public/dealer-leads/${encodeURIComponent(session.token)}`,
       expiresAt: session.expiresAt,
       canForward: session.allowedFields.includes("forwardFlow"),
-    };
-  } catch (error: unknown) {
-    return actionFailure(error);
-  }
-}
-
-export async function updateEngagementIssueAction(
-  input: Readonly<{ values: IssueActionInput }>,
-): Promise<EngagementDashboardActionResult> {
-  try {
-    const access = await requireActionAccess("canIntervene");
-    const values = issueActionInputSchema.parse(input.values);
-
-    await supportClient.request({
-      method: HTTP_METHODS.POST,
-      path: `/issues/${encodeURIComponent(values.issueKey)}/action`,
-      body: {
-        state: values.state,
-        resolutionNote: values.resolutionNote ?? null,
-        rowVersion: values.rowVersion,
-      },
-      schema: engagementSupportIssueActionResultSchema,
-      idempotencyKey: values.idempotencyKey,
-      refreshOnUnauthorized: false,
-      ...(access.actorContext !== undefined
-        ? { actorContext: access.actorContext }
-        : {}),
-    });
-
-    revalidateEngagementWorkspace();
-    return {
-      ok: true,
-      message:
-        values.state === "RESOLVED"
-          ? "Issue resolved and recorded in the audit history."
-          : "Issue acknowledged for follow-up.",
     };
   } catch (error: unknown) {
     return actionFailure(error);

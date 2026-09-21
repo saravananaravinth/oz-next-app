@@ -5,7 +5,6 @@ import * as React from "react";
 import Link from "next/link";
 import {
   Building2,
-  CircleAlert,
   CircleDot,
   Filter,
   Info,
@@ -61,7 +60,7 @@ import {
 export type EngagementDashboardFiltersProps = Readonly<{
   route: EngagementDashboardRoute;
   query: EngagementDashboardSearchParams;
-  filterOptions: EngagementDashboardSectionResult<EngagementFilterOptions>;
+  filterOptions?: EngagementDashboardSectionResult<EngagementFilterOptions>;
 }>;
 
 type FilterDraft = Readonly<{
@@ -74,7 +73,6 @@ type FilterDraft = Readonly<{
   assignmentStates: EngagementDashboardSearchParams["assignmentStates"];
   conversionStates: EngagementDashboardSearchParams["conversionStates"];
   followUpStates: EngagementDashboardSearchParams["followUpStates"];
-  issueSeverities: EngagementDashboardSearchParams["issueSeverities"];
 }>;
 
 type FilterOption = Readonly<{ value: string; label: string }>;
@@ -94,13 +92,6 @@ const FOLLOW_UP_OPTIONS = [
   { value: "DUE_TODAY", label: "Due today" },
   { value: "DUE_TOMORROW", label: "Due tomorrow" },
   { value: "SCHEDULED", label: "Scheduled" },
-] as const satisfies readonly FilterOption[];
-
-const ISSUE_SEVERITY_OPTIONS = [
-  { value: "CRITICAL", label: "Critical" },
-  { value: "HIGH", label: "High" },
-  { value: "MEDIUM", label: "Medium" },
-  { value: "LOW", label: "Low" },
 ] as const satisfies readonly FilterOption[];
 
 function optionIncludes(
@@ -128,12 +119,6 @@ function isFollowUpState(
   return optionIncludes(FOLLOW_UP_OPTIONS, value);
 }
 
-function isIssueSeverity(
-  value: string,
-): value is EngagementDashboardSearchParams["issueSeverities"][number] {
-  return optionIncludes(ISSUE_SEVERITY_OPTIONS, value);
-}
-
 function draftFromQuery(query: EngagementDashboardSearchParams): FilterDraft {
   return {
     leadSourceIds: query.leadSourceIds,
@@ -145,7 +130,6 @@ function draftFromQuery(query: EngagementDashboardSearchParams): FilterDraft {
     assignmentStates: query.assignmentStates,
     conversionStates: query.conversionStates,
     followUpStates: query.followUpStates,
-    issueSeverities: query.issueSeverities,
   };
 }
 
@@ -160,7 +144,6 @@ function emptyDraft(): FilterDraft {
     assignmentStates: [],
     conversionStates: [],
     followUpStates: [],
-    issueSeverities: [],
   };
 }
 
@@ -181,7 +164,6 @@ function draftFilterCount(query: FilterDraft): number {
     query.assignmentStates,
     query.conversionStates,
     query.followUpStates,
-    query.issueSeverities,
   ].reduce((sum, values) => sum + values.length, 0);
 }
 
@@ -365,6 +347,7 @@ export function EngagementDashboardFilters({
   ): void {
     router.push(
       engagementWorkspaceHref(route, query, {
+        issueSeverities: null,
         ...patch,
         dealerCursor: null,
         leadCursor: null,
@@ -372,7 +355,7 @@ export function EngagementDashboardFilters({
     );
   }
 
-  const options = filterOptions.status === "ready" ? filterOptions.data : null;
+  const options = filterOptions?.status === "ready" ? filterOptions.data : null;
   const draftCount = draftFilterCount(draft);
   const leadFilterCount =
     draft.leadSourceIds.length +
@@ -384,8 +367,8 @@ export function EngagementDashboardFilters({
     draft.conversionStates.length +
     draft.followUpStates.length;
   const locationFilterCount = draft.districts.length + draft.cities.length;
-  const attentionFilterCount = draft.issueSeverities.length;
-  const isJourneyOverview = route === ENGAGEMENT_DASHBOARD_ROUTES.overview;
+  const isOverviewRoute = route === ENGAGEMENT_DASHBOARD_ROUTES.overview;
+  const isJourneyRoute = route === ENGAGEMENT_DASHBOARD_ROUTES.journey;
 
   return (
     <ContentToolbar
@@ -398,12 +381,12 @@ export function EngagementDashboardFilters({
           <FieldLabel
             htmlFor="engagement-from"
             help={
-              isJourneyOverview
-                ? "First process-run date included in the authoritative journey cohort. The operational queue below uses the same calendar range against lead creation time."
+              isJourneyRoute
+                ? "First process-run date included in the authoritative journey cohort."
                 : "First lead creation date included in the selected workspace cohort."
             }
           >
-            {isJourneyOverview ? "Cohort from" : "Created from"}
+            {isJourneyRoute ? "Cohort from" : "Created from"}
           </FieldLabel>
           <Input
             id="engagement-from"
@@ -425,12 +408,12 @@ export function EngagementDashboardFilters({
           <FieldLabel
             htmlFor="engagement-to"
             help={
-              isJourneyOverview
-                ? "Last process-run date included in the authoritative journey cohort. The operational queue below uses the same calendar range against lead creation time."
+              isJourneyRoute
+                ? "Last process-run date included in the authoritative journey cohort."
                 : "Last lead creation date included in the selected workspace cohort."
             }
           >
-            {isJourneyOverview ? "Cohort to" : "Created to"}
+            {isJourneyRoute ? "Cohort to" : "Created to"}
           </FieldLabel>
           <Input
             id="engagement-to"
@@ -448,7 +431,7 @@ export function EngagementDashboardFilters({
             }}
           />
         </div>
-        {isJourneyOverview ? (
+        {isJourneyRoute ? (
           <form
             className="grid w-full min-w-0 gap-1.5 sm:w-[13rem] sm:flex-none"
             onSubmit={(event) => {
@@ -492,7 +475,7 @@ export function EngagementDashboardFilters({
           </form>
         ) : null}
 
-        {isJourneyOverview ? (
+        {isOverviewRoute ? (
           <form
             className="grid w-full min-w-0 gap-1.5 sm:w-[18rem] sm:flex-none"
             onSubmit={(event) => {
@@ -538,299 +521,258 @@ export function EngagementDashboardFilters({
           </form>
         ) : null}
 
-        <Dialog
-          open={open}
-          onOpenChange={(nextOpen) => {
-            setOpen(nextOpen);
+        {!isJourneyRoute ? (
+          <Dialog
+            open={open}
+            onOpenChange={(nextOpen) => {
+              setOpen(nextOpen);
 
-            if (nextOpen) {
-              setDraft(draftFromQuery(query));
-            }
-          }}
-        >
-          <DialogTrigger asChild>
-            <Button type="button" variant="outline" className="self-end">
-              <Filter aria-hidden="true" className="size-4" />
-              {isJourneyOverview ? "Queue filters" : "More filters"}
-              {count > 0 ? <Badge variant="secondary">{count}</Badge> : null}
-            </Button>
-          </DialogTrigger>
-          <DialogContent height="viewport" className="sm:max-w-6xl">
-            <DialogHeader>
-              <div className="flex flex-wrap items-center gap-2">
-                <DialogTitle>
-                  {isJourneyOverview
-                    ? "Filter the operational lead queue"
-                    : "Filter vehicle-sales engagement"}
-                </DialogTitle>
-                <Badge variant={draftCount > 0 ? "secondary" : "outline"}>
-                  {draftCount} selected
-                </Badge>
-              </div>
-              <DialogDescription>
-                {isJourneyOverview
-                  ? "These advanced filters apply to the operational lead queue only. Authoritative journey KPIs, outcomes, funnel, and latency use only the cohort dates and maturity horizon above."
-                  : "Filters are grouped by business purpose and apply consistently across this workspace. Search long option lists independently without losing current selections."}
-              </DialogDescription>
-            </DialogHeader>
+              if (nextOpen) {
+                setDraft(draftFromQuery(query));
+              }
+            }}
+          >
+            <DialogTrigger asChild>
+              <Button type="button" variant="outline" className="self-end">
+                <Filter aria-hidden="true" className="size-4" />
+                More filters
+                {count > 0 ? <Badge variant="secondary">{count}</Badge> : null}
+              </Button>
+            </DialogTrigger>
+            <DialogContent height="viewport" className="sm:max-w-6xl">
+              <DialogHeader>
+                <div className="flex flex-wrap items-center gap-2">
+                  <DialogTitle>Filter vehicle-sales engagement</DialogTitle>
+                  <Badge variant={draftCount > 0 ? "secondary" : "outline"}>
+                    {draftCount} selected
+                  </Badge>
+                </div>
+                <DialogDescription>
+                  Filters are grouped by business purpose and apply consistently
+                  to the operational workspace. Search long option lists
+                  independently without losing current selections.
+                </DialogDescription>
+              </DialogHeader>
 
-            <DialogBody>
-              {options === null ? (
-                <ContentStatus
-                  variant={
-                    filterOptions.status === "forbidden"
-                      ? "warning"
-                      : "destructive"
-                  }
-                  title="Filter options unavailable"
-                  description="The current date controls remain usable. Retry before applying advanced filters."
-                />
-              ) : (
-                <Tabs defaultValue="lead" className="grid gap-4">
-                  <TabsList className="grid h-auto w-full grid-cols-2 sm:grid-cols-4">
-                    <TabsTrigger value="lead">
-                      <CircleDot aria-hidden="true" />
-                      Lead
-                      {leadFilterCount > 0 ? (
-                        <Badge variant="secondary">{leadFilterCount}</Badge>
-                      ) : null}
-                    </TabsTrigger>
-                    <TabsTrigger value="assignment">
-                      <Building2 aria-hidden="true" />
-                      Assignment
-                      {assignmentFilterCount > 0 ? (
-                        <Badge variant="secondary">
-                          {assignmentFilterCount}
-                        </Badge>
-                      ) : null}
-                    </TabsTrigger>
-                    <TabsTrigger value="location">
-                      <MapPin aria-hidden="true" />
-                      Location
-                      {locationFilterCount > 0 ? (
-                        <Badge variant="secondary">{locationFilterCount}</Badge>
-                      ) : null}
-                    </TabsTrigger>
-                    <TabsTrigger value="attention">
-                      <CircleAlert aria-hidden="true" />
-                      Attention
-                      {attentionFilterCount > 0 ? (
-                        <Badge variant="secondary">
-                          {attentionFilterCount}
-                        </Badge>
-                      ) : null}
-                    </TabsTrigger>
-                  </TabsList>
+              <DialogBody>
+                {options === null ? (
+                  <ContentStatus
+                    variant={
+                      filterOptions?.status === "forbidden"
+                        ? "warning"
+                        : "destructive"
+                    }
+                    title="Filter options unavailable"
+                    description="The current date controls remain usable. Retry before applying advanced filters."
+                  />
+                ) : (
+                  <Tabs defaultValue="lead" className="grid gap-4">
+                    <TabsList className="grid h-auto w-full grid-cols-1 sm:grid-cols-3">
+                      <TabsTrigger value="lead">
+                        <CircleDot aria-hidden="true" />
+                        Lead
+                        {leadFilterCount > 0 ? (
+                          <Badge variant="secondary">{leadFilterCount}</Badge>
+                        ) : null}
+                      </TabsTrigger>
+                      <TabsTrigger value="assignment">
+                        <Building2 aria-hidden="true" />
+                        Assignment
+                        {assignmentFilterCount > 0 ? (
+                          <Badge variant="secondary">
+                            {assignmentFilterCount}
+                          </Badge>
+                        ) : null}
+                      </TabsTrigger>
+                      <TabsTrigger value="location">
+                        <MapPin aria-hidden="true" />
+                        Location
+                        {locationFilterCount > 0 ? (
+                          <Badge variant="secondary">
+                            {locationFilterCount}
+                          </Badge>
+                        ) : null}
+                      </TabsTrigger>
+                    </TabsList>
 
-                  <TabsContent
-                    value="lead"
-                    className="m-0 grid gap-4 md:grid-cols-2 xl:grid-cols-3"
+                    <TabsContent
+                      value="lead"
+                      className="m-0 grid gap-4 md:grid-cols-2 xl:grid-cols-3"
+                    >
+                      <FilterChecklist
+                        label="Lead source"
+                        options={options.leadSources.map((item) => ({
+                          value: item.id,
+                          label: item.active
+                            ? item.name
+                            : `${item.name} · Inactive`,
+                        }))}
+                        values={draft.leadSourceIds}
+                        onChange={(leadSourceIds) => {
+                          setDraft({ ...draft, leadSourceIds });
+                        }}
+                      />
+                      <FilterChecklist
+                        label="Vehicle-sales flow"
+                        options={options.ivrFlows.map((item) => ({
+                          value: item.code,
+                          label: item.active
+                            ? item.name
+                            : `${item.name} · Inactive`,
+                        }))}
+                        values={draft.ivrFlowCodes}
+                        onChange={(ivrFlowCodes) => {
+                          setDraft({ ...draft, ivrFlowCodes });
+                        }}
+                      />
+                      <FilterChecklist
+                        label="Lead status"
+                        options={options.statuses.map((item) => ({
+                          value: item,
+                          label: item.replaceAll("_", " "),
+                        }))}
+                        values={draft.statuses}
+                        onChange={(statuses) => {
+                          setDraft({ ...draft, statuses });
+                        }}
+                      />
+                    </TabsContent>
+
+                    <TabsContent
+                      value="assignment"
+                      className="m-0 grid gap-4 md:grid-cols-2 xl:grid-cols-3"
+                    >
+                      <FilterChecklist
+                        label="Dealer"
+                        options={options.dealers.map((item) => ({
+                          value: item.id,
+                          label: `${item.name} · ${item.code}${item.active ? "" : " · Inactive"}`,
+                        }))}
+                        values={draft.dealerOrgUnitIds}
+                        onChange={(dealerOrgUnitIds) => {
+                          setDraft({ ...draft, dealerOrgUnitIds });
+                        }}
+                      />
+                      <FilterChecklist
+                        label="Assignment state"
+                        options={ASSIGNMENT_OPTIONS}
+                        values={draft.assignmentStates}
+                        onChange={(assignmentStates) => {
+                          setDraft({
+                            ...draft,
+                            assignmentStates:
+                              assignmentStates.filter(isAssignmentState),
+                          });
+                        }}
+                      />
+                      <FilterChecklist
+                        label="Conversion state"
+                        options={CONVERSION_OPTIONS}
+                        values={draft.conversionStates}
+                        onChange={(conversionStates) => {
+                          setDraft({
+                            ...draft,
+                            conversionStates:
+                              conversionStates.filter(isConversionState),
+                          });
+                        }}
+                      />
+                      <FilterChecklist
+                        label="Follow-up state"
+                        options={FOLLOW_UP_OPTIONS}
+                        values={draft.followUpStates}
+                        onChange={(followUpStates) => {
+                          setDraft({
+                            ...draft,
+                            followUpStates:
+                              followUpStates.filter(isFollowUpState),
+                          });
+                        }}
+                      />
+                    </TabsContent>
+
+                    <TabsContent
+                      value="location"
+                      className="m-0 grid gap-4 md:grid-cols-2"
+                    >
+                      <FilterChecklist
+                        label="District"
+                        options={options.districts.map((item) => ({
+                          value: item,
+                          label: item,
+                        }))}
+                        values={draft.districts}
+                        onChange={(districts) => {
+                          setDraft({ ...draft, districts });
+                        }}
+                      />
+                      <FilterChecklist
+                        label="City"
+                        options={options.cities.map((item) => ({
+                          value: item,
+                          label: item,
+                        }))}
+                        values={draft.cities}
+                        onChange={(cities) => {
+                          setDraft({ ...draft, cities });
+                        }}
+                      />
+                    </TabsContent>
+                  </Tabs>
+                )}
+              </DialogBody>
+
+              <DialogFooter className="sm:justify-between">
+                <div className="flex flex-col-reverse gap-2 sm:flex-row">
+                  <DialogClose asChild>
+                    <Button type="button" variant="ghost">
+                      Cancel
+                    </Button>
+                  </DialogClose>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    disabled={draftCount === 0}
+                    onClick={() => {
+                      setDraft(emptyDraft());
+                    }}
                   >
-                    <FilterChecklist
-                      label="Lead source"
-                      options={options.leadSources.map((item) => ({
-                        value: item.id,
-                        label: item.active
-                          ? item.name
-                          : `${item.name} · Inactive`,
-                      }))}
-                      values={draft.leadSourceIds}
-                      onChange={(leadSourceIds) => {
-                        setDraft({ ...draft, leadSourceIds });
-                      }}
-                    />
-                    <FilterChecklist
-                      label="Vehicle-sales flow"
-                      options={options.ivrFlows.map((item) => ({
-                        value: item.code,
-                        label: item.active
-                          ? item.name
-                          : `${item.name} · Inactive`,
-                      }))}
-                      values={draft.ivrFlowCodes}
-                      onChange={(ivrFlowCodes) => {
-                        setDraft({ ...draft, ivrFlowCodes });
-                      }}
-                    />
-                    <FilterChecklist
-                      label="Lead status"
-                      options={options.statuses.map((item) => ({
-                        value: item,
-                        label: item.replaceAll("_", " "),
-                      }))}
-                      values={draft.statuses}
-                      onChange={(statuses) => {
-                        setDraft({ ...draft, statuses });
-                      }}
-                    />
-                  </TabsContent>
-
-                  <TabsContent
-                    value="assignment"
-                    className="m-0 grid gap-4 md:grid-cols-2 xl:grid-cols-3"
-                  >
-                    <FilterChecklist
-                      label="Dealer"
-                      options={options.dealers.map((item) => ({
-                        value: item.id,
-                        label: `${item.name} · ${item.code}${item.active ? "" : " · Inactive"}`,
-                      }))}
-                      values={draft.dealerOrgUnitIds}
-                      onChange={(dealerOrgUnitIds) => {
-                        setDraft({ ...draft, dealerOrgUnitIds });
-                      }}
-                    />
-                    <FilterChecklist
-                      label="Assignment state"
-                      options={ASSIGNMENT_OPTIONS}
-                      values={draft.assignmentStates}
-                      onChange={(assignmentStates) => {
-                        setDraft({
-                          ...draft,
-                          assignmentStates:
-                            assignmentStates.filter(isAssignmentState),
-                        });
-                      }}
-                    />
-                    <FilterChecklist
-                      label="Conversion state"
-                      options={CONVERSION_OPTIONS}
-                      values={draft.conversionStates}
-                      onChange={(conversionStates) => {
-                        setDraft({
-                          ...draft,
-                          conversionStates:
-                            conversionStates.filter(isConversionState),
-                        });
-                      }}
-                    />
-                    <FilterChecklist
-                      label="Follow-up state"
-                      options={FOLLOW_UP_OPTIONS}
-                      values={draft.followUpStates}
-                      onChange={(followUpStates) => {
-                        setDraft({
-                          ...draft,
-                          followUpStates:
-                            followUpStates.filter(isFollowUpState),
-                        });
-                      }}
-                    />
-                  </TabsContent>
-
-                  <TabsContent
-                    value="location"
-                    className="m-0 grid gap-4 md:grid-cols-2"
-                  >
-                    <FilterChecklist
-                      label="District"
-                      options={options.districts.map((item) => ({
-                        value: item,
-                        label: item,
-                      }))}
-                      values={draft.districts}
-                      onChange={(districts) => {
-                        setDraft({ ...draft, districts });
-                      }}
-                    />
-                    <FilterChecklist
-                      label="City"
-                      options={options.cities.map((item) => ({
-                        value: item,
-                        label: item,
-                      }))}
-                      values={draft.cities}
-                      onChange={(cities) => {
-                        setDraft({ ...draft, cities });
-                      }}
-                    />
-                  </TabsContent>
-
-                  <TabsContent
-                    value="attention"
-                    className="m-0 grid gap-4 md:grid-cols-2"
-                  >
-                    <FilterChecklist
-                      label="Attention severity"
-                      options={ISSUE_SEVERITY_OPTIONS}
-                      values={draft.issueSeverities}
-                      onChange={(issueSeverities) => {
-                        setDraft({
-                          ...draft,
-                          issueSeverities:
-                            issueSeverities.filter(isIssueSeverity),
-                        });
-                      }}
-                    />
-                    <div className="grid min-h-44 place-items-center rounded-2xl border border-dashed p-5 text-center">
-                      <div>
-                        <CircleAlert
-                          aria-hidden="true"
-                          className="mx-auto size-6 text-muted-readable"
-                        />
-                        <p className="mt-2 text-body-sm font-medium">
-                          Detailed Support filters have been retired
-                        </p>
-                        <p className="mt-1 text-caption text-muted-readable">
-                          Severity remains available because it still scopes
-                          authoritative attention metrics in the current
-                          dashboard.
-                        </p>
-                      </div>
-                    </div>
-                  </TabsContent>
-                </Tabs>
-              )}
-            </DialogBody>
-
-            <DialogFooter className="sm:justify-between">
-              <div className="flex flex-col-reverse gap-2 sm:flex-row">
-                <DialogClose asChild>
-                  <Button type="button" variant="ghost">
-                    Cancel
+                    Clear all
                   </Button>
-                </DialogClose>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  disabled={draftCount === 0}
-                  onClick={() => {
-                    setDraft(emptyDraft());
-                  }}
-                >
-                  Clear all
-                </Button>
-              </div>
-              <div className="flex flex-col-reverse gap-2 sm:flex-row">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => {
-                    setDraft(draftFromQuery(query));
-                  }}
-                >
-                  Restore applied
-                </Button>
-                <Button
-                  type="button"
-                  disabled={options === null}
-                  onClick={() => {
-                    navigate({ ...draft });
-                    setOpen(false);
-                  }}
-                >
-                  <SlidersHorizontal aria-hidden="true" />
-                  Apply{" "}
-                  {draftCount > 0 ? `${String(draftCount)} filters` : "filters"}
-                </Button>
-              </div>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+                </div>
+                <div className="flex flex-col-reverse gap-2 sm:flex-row">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      setDraft(draftFromQuery(query));
+                    }}
+                  >
+                    Restore applied
+                  </Button>
+                  <Button
+                    type="button"
+                    disabled={options === null}
+                    onClick={() => {
+                      navigate({ ...draft });
+                      setOpen(false);
+                    }}
+                  >
+                    <SlidersHorizontal aria-hidden="true" />
+                    Apply{" "}
+                    {draftCount > 0
+                      ? `${String(draftCount)} filters`
+                      : "filters"}
+                  </Button>
+                </div>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        ) : null}
       </div>
 
       <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
-        {query.q !== undefined ? (
+        {isOverviewRoute && query.q !== undefined ? (
           <Badge variant="outline" className="max-w-72 gap-1.5">
             <Search aria-hidden="true" className="size-3" />
             <span className="truncate">{query.q}</span>

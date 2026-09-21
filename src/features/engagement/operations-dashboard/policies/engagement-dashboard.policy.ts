@@ -36,7 +36,6 @@ export type EngagementDashboardCapabilities = Readonly<{
   canReadLeads: boolean;
   canReadCustomerContact: boolean;
   canUpdateLeads: boolean;
-  canReadIssues: boolean;
   canIntervene: boolean;
   canReassignLead: boolean;
   canRetryDelivery: boolean;
@@ -80,7 +79,6 @@ const NO_CAPABILITIES = {
   canReadLeads: false,
   canReadCustomerContact: false,
   canUpdateLeads: false,
-  canReadIssues: false,
   canIntervene: false,
   canReassignLead: false,
   canRetryDelivery: false,
@@ -216,13 +214,8 @@ export function resolveEngagementDashboardAccess(
     permissions,
     PERMISSION.DEALER_PERFORMANCE_READ,
   );
-  const canReadIssues = hasPermission(
-    actorKind,
-    permissions,
-    PERMISSION.SUPPORT_READ,
-  );
   const canIntervene =
-    canReadIssues &&
+    hasPermission(actorKind, permissions, PERMISSION.SUPPORT_READ) &&
     hasPermission(actorKind, permissions, PERMISSION.SUPPORT_INTERVENE);
   const canUpdateLeads =
     canIntervene &&
@@ -259,7 +252,6 @@ export function resolveEngagementDashboardAccess(
         PERMISSION.CUSTOMER_CONTACT_READ,
       ),
       canUpdateLeads,
-      canReadIssues,
       canIntervene,
       canReassignLead:
         canIntervene &&

@@ -1,9 +1,18 @@
 // oz-next-app/src/features/engagement/operations-dashboard/ui/engagement-dashboard-page.tsx
 import type * as React from "react";
 import Link from "next/link";
-import { Building2, CircleAlert } from "lucide-react";
+import {
+  BarChart3,
+  Building2,
+  CalendarClock,
+  CheckCircle2,
+  CircleAlert,
+  Clock3,
+  UserRound,
+} from "lucide-react";
 
 import {
+  ContentDataSurface,
   ContentHeader,
   ContentRoot,
   ContentStatus,
@@ -20,10 +29,19 @@ import type {
   EngagementDashboardAccess,
   ResolvedEngagementDashboardAccess,
 } from "@/features/engagement/operations-dashboard/policies/engagement-dashboard.policy";
+import {
+  EngagementMetricGrid,
+  type EngagementMetric,
+} from "@/features/engagement/operations-dashboard/ui/engagement-metric-grid";
+import { EngagementOverviewFunnel } from "@/features/engagement/operations-dashboard/ui/engagement-overview-funnel";
 import { EngagementLeadsTable } from "@/features/engagement/operations-dashboard/ui/engagement-leads-table";
 import { EngagementWorkspaceShell } from "@/features/engagement/operations-dashboard/ui/engagement-workspace-shell";
-import { JourneyOverview } from "@/features/engagement/operations-dashboard/ui/journey-overview";
-import { formatDashboardInteger } from "@/features/engagement/operations-dashboard/utils/engagement-dashboard-format";
+import { LeadSourceChart } from "@/features/engagement/operations-dashboard/ui/lead-source-chart";
+import {
+  formatDashboardDuration,
+  formatDashboardInteger,
+  formatDashboardPercentage,
+} from "@/features/engagement/operations-dashboard/utils/engagement-dashboard-format";
 import { ENGAGEMENT_DASHBOARD_ROUTES } from "@/features/engagement/operations-dashboard/utils/engagement-dashboard-url";
 
 export type EngagementDashboardPageProps = Readonly<{
@@ -54,6 +72,88 @@ function sectionFailure(
   );
 }
 
+function overviewMetrics(
+  data: Extract<EngagementOverviewData["summary"], { status: "ready" }>["data"],
+  query: EngagementDashboardSearchParams,
+): readonly EngagementMetric[] {
+  const { kpis } = data;
+
+  return [
+    {
+      id: "new-leads",
+      label: "New leads",
+      value: formatDashboardInteger(kpis.newLeads.value),
+      description: `${formatDashboardInteger(Math.round(kpis.newLeads.averagePerDay))} average per day in the selected period.`,
+      help: "Vehicle-sales leads created inside the selected operational date and filter scope.",
+      icon: <UserRound aria-hidden="true" className="size-5" />,
+      tone: "info",
+      ...(query.comparison === "NONE"
+        ? {}
+        : {
+            trend: {
+              value: kpis.newLeads.changePct,
+              positiveIsGood: true,
+              label: "No comparable baseline",
+            },
+          }),
+    },
+    {
+      id: "assignment-health",
+      label: "Assignment rate",
+      value: formatDashboardPercentage(kpis.assignmentHealth.ratePct),
+      description: `${formatDashboardInteger(kpis.assignmentHealth.assignedCount)} assigned of ${formatDashboardInteger(kpis.assignmentHealth.assignableCount)} assignable leads.`,
+      help: "Share of assignable leads with a dealer assignment in the selected operational scope.",
+      icon: <Building2 aria-hidden="true" className="size-5" />,
+      tone: kpis.assignmentHealth.unassignedCount > 0 ? "warning" : "success",
+      badge: `${formatDashboardInteger(kpis.assignmentHealth.unassignedCount)} unassigned`,
+    },
+    {
+      id: "dealer-response",
+      label: "Response SLA",
+      value: formatDashboardPercentage(kpis.dealerResponseSla.ratePct),
+      description: `${formatDashboardInteger(kpis.dealerResponseSla.respondedCount)} responded; median ${formatDashboardDuration(kpis.dealerResponseSla.medianResponseMinutes)}.`,
+      help: "Dealer responses measured against the configured response SLA for eligible assigned leads.",
+      icon: <Clock3 aria-hidden="true" className="size-5" />,
+      tone: kpis.dealerResponseSla.breachedCount > 0 ? "warning" : "success",
+      badge: `${formatDashboardInteger(kpis.dealerResponseSla.breachedCount)} breached`,
+    },
+    {
+      id: "follow-up",
+      label: "Follow-up compliance",
+      value: formatDashboardPercentage(kpis.followUpCompliance.ratePct),
+      description: `${formatDashboardInteger(kpis.followUpCompliance.completedOnTimeCount)} completed on time of ${formatDashboardInteger(kpis.followUpCompliance.dueCount)} due.`,
+      help: "On-time dealer follow-up completion for due follow-up actions in the selected scope.",
+      icon: <CalendarClock aria-hidden="true" className="size-5" />,
+      tone: kpis.followUpCompliance.overdueCount > 0 ? "warning" : "success",
+      badge: `${formatDashboardInteger(kpis.followUpCompliance.overdueCount)} overdue`,
+    },
+    {
+      id: "conversion",
+      label: "Conversion",
+      value: formatDashboardPercentage(kpis.conversion.ratePct),
+      description: `${formatDashboardInteger(kpis.conversion.convertedCount)} converted from ${formatDashboardInteger(kpis.conversion.eligibleCount)} eligible leads.`,
+      help: "Operational lead conversion rate for the selected lead cohort and filters.",
+      icon: <CheckCircle2 aria-hidden="true" className="size-5" />,
+      tone: "success",
+      badge: `${formatDashboardInteger(kpis.conversion.bookingCount)} booked`,
+    },
+    {
+      id: "needs-attention",
+      label: "Needs attention",
+      value: formatDashboardInteger(kpis.needsAttention.totalCount),
+      description: `${formatDashboardInteger(kpis.needsAttention.criticalCount)} critical and ${formatDashboardInteger(kpis.needsAttention.highCount)} high-priority items.`,
+      help: "Open operational attention items within the selected dashboard scope.",
+      icon: <CircleAlert aria-hidden="true" className="size-5" />,
+      tone:
+        kpis.needsAttention.criticalCount > 0
+          ? "destructive"
+          : kpis.needsAttention.highCount > 0
+            ? "warning"
+            : "default",
+    },
+  ];
+}
+
 export function EngagementDashboardPage({
   access,
   query,
@@ -66,10 +166,45 @@ export function EngagementDashboardPage({
       route={ENGAGEMENT_DASHBOARD_ROUTES.overview}
       filterOptions={data.filterOptions}
     >
-      {data.journey.status === "ready" ? (
-        <JourneyOverview snapshot={data.journey.data} />
+      <section
+        aria-labelledby="engagement-overview-kpi-heading"
+        className="grid gap-3"
+      >
+        <ContentHeader
+          id="engagement-overview-kpi-heading"
+          variant="compact"
+          eyebrow="Overview"
+          icon={<BarChart3 aria-hidden="true" />}
+          iconTone="info"
+          title="Vehicle-sales engagement performance"
+          description="Operational KPIs, source trend, lifecycle funnel, and actionable lead queue for the same validated filter scope."
+        />
+        {data.summary.status === "ready" ? (
+          <EngagementMetricGrid
+            metrics={overviewMetrics(data.summary.data, query)}
+            columns={6}
+          />
+        ) : (
+          sectionFailure("Engagement KPIs", data.summary)
+        )}
+      </section>
+
+      {data.leadSources.status === "ready" ? (
+        <ContentDataSurface
+          title="Lead-source trend"
+          description="Compare vehicle-sales acquisition volume by source over the selected period. Select a bar to cross-filter the operational view."
+          contentClassName="min-h-[26rem] px-[var(--card-spacing)] pb-[var(--card-spacing)]"
+        >
+          <LeadSourceChart series={data.leadSources.data} query={query} />
+        </ContentDataSurface>
       ) : (
-        sectionFailure("Authoritative journey analytics", data.journey)
+        sectionFailure("Lead-source trend", data.leadSources)
+      )}
+
+      {data.funnel.status === "ready" ? (
+        <EngagementOverviewFunnel funnel={data.funnel.data} />
+      ) : (
+        sectionFailure("Lead lifecycle funnel", data.funnel)
       )}
 
       <section
@@ -82,7 +217,7 @@ export function EngagementDashboardPage({
           icon={<Building2 aria-hidden="true" />}
           iconTone="default"
           title="Lead work queue"
-          description="This queue remains lead-based for follow-up and intervention workflows. Advanced queue filters do not change the process-run journey KPIs above; the cohort dates are shared for navigation consistency."
+          description="Priority vehicle-sales leads for follow-up and intervention. The queue uses the same date, search, and advanced filters as the Overview KPIs, source trend, and funnel."
           actions={
             data.leads.status === "ready" ? (
               <Badge variant="outline">

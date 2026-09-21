@@ -4,7 +4,13 @@ import type * as React from "react";
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Building2, ChartNoAxesCombined, MapPinned, Video } from "lucide-react";
+import {
+  Building2,
+  ChartNoAxesCombined,
+  MapPinned,
+  Route as JourneyRoute,
+  Video,
+} from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -42,6 +48,14 @@ export function EngagementWorkspaceNav({
       visible: true,
       exact: true,
       help: "Executive KPIs, source trends, lifecycle funnel, and lead operations.",
+    },
+    {
+      label: "Journey",
+      href: engagementWorkspaceHref(ENGAGEMENT_DASHBOARD_ROUTES.journey, query),
+      icon: JourneyRoute,
+      visible: true,
+      exact: true,
+      help: "Process-run journey funnel, terminal outcomes, latency, and projection health.",
     },
     {
       label: "Dealers",

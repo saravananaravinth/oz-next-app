@@ -85,7 +85,6 @@ function actionInput(
     assignmentStates: query.assignmentStates,
     conversionStates: query.conversionStates,
     followUpStates: query.followUpStates,
-    issueSeverities: query.issueSeverities,
     ...(query.q !== undefined ? { q: query.q } : {}),
   } as const;
 }

@@ -177,11 +177,7 @@ const COMPONENT_INVENTORY_PATH = "/inventory/components";
 const DEALER_LIVE_SEARCH_ENDPOINT = "/api/engagement/dealers/search";
 const VEHICLE_LIVE_SEARCH_ENDPOINT = "/api/inventory/vehicles/search";
 const COMPONENT_LIVE_SEARCH_ENDPOINT = "/api/inventory/components/search";
-const ENGAGEMENT_CURSOR_PARAMS = [
-  "dealerCursor",
-  "issueCursor",
-  "leadCursor",
-] as const;
+const ENGAGEMENT_CURSOR_PARAMS = ["dealerCursor", "leadCursor"] as const;
 const INVENTORY_CURSOR_PARAMS = ["cursor"] as const;
 const ASCII_CONTROL_MAX_CODE_POINT = 0x1f;
 const ASCII_DELETE_CODE_POINT = 0x7f;

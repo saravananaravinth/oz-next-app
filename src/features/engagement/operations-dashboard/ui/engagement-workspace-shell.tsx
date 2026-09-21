@@ -52,12 +52,12 @@ export function EngagementWorkspaceShell({
             <EngagementWorkspaceNav access={access} query={query} />
           </div>
         </div>
-        {showFilters && filterOptions !== undefined ? (
+        {showFilters ? (
           <div className="border-t border-border/70 bg-muted/20 p-3">
             <EngagementDashboardFilters
               route={route}
               query={query}
-              filterOptions={filterOptions}
+              {...(filterOptions === undefined ? {} : { filterOptions })}
             />
           </div>
         ) : null}
