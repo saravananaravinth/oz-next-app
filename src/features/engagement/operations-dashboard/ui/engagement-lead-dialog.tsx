@@ -4,8 +4,10 @@
 import * as React from "react";
 import {
   Activity,
+  ArrowLeft,
   ArrowRightLeft,
   Building2,
+  CalendarClock,
   Check,
   Circle,
   CircleAlert,
@@ -13,15 +15,14 @@ import {
   ExternalLink,
   Eye,
   EyeOff,
+  Link2,
   LockKeyhole,
   MapPin,
   MessageCircle,
   Phone,
   RefreshCw,
   Route,
-  ShieldCheck,
   ShoppingCart,
-  UserRound,
 } from "lucide-react";
 
 import {
@@ -36,16 +37,14 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Badge, type BadgeProps } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogBody,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { Progress } from "@/components/ui/progress";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Tooltip,
@@ -89,36 +88,33 @@ type LoadedLeadResult = Readonly<{
 }>;
 
 type PrivilegedAction = "ADMIN_SESSION" | "REASSIGN";
+type LeadView = "SUMMARY" | "ACTIVITY";
 type FlowState = "COMPLETE" | "CURRENT" | "BLOCKED" | "UPCOMING";
 type FlowStage = Readonly<{
-  code: "NEW" | "ASSIGNED" | "CONTACTED" | "BOOKED" | "CONVERTED";
+  code:
+    "RECEIVED" | "LOCATION" | "ASSIGNED" | "CONTACTED" | "BOOKED" | "CONVERTED";
   label: string;
   state: FlowState;
   occurredAt: string | null;
   reason: string;
 }>;
-type TimelineEvent = EngagementLeadDetail["timeline"][number];
 type JourneyItem = EngagementLeadDetail["journey"]["items"][number];
-type JourneyPhaseCode =
-  | "INTAKE"
-  | "LOCATION"
-  | "ASSIGNMENT"
-  | "NOTIFICATION"
-  | "ENGAGEMENT"
+type ActivityFilter =
+  | "ALL"
+  | "CALLS"
+  | "MESSAGES"
+  | "DEALER"
+  | "ROUTING"
+  | "FOLLOW_UPS"
   | "OUTCOME";
-type LifecycleAction = Readonly<{
-  id: string;
-  phase: JourneyPhaseCode;
-  title: string;
-  description: string;
-  occurredAt: string | null;
-  state: FlowState;
-  statusLabel: string;
-  kind: JourneyItem["kind"];
-  channel: JourneyItem["channel"];
-  actorLabel: string | null;
-  derived: boolean;
+
+type ActivityGroup = Readonly<{
+  key: string;
+  label: string;
+  items: readonly JourneyItem[];
 }>;
+
+const LATEST_ACTIVITY_LIMIT = 5;
 
 const FLOW_STATE_META = {
   COMPLETE: {
@@ -139,7 +135,7 @@ const FLOW_STATE_META = {
   UPCOMING: {
     label: "Upcoming",
     badge: "outline",
-    icon: LockKeyhole,
+    icon: Clock3,
   },
 } as const satisfies Readonly<
   Record<
@@ -152,45 +148,15 @@ const FLOW_STATE_META = {
   >
 >;
 
-const JOURNEY_PHASES = [
-  {
-    code: "INTAKE",
-    label: "Customer call and intake",
-    description: "Enquiry receipt and source-side call evidence.",
-  },
-  {
-    code: "LOCATION",
-    label: "Location request and response",
-    description: "WhatsApp request delivery and customer coordinate readiness.",
-  },
-  {
-    code: "ASSIGNMENT",
-    label: "Dealer assignment",
-    description: "Routing decisions, assignment evidence, and blockers.",
-  },
-  {
-    code: "NOTIFICATION",
-    label: "Assignment communications",
-    description:
-      "Customer and dealer WhatsApp delivery evidence after assignment.",
-  },
-  {
-    code: "ENGAGEMENT",
-    label: "Dealer response and follow-up",
-    description: "Calls, response SLA, notes, and scheduled next actions.",
-  },
-  {
-    code: "OUTCOME",
-    label: "Booking and conversion",
-    description: "Commercial outcome evidence and remaining downstream work.",
-  },
-] as const satisfies ReadonlyArray<
-  Readonly<{
-    code: JourneyPhaseCode;
-    label: string;
-    description: string;
-  }>
->;
+const ACTIVITY_FILTERS = [
+  ["ALL", "All"],
+  ["CALLS", "Calls"],
+  ["MESSAGES", "Messages"],
+  ["DEALER", "Dealer"],
+  ["ROUTING", "Routing"],
+  ["FOLLOW_UPS", "Follow-ups"],
+  ["OUTCOME", "Outcome"],
+] as const satisfies ReadonlyArray<readonly [ActivityFilter, string]>;
 
 function actionFailureDescription(
   result: Extract<ReadEngagementLeadDetailActionResult, { ok: false }>,
@@ -200,40 +166,86 @@ function actionFailureDescription(
     : `${result.message} Reference: ${result.requestId}`;
 }
 
-function payloadString(event: TimelineEvent, key: string): string | null {
-  const value = event.payload[key];
-  return typeof value === "string" && value.trim().length > 0
-    ? value.trim()
-    : null;
+function displaySource(lead: EngagementLeadDetail): string {
+  return /telecmi|incoming.?call|phone/iu.test(
+    `${lead.source.code} ${lead.source.name}`,
+  )
+    ? "Incoming Call"
+    : lead.source.name;
+}
+
+function leadInitials(name: string | null): string {
+  if (name === null) return "NC";
+  const parts = name
+    .trim()
+    .split(/\s+/u)
+    .filter((part) => part.length > 0)
+    .slice(0, 2);
+  if (parts.length === 0) return "NC";
+  return parts
+    .map((part) => part[0]?.toLocaleUpperCase("en-US") ?? "")
+    .join("");
+}
+
+function locationLabel(lead: EngagementLeadDetail): string {
+  const location = [
+    lead.location.city,
+    lead.location.district,
+    lead.location.state,
+    lead.location.postalCode,
+  ]
+    .filter((value): value is string => value !== null && value.length > 0)
+    .join(" · ");
+
+  return location.length > 0 ? location : "Location unavailable";
+}
+
+function locationReady(lead: EngagementLeadDetail): boolean {
+  return lead.location.latitude !== null && lead.location.longitude !== null;
 }
 
 function latestDealerStatus(lead: EngagementLeadDetail): string | null {
-  for (const event of lead.timeline) {
-    const status = payloadString(event, "status");
-    if (status !== null) return status;
+  for (const item of lead.journey.items) {
+    if (item.kind !== "FOLLOW_UP" && item.kind !== "STATUS") continue;
+    if (item.status !== null && item.status.trim().length > 0) {
+      return item.status;
+    }
   }
   return null;
 }
 
 function flowStages(lead: EngagementLeadDetail): readonly FlowStage[] {
-  const closedWithoutConversion =
-    lead.closedAt !== null && lead.convertedAt === null;
-  const dealerStatus = latestDealerStatus(lead);
-  const locationAvailable =
-    lead.location.latitude !== null && lead.location.longitude !== null;
+  const hasLocation = locationReady(lead);
   const assignmentComplete =
     lead.ownerAssignedAt !== null && lead.dealer !== null;
   const contactComplete = lead.firstResponseAt !== null;
   const bookingComplete = lead.bookedAt !== null;
   const conversionComplete = lead.convertedAt !== null;
+  const closedWithoutConversion = lead.closedAt !== null && !conversionComplete;
+  const dealerStatus = latestDealerStatus(lead);
 
-  const stages: FlowStage[] = [
+  return [
     {
-      code: "NEW",
-      label: "Lead received",
+      code: "RECEIVED",
+      label: "Enquiry received",
       state: "COMPLETE",
       occurredAt: lead.createdAt,
-      reason: `Created from ${lead.source.name}.`,
+      reason: `Created from ${displaySource(lead)}.`,
+    },
+    {
+      code: "LOCATION",
+      label: "Location",
+      state: hasLocation
+        ? "COMPLETE"
+        : closedWithoutConversion
+          ? "BLOCKED"
+          : "CURRENT",
+      occurredAt: hasLocation ? lead.updatedAt : null,
+      reason: hasLocation
+        ? `Customer location is available for ${locationLabel(lead)}.`
+        : closedWithoutConversion
+          ? "The lead closed without usable customer coordinates."
+          : "Customer coordinates are still required for precise routing.",
     },
     {
       code: "ASSIGNED",
@@ -242,21 +254,21 @@ function flowStages(lead: EngagementLeadDetail): readonly FlowStage[] {
         ? "COMPLETE"
         : closedWithoutConversion
           ? "BLOCKED"
-          : locationAvailable
+          : hasLocation
             ? "CURRENT"
-            : "BLOCKED",
+            : "UPCOMING",
       occurredAt: lead.ownerAssignedAt,
       reason: assignmentComplete
         ? `Assigned to ${lead.dealer?.name ?? "the selected dealer"}.`
         : closedWithoutConversion
-          ? "The lead was closed before a dealer assignment was recorded."
-          : locationAvailable
-            ? "No dealer assignment is recorded. Check dealer capacity, coverage, and engagement eligibility."
-            : "Customer coordinates are missing, so distance-based dealer assignment cannot complete.",
+          ? "The lead closed before a dealer assignment was recorded."
+          : hasLocation
+            ? "Customer location is ready; dealer assignment is pending."
+            : "Dealer routing starts after customer location is available.",
     },
     {
       code: "CONTACTED",
-      label: "Customer contacted",
+      label: "Contacted",
       state: contactComplete
         ? "COMPLETE"
         : closedWithoutConversion
@@ -272,16 +284,16 @@ function flowStages(lead: EngagementLeadDetail): readonly FlowStage[] {
           ? "A dealer response was recorded."
           : `Latest dealer response: ${titleCaseDashboardToken(dealerStatus)}.`
         : closedWithoutConversion
-          ? "The lead was closed before any customer response was recorded."
+          ? "The lead closed before a customer response was recorded."
           : !assignmentComplete
-            ? "Starts after a dealer is assigned."
+            ? "Customer contact starts after dealer assignment."
             : lead.responseSlaState === "BREACHED"
-              ? "No dealer response was recorded before the response SLA expired."
-              : "Waiting for the dealer to record the first customer response.",
+              ? "The response SLA expired before a dealer response was recorded."
+              : "Waiting for the assigned dealer to record the first response.",
     },
     {
       code: "BOOKED",
-      label: "Booking confirmed",
+      label: "Booked",
       state: bookingComplete
         ? "COMPLETE"
         : closedWithoutConversion || dealerStatus === "NOT_INTERESTED"
@@ -293,49 +305,52 @@ function flowStages(lead: EngagementLeadDetail): readonly FlowStage[] {
       reason: bookingComplete
         ? "A booking event was recorded."
         : closedWithoutConversion
-          ? "The lead was closed before a booking was recorded."
+          ? "The lead closed without a booking."
           : dealerStatus === "NOT_INTERESTED"
             ? "The latest dealer response marks the customer as not interested."
             : !contactComplete
-              ? "Starts after the first customer response."
-              : "No confirmed booking is recorded yet.",
+              ? "Booking begins after first customer contact."
+              : "Customer contact exists; a booking is not yet confirmed.",
     },
     {
       code: "CONVERTED",
-      label: "Sale converted",
+      label: "Converted",
       state: conversionComplete
         ? "COMPLETE"
-        : !bookingComplete
-          ? closedWithoutConversion
-            ? "BLOCKED"
-            : "UPCOMING"
-          : "CURRENT",
+        : closedWithoutConversion
+          ? "BLOCKED"
+          : !bookingComplete
+            ? "UPCOMING"
+            : "CURRENT",
       occurredAt: lead.convertedAt,
       reason: conversionComplete
-        ? "A verified conversion record is linked to this lead."
+        ? "Verified conversion evidence is linked to this lead."
         : closedWithoutConversion
-          ? "The lead was closed without a verified conversion."
+          ? "The lead closed without a verified conversion."
           : !bookingComplete
-            ? "Starts after a booking is confirmed."
-            : "Booking is complete; conversion evidence is still pending.",
+            ? "Conversion begins after booking confirmation."
+            : "Booking is complete; conversion evidence is pending.",
     },
   ];
-
-  return stages;
 }
 
-function journeyText(item: JourneyItem): string {
-  return `${item.title} ${item.description ?? ""}`.toLocaleLowerCase("en-US");
+function responseSlaVariant(
+  state: EngagementLeadDetail["responseSlaState"],
+): BadgeProps["variant"] {
+  if (state === "WITHIN_SLA") return "success";
+  if (state === "BREACHED") return "destructive";
+  if (state === "PENDING") return "warning";
+  return "outline";
 }
 
-function hasJourneyText(
-  items: readonly JourneyItem[],
-  fragments: readonly string[],
-): boolean {
-  return items.some((item) => {
-    const text = journeyText(item);
-    return fragments.some((fragment) => text.includes(fragment));
-  });
+function followUpVariant(
+  state: EngagementLeadDetail["followUpState"],
+): BadgeProps["variant"] {
+  if (state === "OVERDUE") return "destructive";
+  if (state === "DUE_TODAY") return "warning";
+  if (state === "SCHEDULED") return "info";
+  if (state === "CLOSED") return "success";
+  return "outline";
 }
 
 function journeyState(item: JourneyItem): FlowState {
@@ -378,424 +393,111 @@ function journeyState(item: JourneyItem): FlowState {
   return "COMPLETE";
 }
 
-function journeyPhase(
-  item: JourneyItem,
-  lead: EngagementLeadDetail,
-): JourneyPhaseCode {
+function journeyText(item: JourneyItem): string {
+  return `${item.title} ${item.description ?? ""}`.toLocaleLowerCase("en-US");
+}
+
+function isOutcomeActivity(item: JourneyItem): boolean {
   const text = journeyText(item);
-
-  if (item.kind === "WHATSAPP") {
-    if (text.includes("location")) return "LOCATION";
-    if (
-      text.includes("dealer_assigned") ||
-      text.includes("dealer_lead_update") ||
-      text.includes("assignment_pending") ||
-      text.includes("assignment")
-    ) {
-      return "NOTIFICATION";
-    }
-    return "ENGAGEMENT";
-  }
-
-  if (
+  return (
     text.includes("booking") ||
     text.includes("booked") ||
     text.includes("convert") ||
     text.includes("sale") ||
-    text.includes("closed")
-  ) {
-    return "OUTCOME";
-  }
-  if (text.includes("location") || text.includes("coordinate")) {
-    return "LOCATION";
-  }
-  if (
-    item.kind === "ASSIGNMENT" ||
-    item.kind === "ROUTING" ||
-    text.includes("assign") ||
-    text.includes("route") ||
-    text.includes("forward")
-  ) {
-    return "ASSIGNMENT";
-  }
-  if (item.kind === "CALL") {
-    return lead.ownerAssignedAt !== null &&
-      item.occurredAt >= lead.ownerAssignedAt
-      ? "ENGAGEMENT"
-      : "INTAKE";
-  }
-  if (
-    item.kind === "FOLLOW_UP" ||
-    item.kind === "NOTE" ||
-    item.kind === "STATUS" ||
-    text.includes("contact") ||
-    text.includes("follow")
-  ) {
-    return "ENGAGEMENT";
-  }
-  return "INTAKE";
+    text.includes("closed") ||
+    item.kind === "STATUS"
+  );
 }
 
-function journeyIcon(
-  item: Pick<LifecycleAction, "kind" | "phase">,
-): React.ReactNode {
+function activityMatchesFilter(
+  item: JourneyItem,
+  filter: ActivityFilter,
+): boolean {
+  if (filter === "ALL") return true;
+  if (filter === "CALLS") return item.kind === "CALL";
+  if (filter === "MESSAGES") return item.kind === "WHATSAPP";
+  if (filter === "ROUTING") {
+    return item.kind === "ASSIGNMENT" || item.kind === "ROUTING";
+  }
+  if (filter === "FOLLOW_UPS") {
+    return item.kind === "FOLLOW_UP" || item.kind === "NOTE";
+  }
+  if (filter === "OUTCOME") return isOutcomeActivity(item);
+
+  const actor = item.actorLabel?.toLocaleLowerCase("en-US") ?? "";
+  const text = journeyText(item);
+  return (
+    actor.includes("dealer") ||
+    text.includes("dealer opened") ||
+    text.includes("dealer update") ||
+    text.includes("dealer response")
+  );
+}
+
+function journeyIcon(item: JourneyItem): React.ReactNode {
+  const text = journeyText(item);
+  if (text.includes("opened") && text.includes("link")) {
+    return <Link2 aria-hidden="true" />;
+  }
   if (item.kind === "WHATSAPP") {
     return <MessageCircle aria-hidden="true" />;
-  }
-  if (item.phase === "LOCATION") {
-    return <MapPin aria-hidden="true" />;
   }
   if (item.kind === "ASSIGNMENT" || item.kind === "ROUTING") {
     return <Building2 aria-hidden="true" />;
   }
-  if (item.kind === "CALL" || item.kind === "FOLLOW_UP") {
+  if (item.kind === "CALL") {
     return <Phone aria-hidden="true" />;
   }
-  if (item.phase === "OUTCOME") {
+  if (item.kind === "FOLLOW_UP" || item.kind === "NOTE") {
+    return <CalendarClock aria-hidden="true" />;
+  }
+  if (isOutcomeActivity(item)) {
     return <ShoppingCart aria-hidden="true" />;
+  }
+  if (text.includes("location")) {
+    return <MapPin aria-hidden="true" />;
   }
   return <Activity aria-hidden="true" />;
 }
 
-function lifecycleActions(
-  lead: EngagementLeadDetail,
-): readonly LifecycleAction[] {
-  const items = lead.journey.items;
-  const actions: LifecycleAction[] = items.map((item) => ({
-    id: item.id,
-    phase: journeyPhase(item, lead),
-    title: item.title,
-    description:
-      item.description ??
-      (item.kind === "ASSIGNMENT" && lead.dealer !== null
-        ? `Assigned to ${lead.dealer.name} · ${lead.dealer.code}.`
-        : "Auditable workflow evidence was recorded."),
-    occurredAt: item.occurredAt,
-    state: journeyState(item),
-    statusLabel: item.status ?? "Recorded",
-    kind: item.kind,
-    channel: item.channel,
-    actorLabel: item.actorLabel,
-    derived: false,
-  }));
-  const locationReady =
-    lead.location.latitude !== null && lead.location.longitude !== null;
-  const assignmentComplete =
-    lead.ownerAssignedAt !== null && lead.dealer !== null;
-  const closedWithoutConversion =
-    lead.closedAt !== null && lead.convertedAt === null;
-  const sourceText =
-    `${lead.source.name} ${lead.source.code}`.toLocaleLowerCase("en-US");
-  const messageItems = items.filter((item) => item.kind === "WHATSAPP");
-  const locationMessages = items.filter(
-    (item) =>
-      item.kind === "WHATSAPP" && journeyText(item).includes("location"),
-  );
-  const successfulLocationRequest = locationMessages.some(
-    (item) => journeyState(item) === "COMPLETE",
-  );
-  const pendingLocationRequest = locationMessages.some(
-    (item) => journeyState(item) === "CURRENT",
-  );
+function activityDayKey(occurredAt: string): string {
+  const date = new Date(occurredAt);
+  if (!Number.isFinite(date.getTime())) return occurredAt.slice(0, 10);
+  return [date.getFullYear(), date.getMonth() + 1, date.getDate()].join("-");
+}
 
-  function add(
-    action: Omit<LifecycleAction, "derived" | "channel" | "actorLabel"> &
-      Partial<Pick<LifecycleAction, "channel" | "actorLabel">>,
-  ): void {
-    actions.push({
-      ...action,
-      channel: action.channel ?? null,
-      actorLabel: action.actorLabel ?? null,
-      derived: true,
+function activityDayLabel(occurredAt: string): string {
+  const date = new Date(occurredAt);
+  if (!Number.isFinite(date.getTime())) return "Activity";
+  return new Intl.DateTimeFormat("en-IN", {
+    weekday: "long",
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  }).format(date);
+}
+
+function groupActivities(
+  items: readonly JourneyItem[],
+): readonly ActivityGroup[] {
+  const groups: ActivityGroup[] = [];
+  for (const item of items) {
+    const key = activityDayKey(item.occurredAt);
+    const latest = groups.at(-1);
+    if (latest?.key === key) {
+      groups[groups.length - 1] = {
+        ...latest,
+        items: [...latest.items, item],
+      };
+      continue;
+    }
+    groups.push({
+      key,
+      label: activityDayLabel(item.occurredAt),
+      items: [item],
     });
   }
-
-  if (
-    !hasJourneyText(items, [
-      "lead received",
-      "lead created",
-      "customer call",
-      "phone call",
-    ])
-  ) {
-    add({
-      id: "checkpoint:intake",
-      phase: "INTAKE",
-      title:
-        sourceText.includes("phone") || sourceText.includes("call")
-          ? "Customer call captured"
-          : "Vehicle-sales enquiry received",
-      description: `Lead created from ${lead.source.name}.`,
-      occurredAt: lead.createdAt,
-      state: "COMPLETE",
-      statusLabel: "Completed",
-      kind: "CALL",
-    });
-  }
-
-  if (locationMessages.length === 0) {
-    const requestEventRecorded = hasJourneyText(items, [
-      "location request",
-      "location_request",
-    ]);
-    add({
-      id: "checkpoint:location-request",
-      phase: "LOCATION",
-      title: "Location request WhatsApp",
-      description: requestEventRecorded
-        ? "A request event exists, but no outbound-message delivery record is linked to this lead."
-        : locationReady
-          ? "Customer coordinates were already available, so a location request was not required."
-          : "No WhatsApp delivery record exists. Send or retry the customer location request.",
-      occurredAt: null,
-      state: requestEventRecorded
-        ? "BLOCKED"
-        : locationReady
-          ? "COMPLETE"
-          : "BLOCKED",
-      statusLabel: requestEventRecorded
-        ? "Evidence missing"
-        : locationReady
-          ? "Not required"
-          : "Not sent",
-      kind: "WHATSAPP",
-      channel: "WHATSAPP",
-    });
-  }
-
-  add({
-    id: "checkpoint:customer-location",
-    phase: "LOCATION",
-    title: "Customer location shared",
-    description: locationReady
-      ? `Coordinates are available${lead.location.district === null ? "" : ` for ${lead.location.district}`}.`
-      : successfulLocationRequest || pendingLocationRequest
-        ? "The location request is recorded; customer coordinates are still pending."
-        : "Coordinates are missing and no successful location-request delivery is recorded.",
-    occurredAt: locationReady ? lead.updatedAt : null,
-    state: locationReady
-      ? "COMPLETE"
-      : successfulLocationRequest || pendingLocationRequest
-        ? "CURRENT"
-        : "BLOCKED",
-    statusLabel: locationReady
-      ? "Completed"
-      : successfulLocationRequest || pendingLocationRequest
-        ? "Waiting for customer"
-        : "Needs action",
-    kind: "SYSTEM",
-  });
-
-  if (
-    !assignmentComplete ||
-    !items.some(
-      (item) =>
-        item.kind === "ASSIGNMENT" ||
-        item.kind === "ROUTING" ||
-        journeyText(item).includes("assigned"),
-    )
-  ) {
-    add({
-      id: "checkpoint:dealer-assignment",
-      phase: "ASSIGNMENT",
-      title: assignmentComplete
-        ? "Dealer assigned"
-        : "Current dealer assignment",
-      description: assignmentComplete
-        ? `Assigned to ${lead.dealer?.name ?? "the selected dealer"}.`
-        : !locationReady
-          ? "Distance-based assignment cannot complete until customer coordinates are available."
-          : "Coordinates are available, but no eligible dealer assignment is recorded. Check coverage, capacity, and eligibility.",
-      occurredAt: lead.ownerAssignedAt,
-      state: assignmentComplete ? "COMPLETE" : "BLOCKED",
-      statusLabel: assignmentComplete ? "Completed" : "Needs action",
-      kind: "ASSIGNMENT",
-    });
-  }
-
-  const hasCustomerAssignmentMessage = hasJourneyText(messageItems, [
-    "oz_dealer_assigned_v1",
-    "oz_dealer_assigned_far_v1",
-  ]);
-  if (!hasCustomerAssignmentMessage) {
-    add({
-      id: "checkpoint:customer-assignment-message",
-      phase: "NOTIFICATION",
-      title: "Customer assignment WhatsApp",
-      description: assignmentComplete
-        ? "No customer assignment-message delivery record is linked to this lead."
-        : "Starts after a dealer assignment is recorded.",
-      occurredAt: null,
-      state: assignmentComplete ? "BLOCKED" : "UPCOMING",
-      statusLabel: assignmentComplete ? "Not sent" : "Upcoming",
-      kind: "WHATSAPP",
-      channel: "WHATSAPP",
-    });
-  }
-
-  const hasDealerAssignmentMessage = hasJourneyText(messageItems, [
-    "oz_dealer_lead_update_v1",
-    "dealer lead assigned",
-  ]);
-  if (!hasDealerAssignmentMessage) {
-    add({
-      id: "checkpoint:dealer-assignment-message",
-      phase: "NOTIFICATION",
-      title: "Dealer assignment WhatsApp",
-      description: assignmentComplete
-        ? "No dealer assignment-message delivery record is linked to this lead."
-        : "Starts after a dealer assignment is recorded.",
-      occurredAt: null,
-      state: assignmentComplete ? "BLOCKED" : "UPCOMING",
-      statusLabel: assignmentComplete ? "Not sent" : "Upcoming",
-      kind: "WHATSAPP",
-      channel: "WHATSAPP",
-    });
-  }
-
-  if (
-    !hasJourneyText(items, [
-      "customer contact",
-      "lead contacted",
-      "follow-up details updated",
-    ])
-  ) {
-    add({
-      id: "checkpoint:first-response",
-      phase: "ENGAGEMENT",
-      title: "Dealer first response",
-      description:
-        lead.firstResponseAt !== null
-          ? "A first dealer response is recorded."
-          : !assignmentComplete
-            ? "Starts after a dealer is assigned."
-            : lead.responseSlaState === "BREACHED"
-              ? "No response was recorded before the SLA expired."
-              : "Waiting for the dealer to record the first customer response.",
-      occurredAt: lead.firstResponseAt,
-      state:
-        lead.firstResponseAt !== null
-          ? "COMPLETE"
-          : !assignmentComplete
-            ? "UPCOMING"
-            : lead.responseSlaState === "BREACHED"
-              ? "BLOCKED"
-              : "CURRENT",
-      statusLabel:
-        lead.firstResponseAt !== null
-          ? "Completed"
-          : !assignmentComplete
-            ? "Upcoming"
-            : lead.responseSlaState === "BREACHED"
-              ? "SLA breached"
-              : "Waiting for dealer",
-      kind: "FOLLOW_UP",
-    });
-  }
-
-  add({
-    id: "checkpoint:next-follow-up",
-    phase: "ENGAGEMENT",
-    title: "Next follow-up",
-    description:
-      lead.nextFollowUpAt !== null
-        ? "A next customer follow-up is scheduled."
-        : closedWithoutConversion
-          ? "The lead closed without another follow-up."
-          : lead.firstResponseAt === null
-            ? "Starts after the first dealer response."
-            : "No next follow-up is scheduled.",
-    occurredAt: lead.nextFollowUpAt,
-    state:
-      lead.nextFollowUpAt !== null
-        ? lead.followUpState === "OVERDUE"
-          ? "BLOCKED"
-          : "CURRENT"
-        : closedWithoutConversion
-          ? "BLOCKED"
-          : lead.firstResponseAt === null
-            ? "UPCOMING"
-            : "BLOCKED",
-    statusLabel:
-      lead.nextFollowUpAt !== null
-        ? titleCaseDashboardToken(lead.followUpState)
-        : closedWithoutConversion
-          ? "Not completed"
-          : lead.firstResponseAt === null
-            ? "Upcoming"
-            : "Not scheduled",
-    kind: "FOLLOW_UP",
-  });
-
-  if (!hasJourneyText(items, ["booking confirmed", "lead booked"])) {
-    add({
-      id: "checkpoint:booking",
-      phase: "OUTCOME",
-      title: "Booking confirmed",
-      description:
-        lead.bookedAt !== null
-          ? "A booking event is recorded."
-          : closedWithoutConversion
-            ? "The lead closed before a booking was recorded."
-            : lead.firstResponseAt === null
-              ? "Starts after the first customer response."
-              : "Customer engagement is active; booking evidence is pending.",
-      occurredAt: lead.bookedAt,
-      state:
-        lead.bookedAt !== null
-          ? "COMPLETE"
-          : closedWithoutConversion
-            ? "BLOCKED"
-            : lead.firstResponseAt === null
-              ? "UPCOMING"
-              : "CURRENT",
-      statusLabel:
-        lead.bookedAt !== null
-          ? "Completed"
-          : closedWithoutConversion
-            ? "Not completed"
-            : lead.firstResponseAt === null
-              ? "Upcoming"
-              : "In progress",
-      kind: "STATUS",
-    });
-  }
-
-  if (!hasJourneyText(items, ["sale converted", "lead converted"])) {
-    add({
-      id: "checkpoint:conversion",
-      phase: "OUTCOME",
-      title: "Sale converted",
-      description:
-        lead.convertedAt !== null
-          ? "A verified conversion record is linked to this lead."
-          : closedWithoutConversion
-            ? "The lead closed without a verified conversion."
-            : lead.bookedAt === null
-              ? "Starts after a booking is confirmed."
-              : "Booking is complete; conversion evidence is pending.",
-      occurredAt: lead.convertedAt,
-      state:
-        lead.convertedAt !== null
-          ? "COMPLETE"
-          : closedWithoutConversion
-            ? "BLOCKED"
-            : lead.bookedAt === null
-              ? "UPCOMING"
-              : "CURRENT",
-      statusLabel:
-        lead.convertedAt !== null
-          ? "Completed"
-          : closedWithoutConversion
-            ? "Not completed"
-            : lead.bookedAt === null
-              ? "Upcoming"
-              : "In progress",
-      kind: "STATUS",
-    });
-  }
-
-  return actions;
+  return groups;
 }
 
 function DetailItem({
@@ -806,9 +508,9 @@ function DetailItem({
   children: React.ReactNode;
 }>): React.ReactElement {
   return (
-    <div className="grid h-full min-w-0 content-start gap-1 rounded-xl border border-border/65 bg-card/60 p-3.5">
+    <div className="min-w-0 border-b border-border/65 px-4 py-3.5 last:border-b-0 sm:border-b-0 sm:border-e sm:last:border-e-0">
       <dt className="text-overline text-muted-readable">{label}</dt>
-      <dd className="min-w-0 break-words text-body-sm font-medium text-foreground">
+      <dd className="mt-1 min-w-0 break-words text-body-sm font-medium text-foreground">
         {children}
       </dd>
     </div>
@@ -878,547 +580,84 @@ function ContactValue({
   );
 }
 
-function LeadOverview({
-  lead,
-  capabilities,
-}: Readonly<{
-  lead: EngagementLeadDetail;
-  capabilities: LeadDialogCapabilities;
-}>): React.ReactElement {
-  const location = [
-    lead.location.city,
-    lead.location.district,
-    lead.location.state,
-    lead.location.postalCode,
-  ]
-    .filter((value): value is string => value !== null && value.length > 0)
-    .join(" · ");
-
-  return (
-    <div className="grid gap-5 xl:grid-cols-2">
-      <section
-        className="grid h-full grid-rows-[auto_1fr] gap-3"
-        aria-labelledby="lead-customer-title"
-      >
-        <div>
-          <h3 id="lead-customer-title" className="text-card-title">
-            Customer and enquiry
-          </h3>
-          <p className="mt-1 text-caption text-muted-readable">
-            Contact remains masked until an authorized user explicitly reveals
-            it.
-          </p>
-        </div>
-        <dl className="grid auto-rows-fr gap-3 sm:grid-cols-2">
-          <DetailItem label="Customer">
-            {lead.customer.name ?? "Unnamed customer"}
-          </DetailItem>
-          <DetailItem label="Mobile number">
-            <ContactValue
-              lead={lead}
-              canRead={capabilities.canReadCustomerContact}
-            />
-          </DetailItem>
-          <DetailItem label="Lead type">
-            {titleCaseDashboardToken(lead.leadType)}
-          </DetailItem>
-          <DetailItem label="Source">
-            {lead.source.name} · {lead.source.code}
-          </DetailItem>
-          <DetailItem label="Location">
-            {location.length > 0 ? location : "Not available"}
-          </DetailItem>
-          {lead.location.resolution ? (
-            <DetailItem label="Location resolution">
-              {lead.location.resolution.approximate
-                ? "Approximate area assignment — confirm with customer"
-                : lead.location.resolution.precision.toLowerCase()}
-              {lead.location.resolution.status === "REVIEW"
-                ? " · Dealer action recorded; assignment change needs review"
-                : null}
-              {lead.location.resolution.status === "EXCEPTION"
-                ? " · Needs follow-up"
-                : null}
-            </DetailItem>
-          ) : null}
-          <DetailItem label="Coordinates">
-            {lead.location.latitude === null || lead.location.longitude === null
-              ? "Not available"
-              : `${String(lead.location.latitude)}, ${String(lead.location.longitude)}`}
-          </DetailItem>
-          <DetailItem label="Lead number">{lead.leadNo}</DetailItem>
-          <DetailItem label="Location readiness">
-            <Badge
-              variant={
-                lead.location.latitude !== null &&
-                lead.location.longitude !== null
-                  ? "success"
-                  : "warning"
-              }
-            >
-              {lead.location.latitude !== null &&
-              lead.location.longitude !== null
-                ? "Ready for routing"
-                : lead.location.resolution?.approximate
-                  ? "Assigned using approximate area"
-                  : "Location required"}
-            </Badge>
-          </DetailItem>
-        </dl>
-      </section>
-
-      <section
-        className="grid h-full grid-rows-[auto_1fr] gap-3"
-        aria-labelledby="lead-operations-title"
-      >
-        <div>
-          <h3 id="lead-operations-title" className="text-card-title">
-            Assignment and service health
-          </h3>
-          <p className="mt-1 text-caption text-muted-readable">
-            Current owner, SLA, follow-up, and outcome evidence.
-          </p>
-        </div>
-        <dl className="grid auto-rows-fr gap-3 sm:grid-cols-2">
-          <DetailItem label="Assigned dealer">
-            {lead.dealer === null
-              ? "Unassigned"
-              : `${lead.dealer.name} · ${lead.dealer.code}`}
-          </DetailItem>
-          <DetailItem label="Assignment time">
-            {formatDashboardDateTime(lead.ownerAssignedAt)}
-          </DetailItem>
-          <DetailItem label="Response SLA">
-            <Badge
-              variant={
-                lead.responseSlaState === "WITHIN_SLA"
-                  ? "success"
-                  : lead.responseSlaState === "BREACHED"
-                    ? "destructive"
-                    : lead.responseSlaState === "PENDING"
-                      ? "warning"
-                      : "outline"
-              }
-            >
-              {titleCaseDashboardToken(lead.responseSlaState)}
-            </Badge>
-          </DetailItem>
-          <DetailItem label="First response">
-            {formatDashboardDateTime(lead.firstResponseAt)}
-          </DetailItem>
-          <DetailItem label="Follow-up">
-            <Badge
-              variant={
-                lead.followUpState === "OVERDUE"
-                  ? "destructive"
-                  : lead.followUpState === "DUE_TODAY"
-                    ? "warning"
-                    : lead.followUpState === "SCHEDULED"
-                      ? "info"
-                      : lead.followUpState === "CLOSED"
-                        ? "success"
-                        : "outline"
-              }
-            >
-              {titleCaseDashboardToken(lead.followUpState)}
-            </Badge>
-          </DetailItem>
-          <DetailItem label="Next follow-up">
-            {formatDashboardDateTime(lead.nextFollowUpAt)}
-          </DetailItem>
-          <DetailItem label="Booked">
-            {formatDashboardDateTime(lead.bookedAt)}
-          </DetailItem>
-          <DetailItem label="Converted">
-            {formatDashboardDateTime(lead.convertedAt)}
-          </DetailItem>
-        </dl>
-      </section>
-
-      <section className="xl:col-span-2" aria-labelledby="lead-audit-title">
-        <h3 id="lead-audit-title" className="sr-only">
-          Lead audit metadata
-        </h3>
-        <dl className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          <DetailItem label="Created">
-            {formatDashboardDateTime(lead.createdAt)}
-          </DetailItem>
-          <DetailItem label="Last activity">
-            {formatDashboardDateTime(lead.lastActivityAt)}
-          </DetailItem>
-          <DetailItem label="Last record update">
-            {formatDashboardDateTime(lead.updatedAt)}
-          </DetailItem>
-          <DetailItem label="Record version">{lead.rowVersion}</DetailItem>
-        </dl>
-      </section>
-    </div>
-  );
-}
-
-function LeadFlow({
+function LeadJourney({
   lead,
 }: Readonly<{ lead: EngagementLeadDetail }>): React.ReactElement {
   const stages = flowStages(lead);
-  const actions = lifecycleActions(lead);
-  const completeCount = stages.filter(
-    (stage) => stage.state === "COMPLETE",
-  ).length;
-  const blockedActionCount = actions.filter(
-    (action) => action.state === "BLOCKED",
-  ).length;
+  const completed = stages.filter((stage) => stage.state === "COMPLETE").length;
+  const progress = Math.round((completed / stages.length) * 100);
 
   return (
-    <section className="grid gap-5" aria-labelledby="lead-flow-title">
-      <div className="grid gap-2">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h3 id="lead-flow-title" className="text-card-title">
-              Vehicle-sales lifecycle
-            </h3>
-            <p className="mt-1 text-caption text-muted-readable">
-              Evidence-based completion, blockers, and downstream steps.
-            </p>
-          </div>
-          <Badge variant="secondary">
-            {completeCount} of {stages.length} completed
-          </Badge>
-        </div>
-        <Progress
-          value={(completeCount / stages.length) * 100}
-          aria-label={`${String(completeCount)} of ${String(stages.length)} lifecycle stages completed`}
-        />
-      </div>
-
-      <div className="grid gap-3" aria-labelledby="lead-action-flow-title">
-        <div className="flex flex-wrap items-end justify-between gap-3">
-          <div>
-            <h4 id="lead-action-flow-title" className="font-medium">
-              Complete action flow
-            </h4>
-            <p className="mt-1 text-caption text-muted-readable">
-              Recorded calls, system events, WhatsApp delivery states, and
-              evidence-based readiness checks in operational order.
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Badge variant="outline">
-              {lead.journey.items.length} recorded
-            </Badge>
-            <Badge variant={blockedActionCount > 0 ? "warning" : "success"}>
-              {blockedActionCount} need action
-            </Badge>
-          </div>
-        </div>
-
-        {lead.journey.truncated ? (
-          <div className="flex items-start gap-2 rounded-xl border border-warning/35 bg-warning/10 p-3 text-body-sm">
-            <CircleAlert
-              aria-hidden="true"
-              className="mt-0.5 size-4 shrink-0 text-warning-foreground dark:text-warning"
-            />
-            <p>
-              Showing the newest 200 recorded actions. Older evidence remains
-              available in the source audit store.
-            </p>
-          </div>
-        ) : null}
-
-        {JOURNEY_PHASES.map((phase, phaseIndex) => {
-          const phaseActions = actions
-            .filter((action) => action.phase === phase.code)
-            .toSorted((left, right) => {
-              if (left.occurredAt === null) return 1;
-              if (right.occurredAt === null) return -1;
-              return left.occurredAt.localeCompare(right.occurredAt);
-            });
-          const phaseBlocked = phaseActions.filter(
-            (action) => action.state === "BLOCKED",
-          ).length;
-          const phaseCurrent = phaseActions.filter(
-            (action) => action.state === "CURRENT",
-          ).length;
-
-          return (
-            <section
-              key={phase.code}
-              className="overflow-hidden rounded-2xl border border-border/70 bg-card/40"
-              aria-labelledby={`lead-phase-${phase.code.toLocaleLowerCase("en-US")}`}
-            >
-              <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border/65 bg-muted/30 px-4 py-3">
-                <div className="flex min-w-0 items-start gap-3">
-                  <Badge
-                    variant="outline"
-                    className="size-7 shrink-0 rounded-full px-0"
-                  >
-                    {phaseIndex + 1}
-                  </Badge>
-                  <div className="min-w-0">
-                    <h5
-                      id={`lead-phase-${phase.code.toLocaleLowerCase("en-US")}`}
-                      className="font-medium"
-                    >
-                      {phase.label}
-                    </h5>
-                    <p className="mt-0.5 text-caption text-muted-readable">
-                      {phase.description}
-                    </p>
-                  </div>
-                </div>
-                <Badge
-                  variant={
-                    phaseBlocked > 0
-                      ? "warning"
-                      : phaseCurrent > 0
-                        ? "info"
-                        : "success"
-                  }
-                >
-                  {phaseBlocked > 0
-                    ? `${String(phaseBlocked)} need action`
-                    : phaseCurrent > 0
-                      ? `${String(phaseCurrent)} in progress`
-                      : "On track"}
-                </Badge>
-              </div>
-
-              <ol className="divide-y divide-border/60">
-                {phaseActions.map((action) => {
-                  const meta = FLOW_STATE_META[action.state];
-                  return (
-                    <li
-                      key={action.id}
-                      className="grid grid-cols-[2.5rem_minmax(0,1fr)] gap-3 p-4 [contain-intrinsic-size:auto_6rem] [content-visibility:auto]"
-                    >
-                      <span
-                        aria-hidden="true"
-                        className={cn(
-                          "flex size-10 items-center justify-center rounded-xl border bg-card [&_svg]:size-4",
-                          action.state === "COMPLETE" &&
-                            "border-success/30 bg-success/10 text-success",
-                          action.state === "CURRENT" &&
-                            "border-info/30 bg-info/10 text-info",
-                          action.state === "BLOCKED" &&
-                            "border-warning/35 bg-warning/10 text-warning-foreground dark:text-warning",
-                          action.state === "UPCOMING" &&
-                            "border-border text-muted-readable",
-                        )}
-                      >
-                        {journeyIcon(action)}
-                      </span>
-                      <div className="min-w-0">
-                        <div className="flex flex-wrap items-start justify-between gap-2">
-                          <div className="min-w-0">
-                            <p className="font-medium text-foreground">
-                              {action.title}
-                            </p>
-                            <p className="mt-1 text-body-sm text-muted-readable">
-                              {action.description}
-                            </p>
-                          </div>
-                          <Badge variant={meta.badge}>
-                            {action.statusLabel}
-                          </Badge>
-                        </div>
-                        <div className="mt-2 flex flex-wrap items-center gap-2 text-caption text-muted-readable">
-                          {action.occurredAt !== null ? (
-                            <time
-                              dateTime={action.occurredAt}
-                              className="inline-flex items-center gap-1.5"
-                            >
-                              <Clock3 aria-hidden="true" className="size-3.5" />
-                              {formatDashboardDateTime(action.occurredAt)}
-                            </time>
-                          ) : null}
-                          {action.channel !== null ? (
-                            <Badge variant="outline">
-                              {titleCaseDashboardToken(action.channel)}
-                            </Badge>
-                          ) : null}
-                          {action.actorLabel !== null ? (
-                            <span>{action.actorLabel}</span>
-                          ) : null}
-                          {action.derived ? (
-                            <Badge variant="secondary">Readiness check</Badge>
-                          ) : null}
-                        </div>
-                      </div>
-                    </li>
-                  );
-                })}
-              </ol>
-            </section>
-          );
-        })}
-      </div>
-
-      <div className="grid gap-3" aria-labelledby="lead-stage-readiness-title">
+    <section
+      className="border-y border-border/70 bg-muted/15 px-5 py-5 sm:px-6"
+      aria-labelledby="lead-journey-title"
+    >
+      <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h4 id="lead-stage-readiness-title" className="font-medium">
-            Stage readiness
-          </h4>
+          <h3 id="lead-journey-title" className="text-card-title">
+            Lead journey
+          </h3>
           <p className="mt-1 text-caption text-muted-readable">
-            High-level progression retained for funnel and SLA analysis.
+            Operational progress derived from authoritative lead and engagement
+            evidence.
           </p>
         </div>
-        <ol className="grid gap-0">
-          {stages.map((stage, index) => {
-            const meta = FLOW_STATE_META[stage.state];
-            const Icon = meta.icon;
-            return (
-              <li
-                key={stage.code}
-                className="relative grid grid-cols-[2.5rem_minmax(0,1fr)] gap-3 pb-4 last:pb-0"
-              >
-                {index < stages.length - 1 ? (
-                  <span
-                    aria-hidden="true"
-                    className={cn(
-                      "absolute top-10 bottom-0 left-[1.21875rem] w-px",
-                      stage.state === "COMPLETE"
-                        ? "bg-success/45"
-                        : "bg-border",
-                    )}
-                  />
-                ) : null}
+        <div className="text-end">
+          <p className="text-body-sm font-medium text-foreground">
+            {completed} of {stages.length} milestones complete
+          </p>
+          <p className="text-caption text-muted-readable">
+            {progress}% complete
+          </p>
+        </div>
+      </div>
+
+      <Progress value={progress} className="mt-4" />
+
+      <ol className="mt-4 grid gap-2 sm:grid-cols-3 xl:grid-cols-6">
+        {stages.map((stage) => {
+          const meta = FLOW_STATE_META[stage.state];
+          const Icon = meta.icon;
+          return (
+            <li
+              key={stage.code}
+              className={cn(
+                "min-w-0 rounded-xl border border-border/65 bg-card/75 p-3",
+                stage.state === "CURRENT" && "border-info/35 bg-info/5",
+                stage.state === "BLOCKED" && "border-warning/40 bg-warning/5",
+              )}
+            >
+              <div className="flex items-start justify-between gap-2">
                 <span
-                  aria-hidden="true"
                   className={cn(
-                    "relative z-10 flex size-10 items-center justify-center rounded-xl border bg-card [&_svg]:size-4",
+                    "inline-flex size-7 shrink-0 items-center justify-center rounded-lg border bg-muted/40 text-muted-readable [&_svg]:size-3.5",
                     stage.state === "COMPLETE" &&
                       "border-success/30 bg-success/10 text-success",
                     stage.state === "CURRENT" &&
                       "border-info/30 bg-info/10 text-info",
                     stage.state === "BLOCKED" &&
                       "border-warning/35 bg-warning/10 text-warning-foreground dark:text-warning",
-                    stage.state === "UPCOMING" &&
-                      "border-border text-muted-readable",
                   )}
                 >
-                  <Icon />
+                  <Icon aria-hidden="true" />
                 </span>
-                <div className="min-w-0 rounded-2xl border border-border/70 bg-card/60 p-4">
-                  <div className="flex flex-wrap items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <p className="font-medium text-foreground">
-                        {index + 1}. {stage.label}
-                      </p>
-                      <p className="mt-1 text-body-sm text-muted-readable">
-                        {stage.reason}
-                      </p>
-                    </div>
-                    <Badge variant={meta.badge}>{meta.label}</Badge>
-                  </div>
-                  {stage.occurredAt !== null ? (
-                    <p className="mt-3 flex items-center gap-1.5 text-caption text-muted-readable">
-                      <Clock3 aria-hidden="true" className="size-3.5" />
-                      {formatDashboardDateTime(stage.occurredAt)}
-                    </p>
-                  ) : null}
-                </div>
-              </li>
-            );
-          })}
-        </ol>
-      </div>
-    </section>
-  );
-}
-
-function LeadActivity({
-  lead,
-}: Readonly<{ lead: EngagementLeadDetail }>): React.ReactElement {
-  if (lead.journey.items.length === 0) {
-    return (
-      <div className="grid min-h-48 place-items-center rounded-2xl border border-dashed p-6 text-center">
-        <div>
-          <Activity
-            aria-hidden="true"
-            className="mx-auto size-8 text-muted-readable"
-          />
-          <h3 className="mt-3 text-card-title">No activity returned</h3>
-          <p className="mt-1 text-body-sm text-muted-readable">
-            The lead record exists, but no calls, communications, or auditable
-            workflow events are available.
-          </p>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <section className="grid gap-4" aria-labelledby="lead-activity-title">
-      <div className="flex flex-wrap items-end justify-between gap-2">
-        <div>
-          <h3 id="lead-activity-title" className="text-card-title">
-            Complete activity timeline
-          </h3>
-          <p className="mt-1 text-caption text-muted-readable">
-            Newest activity first across calls, lifecycle events, and outbound
-            communications. Only approved, bounded fields are displayed.
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Badge variant="outline">{lead.journey.items.length} actions</Badge>
-          {lead.journey.truncated ? (
-            <Badge variant="warning">Newest 200 shown</Badge>
-          ) : null}
-        </div>
-      </div>
-      <ol className="grid gap-3">
-        {lead.journey.items.map((item) => {
-          const state = journeyState(item);
-          const meta = FLOW_STATE_META[state];
-          return (
-            <li
-              key={item.id}
-              className="grid grid-cols-[2.5rem_minmax(0,1fr)] gap-3 rounded-2xl border border-border/70 bg-card/60 p-4 [contain-intrinsic-size:auto_6rem] [content-visibility:auto]"
-            >
-              <span
-                className={cn(
-                  "flex size-10 items-center justify-center rounded-xl border bg-muted/55 [&_svg]:size-4",
-                  state === "COMPLETE" &&
-                    "border-success/30 bg-success/10 text-success",
-                  state === "CURRENT" && "border-info/30 bg-info/10 text-info",
-                  state === "BLOCKED" &&
-                    "border-warning/35 bg-warning/10 text-warning-foreground dark:text-warning",
-                )}
-              >
-                {journeyIcon({
-                  kind: item.kind,
-                  phase: journeyPhase(item, lead),
-                })}
-              </span>
-              <div className="min-w-0">
-                <div className="flex flex-wrap items-start justify-between gap-2">
-                  <p className="font-medium text-foreground">{item.title}</p>
-                  <time
-                    dateTime={item.occurredAt}
-                    className="text-caption text-muted-readable"
-                  >
-                    {formatDashboardDateTime(item.occurredAt)}
-                  </time>
-                </div>
-                <p className="mt-1 text-body-sm text-muted-readable">
-                  {item.description ?? "Auditable workflow evidence recorded."}
-                </p>
-                <div className="mt-2 flex flex-wrap items-center gap-2">
-                  <Badge variant="outline">
-                    {titleCaseDashboardToken(item.kind)}
-                  </Badge>
-                  {item.status !== null ? (
-                    <Badge variant={meta.badge}>{item.status}</Badge>
-                  ) : null}
-                  {item.channel !== null ? (
-                    <Badge variant="secondary">
-                      {titleCaseDashboardToken(item.channel)}
-                    </Badge>
-                  ) : null}
-                  <span className="text-caption text-muted-readable">
-                    {item.actorLabel ?? "System"}
-                  </span>
-                </div>
+                <Badge variant={meta.badge} className="max-w-full truncate">
+                  {meta.label}
+                </Badge>
               </div>
+              <p className="mt-2 text-caption font-medium text-foreground">
+                {stage.label}
+              </p>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <p className="mt-1 line-clamp-2 cursor-help text-caption text-muted-readable">
+                    {stage.reason}
+                  </p>
+                </TooltipTrigger>
+                <TooltipContent className="max-w-sm">
+                  {stage.reason}
+                </TooltipContent>
+              </Tooltip>
             </li>
           );
         })}
@@ -1427,41 +666,414 @@ function LeadActivity({
   );
 }
 
+function SummarySection({
+  title,
+  description,
+  action,
+  children,
+}: Readonly<{
+  title: string;
+  description?: string;
+  action?: React.ReactNode;
+  children: React.ReactNode;
+}>): React.ReactElement {
+  return (
+    <section className="px-5 py-5 sm:px-6">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h3 className="text-card-title">{title}</h3>
+          {description === undefined ? null : (
+            <p className="mt-1 text-caption text-muted-readable">
+              {description}
+            </p>
+          )}
+        </div>
+        {action}
+      </div>
+      <div className="mt-4">{children}</div>
+    </section>
+  );
+}
+
+function ActivityItem({
+  item,
+  compact = false,
+}: Readonly<{
+  item: JourneyItem;
+  compact?: boolean;
+}>): React.ReactElement {
+  const state = journeyState(item);
+  const meta = FLOW_STATE_META[state];
+
+  return (
+    <li
+      className={cn(
+        "relative grid grid-cols-[2.5rem_minmax(0,1fr)] gap-3",
+        !compact &&
+          "pb-5 before:absolute before:top-10 before:bottom-0 before:left-[1.22rem] before:w-px before:bg-border/80 last:pb-0 last:before:hidden",
+      )}
+    >
+      <span
+        className={cn(
+          "relative z-10 inline-flex size-10 items-center justify-center rounded-full border bg-card text-muted-readable [&_svg]:size-4",
+          state === "COMPLETE" &&
+            "border-success/30 bg-success/10 text-success",
+          state === "CURRENT" && "border-info/30 bg-info/10 text-info",
+          state === "BLOCKED" &&
+            "border-warning/35 bg-warning/10 text-warning-foreground dark:text-warning",
+        )}
+      >
+        {journeyIcon(item)}
+      </span>
+      <div
+        className={cn(
+          "min-w-0",
+          compact && "rounded-xl border border-border/60 bg-card/55 p-3",
+        )}
+      >
+        <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1">
+          <p className="font-medium text-foreground">{item.title}</p>
+          <time
+            dateTime={item.occurredAt}
+            className="shrink-0 text-caption text-muted-readable text-tabular"
+          >
+            {formatDashboardDateTime(item.occurredAt)}
+          </time>
+        </div>
+        <p className="mt-1 text-body-sm text-muted-readable">
+          {item.description ?? "Auditable workflow evidence recorded."}
+        </p>
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <Badge variant="outline">{titleCaseDashboardToken(item.kind)}</Badge>
+          {item.status === null ? null : (
+            <Badge variant={meta.badge}>{item.status}</Badge>
+          )}
+          {item.channel === null ? null : (
+            <Badge variant="secondary">
+              {titleCaseDashboardToken(item.channel)}
+            </Badge>
+          )}
+          <span className="text-caption text-muted-readable">
+            {item.actorLabel ?? "System"}
+          </span>
+        </div>
+      </div>
+    </li>
+  );
+}
+
+function LatestActivity({
+  lead,
+  onViewAll,
+}: Readonly<{
+  lead: EngagementLeadDetail;
+  onViewAll: () => void;
+}>): React.ReactElement {
+  const items = lead.journey.items.slice(0, LATEST_ACTIVITY_LIMIT);
+
+  return (
+    <SummarySection
+      title="Latest activity"
+      description="Most recent meaningful events across calls, messages, routing, dealer actions, and outcomes."
+      action={
+        <Button type="button" variant="ghost" size="sm" onClick={onViewAll}>
+          <Activity aria-hidden="true" />
+          View all activity
+        </Button>
+      }
+    >
+      {items.length === 0 ? (
+        <div className="rounded-xl border border-dashed border-border px-4 py-6 text-center text-body-sm text-muted-readable">
+          No activity evidence is available for this lead yet.
+        </div>
+      ) : (
+        <ol className="grid gap-3">
+          {items.map((item) => (
+            <ActivityItem key={item.id} item={item} compact />
+          ))}
+        </ol>
+      )}
+      {lead.journey.truncated ? (
+        <p className="mt-3 text-caption text-warning-foreground dark:text-warning">
+          The activity feed is bounded to the newest 200 records.
+        </p>
+      ) : null}
+    </SummarySection>
+  );
+}
+
+function LeadSummary({
+  lead,
+  capabilities,
+  onViewAllActivity,
+}: Readonly<{
+  lead: EngagementLeadDetail;
+  capabilities: LeadDialogCapabilities;
+  onViewAllActivity: () => void;
+}>): React.ReactElement {
+  return (
+    <div className="divide-y divide-border/70">
+      <LeadJourney lead={lead} />
+
+      <SummarySection
+        title="Current information"
+        description="The fields operators need to understand ownership, urgency, and the next action."
+      >
+        <dl className="overflow-hidden rounded-xl border border-border/70 bg-card/55 sm:grid sm:grid-cols-3">
+          <DetailItem label="Assigned dealer">
+            {lead.dealer === null
+              ? "Unassigned"
+              : `${lead.dealer.name} · ${lead.dealer.code}`}
+          </DetailItem>
+          <DetailItem label="Customer location">
+            {locationLabel(lead)}
+          </DetailItem>
+          <DetailItem label="Source">{displaySource(lead)}</DetailItem>
+          <DetailItem label="Customer mobile">
+            <ContactValue
+              lead={lead}
+              canRead={capabilities.canReadCustomerContact}
+            />
+          </DetailItem>
+          <DetailItem label="Next follow-up">
+            <div className="flex flex-wrap items-center gap-2">
+              <span>{formatDashboardDateTime(lead.nextFollowUpAt)}</span>
+              <Badge variant={followUpVariant(lead.followUpState)}>
+                {titleCaseDashboardToken(lead.followUpState)}
+              </Badge>
+            </div>
+          </DetailItem>
+          <DetailItem label="Last activity">
+            {formatDashboardDateTime(lead.lastActivityAt)}
+          </DetailItem>
+        </dl>
+      </SummarySection>
+
+      <SummarySection
+        title="Service health"
+        description="SLA and lifecycle evidence that may require operator attention."
+      >
+        <dl className="overflow-hidden rounded-xl border border-border/70 bg-card/55 sm:grid sm:grid-cols-3">
+          <DetailItem label="Response SLA">
+            <Badge variant={responseSlaVariant(lead.responseSlaState)}>
+              {titleCaseDashboardToken(lead.responseSlaState)}
+            </Badge>
+          </DetailItem>
+          <DetailItem label="First response">
+            {formatDashboardDateTime(lead.firstResponseAt)}
+          </DetailItem>
+          <DetailItem label="Assignment time">
+            {formatDashboardDateTime(lead.ownerAssignedAt)}
+          </DetailItem>
+          <DetailItem label="Booked">
+            {formatDashboardDateTime(lead.bookedAt)}
+          </DetailItem>
+          <DetailItem label="Converted">
+            {formatDashboardDateTime(lead.convertedAt)}
+          </DetailItem>
+          <DetailItem label="Lead created">
+            {formatDashboardDateTime(lead.createdAt)}
+          </DetailItem>
+        </dl>
+      </SummarySection>
+
+      <LatestActivity lead={lead} onViewAll={onViewAllActivity} />
+    </div>
+  );
+}
+
+function LeadActivity({
+  lead,
+  onBack,
+}: Readonly<{
+  lead: EngagementLeadDetail;
+  onBack: () => void;
+}>): React.ReactElement {
+  const [filter, setFilter] = React.useState<ActivityFilter>("ALL");
+  const filteredItems = lead.journey.items.filter((item) =>
+    activityMatchesFilter(item, filter),
+  );
+  const groups = groupActivities(filteredItems);
+
+  return (
+    <div className="min-h-0">
+      <div className="sticky top-0 z-10 border-b border-border/70 bg-popover/95 px-5 py-4 backdrop-blur sm:px-6">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="flex min-w-0 items-start gap-3">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              aria-label="Back to lead summary"
+              onClick={onBack}
+            >
+              <ArrowLeft aria-hidden="true" />
+            </Button>
+            <div className="min-w-0">
+              <h3 className="text-card-title">Activity history</h3>
+              <p className="mt-1 text-caption text-muted-readable">
+                {lead.leadNo} · newest activity first · approved audit fields
+                only
+              </p>
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Badge variant="outline">{lead.journey.items.length} actions</Badge>
+            {lead.journey.truncated ? (
+              <Badge variant="warning">Newest 200 shown</Badge>
+            ) : null}
+          </div>
+        </div>
+
+        <div
+          className="mt-4 flex max-w-full gap-1.5 overflow-x-auto pb-1 scrollbar-compact"
+          aria-label="Activity filters"
+        >
+          {ACTIVITY_FILTERS.map(([value, label]) => (
+            <Button
+              key={value}
+              type="button"
+              size="xs"
+              variant={filter === value ? "secondary" : "ghost"}
+              aria-pressed={filter === value}
+              onClick={() => {
+                setFilter(value);
+              }}
+            >
+              {label}
+            </Button>
+          ))}
+        </div>
+      </div>
+
+      <div className="px-5 py-5 sm:px-6">
+        {groups.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-border px-4 py-8 text-center">
+            <Activity
+              aria-hidden="true"
+              className="mx-auto size-8 text-muted-readable"
+            />
+            <p className="mt-3 font-medium text-foreground">
+              No activity matches this filter
+            </p>
+            <p className="mt-1 text-body-sm text-muted-readable">
+              Choose another category to continue reviewing the lead history.
+            </p>
+          </div>
+        ) : (
+          <div className="grid gap-7">
+            {groups.map((group) => (
+              <section
+                key={group.key}
+                aria-labelledby={`activity-${group.key}`}
+              >
+                <div className="mb-4 flex items-center gap-3">
+                  <h4
+                    id={`activity-${group.key}`}
+                    className="shrink-0 text-overline text-muted-readable"
+                  >
+                    {group.label}
+                  </h4>
+                  <span
+                    className="h-px flex-1 bg-border/70"
+                    aria-hidden="true"
+                  />
+                </div>
+                <ol>
+                  {group.items.map((item) => (
+                    <ActivityItem key={item.id} item={item} />
+                  ))}
+                </ol>
+              </section>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function DialogLoading(): React.ReactElement {
   return (
     <div
-      className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)]"
+      className="grid gap-0"
       aria-busy="true"
       aria-label="Loading lead details"
     >
-      <div className="border-b border-border/70 px-5 py-2 sm:px-6">
-        <Skeleton className="h-10 w-full max-w-xl rounded-2xl" />
-      </div>
-      <div className="grid gap-5 overflow-hidden p-5 sm:p-6 xl:grid-cols-2">
-        {[0, 1].map((section) => (
-          <section
-            key={section}
-            className="grid content-start gap-3"
-            aria-hidden="true"
-          >
-            <div className="grid gap-2">
-              <Skeleton className="h-5 w-48" />
-              <Skeleton className="h-4 w-full max-w-sm" />
-            </div>
-            <div className="grid auto-rows-fr gap-3 sm:grid-cols-2">
-              {Array.from({ length: 8 }, (_, index) => (
-                <Skeleton key={index} className="h-24 rounded-xl sm:h-28" />
-              ))}
-            </div>
-          </section>
-        ))}
-        <div
-          className="grid gap-3 sm:grid-cols-2 xl:col-span-2 xl:grid-cols-4"
-          aria-hidden="true"
-        >
-          {Array.from({ length: 4 }, (_, index) => (
-            <Skeleton key={index} className="h-20 rounded-xl" />
+      <div className="border-b border-border/70 px-5 py-5 sm:px-6">
+        <Skeleton className="h-4 w-32" />
+        <Skeleton className="mt-3 h-2 w-full" />
+        <div className="mt-4 grid gap-2 sm:grid-cols-3 xl:grid-cols-6">
+          {Array.from({ length: 6 }, (_, index) => (
+            <Skeleton key={index} className="h-24 rounded-xl" />
           ))}
+        </div>
+      </div>
+      <div className="px-5 py-5 sm:px-6">
+        <Skeleton className="h-5 w-40" />
+        <Skeleton className="mt-4 h-36 rounded-xl" />
+      </div>
+      <div className="border-t border-border/70 px-5 py-5 sm:px-6">
+        <Skeleton className="h-5 w-32" />
+        <div className="mt-4 grid gap-3">
+          <Skeleton className="h-24 rounded-xl" />
+          <Skeleton className="h-24 rounded-xl" />
+          <Skeleton className="h-24 rounded-xl" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function LeadHeader({
+  lead,
+  title,
+}: Readonly<{
+  lead: EngagementLeadDetail | null;
+  title: string;
+}>): React.ReactElement {
+  if (lead === null) {
+    return (
+      <div className="min-w-0">
+        <Badge variant="secondary">Vehicle sales</Badge>
+        <SheetTitle className="mt-2">{title}</SheetTitle>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex min-w-0 items-start gap-3">
+      <span
+        className="inline-flex size-11 shrink-0 items-center justify-center rounded-full border border-primary/20 bg-primary/10 text-body-sm font-semibold text-primary"
+        aria-hidden="true"
+      >
+        {leadInitials(lead.customer.name)}
+      </span>
+      <div className="min-w-0">
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge variant="secondary">Vehicle sales</Badge>
+          <Badge variant="outline">
+            {titleCaseDashboardToken(lead.status)}
+          </Badge>
+          <Badge variant={responseSlaVariant(lead.responseSlaState)}>
+            {titleCaseDashboardToken(lead.responseSlaState)}
+          </Badge>
+        </div>
+        <SheetTitle className="mt-2 truncate">
+          {lead.customer.name ?? "New customer"}
+        </SheetTitle>
+        <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-caption text-muted-readable">
+          <span className="text-tabular">{lead.leadNo}</span>
+          <span aria-hidden="true">·</span>
+          <span>{displaySource(lead)}</span>
+          {lead.customer.contactMasked === null ? null : (
+            <>
+              <span aria-hidden="true">·</span>
+              <span className="text-tabular">
+                {lead.customer.contactMasked}
+              </span>
+            </>
+          )}
         </div>
       </div>
     </div>
@@ -1483,6 +1095,7 @@ export function EngagementLeadDialog({
   const [privilegedAction, setPrivilegedAction] =
     React.useState<PrivilegedAction | null>(null);
   const [reason, setReason] = React.useState("");
+  const [view, setView] = React.useState<LeadView>("SUMMARY");
   const requestSequence = React.useRef(0);
   const leadId = listLead?.leadId ?? null;
 
@@ -1577,48 +1190,30 @@ export function EngagementLeadDialog({
 
   return (
     <>
-      <Dialog
+      <Sheet
         open={open}
         onOpenChange={(nextOpen) => {
           if (!nextOpen) {
             requestSequence.current += 1;
+            setView("SUMMARY");
+            setLoadedLead(null);
+            setIsLoading(false);
+            setReason("");
+            setPrivilegedAction(null);
           }
           onOpenChange(nextOpen);
         }}
       >
-        <DialogContent
-          height="viewport"
-          className="sm:max-w-6xl"
+        <SheetContent
+          side="right"
+          className="w-full sm:w-[min(54rem,calc(100vw-1rem))] sm:max-w-none"
           onOpenAutoFocus={() => {
             void loadLead();
           }}
         >
-          <DialogHeader className="gap-4 bg-card/75">
-            <div className="flex min-w-0 flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
-              <div className="min-w-0">
-                <div className="mb-2 flex flex-wrap items-center gap-2">
-                  <Badge variant="secondary">Vehicle sales</Badge>
-                  {detail !== null ? (
-                    <>
-                      <Badge variant="outline">
-                        {titleCaseDashboardToken(detail.status)}
-                      </Badge>
-                      <Badge
-                        variant={
-                          detail.responseSlaState === "BREACHED"
-                            ? "destructive"
-                            : detail.responseSlaState === "WITHIN_SLA"
-                              ? "success"
-                              : "warning"
-                        }
-                      >
-                        {titleCaseDashboardToken(detail.responseSlaState)}
-                      </Badge>
-                    </>
-                  ) : null}
-                </div>
-                <DialogTitle>{title}</DialogTitle>
-              </div>
+          <SheetHeader className="sticky top-0 z-20 gap-4 border-b border-border/70 bg-popover/95 backdrop-blur">
+            <div className="flex min-w-0 flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+              <LeadHeader lead={detail} title={title} />
 
               <div
                 className="flex min-w-0 flex-wrap items-center gap-2"
@@ -1629,7 +1224,6 @@ export function EngagementLeadDialog({
                     <span tabIndex={!canOpenAdminSession ? 0 : undefined}>
                       <Button
                         type="button"
-                        variant="outline"
                         size="sm"
                         disabled={!canOpenAdminSession || isActionPending}
                         onClick={() => {
@@ -1695,15 +1289,15 @@ export function EngagementLeadDialog({
                 </Tooltip>
               </div>
             </div>
-          </DialogHeader>
+          </SheetHeader>
 
-          <DialogBody className="p-0">
+          <div className="min-h-0 flex-1 overflow-y-auto">
             {isLoading && result === null ? (
               <DialogLoading />
             ) : result === null ? (
               <DialogLoading />
             ) : !result.ok ? (
-              <div className="grid place-items-center p-6 text-center">
+              <div className="grid min-h-80 place-items-center p-6 text-center">
                 <div className="max-w-lg">
                   <CircleAlert
                     aria-hidden="true"
@@ -1726,45 +1320,25 @@ export function EngagementLeadDialog({
                   </Button>
                 </div>
               </div>
+            ) : view === "ACTIVITY" ? (
+              <LeadActivity
+                lead={result.lead}
+                onBack={() => {
+                  setView("SUMMARY");
+                }}
+              />
             ) : (
-              <Tabs defaultValue="overview" className="grid gap-0">
-                <div className="border-b border-border/70 px-5 py-2 sm:px-6">
-                  <TabsList className="grid h-auto w-full max-w-xl grid-cols-3">
-                    <TabsTrigger value="overview">
-                      <UserRound aria-hidden="true" />
-                      Overview
-                    </TabsTrigger>
-                    <TabsTrigger value="flow">
-                      <ShieldCheck aria-hidden="true" />
-                      Lifecycle
-                    </TabsTrigger>
-                    <TabsTrigger value="activity">
-                      <Activity aria-hidden="true" />
-                      Activity
-                      <Badge variant="outline" className="ms-1">
-                        {result.lead.journey.items.length}
-                      </Badge>
-                    </TabsTrigger>
-                  </TabsList>
-                </div>
-
-                <TabsContent value="overview" className="m-0 p-5 sm:p-6">
-                  <LeadOverview
-                    lead={result.lead}
-                    capabilities={capabilities}
-                  />
-                </TabsContent>
-                <TabsContent value="flow" className="m-0 p-5 sm:p-6">
-                  <LeadFlow lead={result.lead} />
-                </TabsContent>
-                <TabsContent value="activity" className="m-0 p-5 sm:p-6">
-                  <LeadActivity lead={result.lead} />
-                </TabsContent>
-              </Tabs>
+              <LeadSummary
+                lead={result.lead}
+                capabilities={capabilities}
+                onViewAllActivity={() => {
+                  setView("ACTIVITY");
+                }}
+              />
             )}
-          </DialogBody>
-        </DialogContent>
-      </Dialog>
+          </div>
+        </SheetContent>
+      </Sheet>
 
       <AlertDialog
         open={privilegedAction !== null}

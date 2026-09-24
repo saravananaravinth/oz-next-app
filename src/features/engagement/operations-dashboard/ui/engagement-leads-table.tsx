@@ -3,16 +3,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import {
-  ArrowRight,
-  CalendarClock,
-  CircleCheck,
-  CircleDashed,
-  ClockAlert,
-  Eye,
-  Info,
-  UserRound,
-} from "lucide-react";
+import { ArrowRight, Info, UserRound } from "lucide-react";
 
 import {
   ContentDataSurface,
@@ -49,6 +40,7 @@ import {
   ENGAGEMENT_DASHBOARD_ROUTES,
   engagementWorkspaceHref,
 } from "@/features/engagement/operations-dashboard/utils/engagement-dashboard-url";
+import { truncateDisplayName } from "@/features/engagement/operations-dashboard/utils/display-text";
 
 export type EngagementLeadsTableProps = Readonly<{
   result: EngagementDashboardLeadListResult;
@@ -88,56 +80,71 @@ function label(value: string): string {
     .replace(/\b\p{L}/gu, (character) => character.toLocaleUpperCase("en-US"));
 }
 
-function responseBadge(
-  state: EngagementDashboardLeadListItem["responseSlaState"],
-): Readonly<{
-  variant: BadgeProps["variant"];
-  text: string;
-  icon: React.ReactNode;
-}> {
-  switch (state) {
-    case "WITHIN_SLA":
-      return {
-        variant: "success",
-        text: "Within SLA",
-        icon: <CircleCheck aria-hidden="true" />,
-      };
-    case "BREACHED":
-      return {
-        variant: "destructive",
-        text: "Breached",
-        icon: <ClockAlert aria-hidden="true" />,
-      };
-    case "PENDING":
-      return {
-        variant: "warning",
-        text: "Pending",
-        icon: <CircleDashed aria-hidden="true" />,
-      };
-    case "NOT_ASSIGNED":
-      return {
-        variant: "outline",
-        text: "Not assigned",
-        icon: <UserRound aria-hidden="true" />,
-      };
-  }
+function displaySource(lead: EngagementDashboardLeadListItem): string {
+  return /telecmi|incoming.?call|phone/i.test(
+    `${lead.source.code} ${lead.source.name}`,
+  )
+    ? "Incoming Call"
+    : lead.source.name;
 }
 
-function followUpVariant(
-  state: EngagementDashboardLeadListItem["followUpState"],
-): BadgeProps["variant"] {
-  switch (state) {
-    case "OVERDUE":
-      return "destructive";
-    case "DUE_TODAY":
-      return "warning";
-    case "SCHEDULED":
-      return "info";
-    case "CLOSED":
-      return "success";
-    case "NONE":
-      return "outline";
-  }
+function displayStatus(lead: EngagementDashboardLeadListItem): Readonly<{
+  label: string;
+  detail: string;
+  variant: BadgeProps["variant"];
+}> {
+  if (lead.convertedAt !== null)
+    return {
+      label: "Converted",
+      detail: `Invoice recorded ${formatDashboardDateTime(lead.convertedAt)}`,
+      variant: "success",
+    };
+  if (lead.bookedAt !== null)
+    return {
+      label: "Booked",
+      detail: `Booking recorded ${formatDashboardDateTime(lead.bookedAt)}`,
+      variant: "success",
+    };
+  if (lead.status === "NO_RESPONSE")
+    return {
+      label: "No Response",
+      detail: `Last updated ${formatDashboardDateTime(lead.updatedAt)}`,
+      variant: "warning",
+    };
+  if (
+    ["LOST", "CANCELLED", "DISQUALIFIED"].includes(lead.status) ||
+    lead.closedAt !== null
+  )
+    return { label: "Closed", detail: label(lead.status), variant: "outline" };
+  if (lead.firstResponseAt !== null)
+    return {
+      label: "Contacted",
+      detail: `Dealer activity ${formatDashboardDateTime(lead.firstResponseAt)}`,
+      variant: "info",
+    };
+  if (lead.ownerAssignedAt !== null)
+    return {
+      label: "Assigned",
+      detail: `Assigned ${formatDashboardDateTime(lead.ownerAssignedAt)}`,
+      variant: "secondary",
+    };
+  if (lead.location.district === null)
+    return {
+      label: "Location Pending",
+      detail: "Customer location is awaited",
+      variant: "warning",
+    };
+  if (/call/i.test(`${lead.source.code} ${lead.source.name}`))
+    return {
+      label: "New Lead",
+      detail: "Incoming call received",
+      variant: "info",
+    };
+  return {
+    label: "Pending",
+    detail: "Awaiting the next engagement step",
+    variant: "outline",
+  };
 }
 
 export function EngagementLeadsTable({
@@ -198,54 +205,35 @@ export function EngagementLeadsTable({
             tabIndex={0}
             className="scrollbar-compact scrollbar-stable max-w-full overflow-x-auto overscroll-x-contain rounded-xl outline-none focus-visible:ring-3 focus-visible:ring-inset focus-visible:ring-ring/45"
           >
-            <Table>
+            <Table className="table-fixed min-w-[70rem]">
+              <colgroup>
+                <col className="w-[16%]" />
+                <col className="w-[15%]" />
+                <col className="w-[16%]" />
+                <col className="w-[22%]" />
+                <col className="w-[19%]" />
+                <col className="w-[12%]" />
+              </colgroup>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Lead</TableHead>
+                  <TableHead>Leads</TableHead>
                   <TableHead>Customer</TableHead>
-                  <TableHead>Dealer</TableHead>
-                  <TableHead>
-                    <HeaderHelp
-                      label="Response"
-                      help="Compares the first recorded dealer response with the configured response SLA."
-                    />
-                  </TableHead>
-                  <TableHead>
-                    <HeaderHelp
-                      label="Follow-up"
-                      help="Shows whether a next action is missing, scheduled, due today, overdue, or closed."
-                    />
-                  </TableHead>
-                  <TableHead>
-                    <HeaderHelp
-                      label="Outcome"
-                      help="Displays the strongest verified lifecycle outcome: converted, booked, closed, or current status."
-                    />
-                  </TableHead>
+                  <TableHead>Source</TableHead>
+                  <TableHead>Assigned</TableHead>
+                  <TableHead>Status</TableHead>
                   <TableHead>
                     <HeaderHelp
                       label="Latest activity"
                       help="Most recent recorded lead activity. Queue priority is determined by the backend engagement order; original acquisition time is retained separately."
                     />
                   </TableHead>
-                  <TableHead className="w-14">
-                    <span className="sr-only">Actions</span>
-                  </TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {result.items.map((lead) => {
-                  const response = responseBadge(lead.responseSlaState);
                   const contact =
                     lead.customer.contactMasked ?? lead.customer.contact;
-                  const outcome =
-                    lead.convertedAt !== null
-                      ? "Converted"
-                      : lead.bookedAt !== null
-                        ? "Booked"
-                        : lead.closedAt !== null
-                          ? "Closed"
-                          : label(lead.status);
+                  const status = displayStatus(lead);
 
                   return (
                     <TableRow
@@ -263,7 +251,7 @@ export function EngagementLeadsTable({
                         }
                       }}
                     >
-                      <TableCell>
+                      <TableCell className="align-top">
                         <div className="grid min-w-44 gap-1">
                           <button
                             type="button"
@@ -275,95 +263,87 @@ export function EngagementLeadsTable({
                           >
                             {lead.leadNo}
                           </button>
-                          <span className="text-caption text-muted-readable">
-                            {lead.source.name} · Acquired{" "}
+                          <span className="whitespace-nowrap text-caption text-muted-readable text-tabular">
                             {formatDashboardDateTime(lead.createdAt)}
                           </span>
                         </div>
                       </TableCell>
-                      <TableCell>
+                      <TableCell className="align-top">
                         <div className="grid min-w-40 gap-1">
                           <span className="font-medium text-foreground">
-                            {lead.customer.name ?? "Unnamed customer"}
+                            {lead.customer.name ?? "New Customer"}
                           </span>
                           <span className="text-caption text-muted-readable text-tabular">
                             {contact ?? "Contact unavailable"}
                           </span>
+                        </div>
+                      </TableCell>
+                      <TableCell className="align-top">
+                        <div className="grid min-w-40 gap-1">
+                          <span className="font-medium text-foreground">
+                            {displaySource(lead)}
+                          </span>
                           <span className="text-caption text-muted-readable">
-                            {[lead.location.city, lead.location.district]
+                            {[lead.location.district, lead.location.state]
                               .filter(
                                 (value): value is string => value !== null,
                               )
-                              .join(", ") || "Location unavailable"}
+                              .join(", ") || "Location Unavailable"}
                           </span>
                         </div>
                       </TableCell>
-                      <TableCell>
+                      <TableCell className="min-w-0 max-w-0 align-top">
                         {lead.dealer === null ? (
-                          <Badge variant="warning">Unassigned</Badge>
+                          <Badge
+                            variant="warning"
+                            className="dark:border-amber-400/50 dark:bg-amber-400/20 dark:text-amber-100"
+                          >
+                            Unassigned
+                          </Badge>
                         ) : (
-                          <div className="grid min-w-40 gap-1">
-                            <span className="font-medium text-foreground">
-                              {lead.dealer.name}
-                            </span>
-                            <span className="text-caption text-muted-readable">
-                              {lead.dealer.code}
+                          <div className="grid min-w-0 max-w-full gap-1">
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span
+                                  className="block min-w-0 truncate font-medium text-foreground"
+                                  title={lead.dealer.name}
+                                  aria-label={lead.dealer.name}
+                                >
+                                  {truncateDisplayName(lead.dealer.name, 24)}
+                                </span>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                {lead.dealer.name}
+                              </TooltipContent>
+                            </Tooltip>
+                            <span className="whitespace-nowrap text-caption text-muted-readable text-tabular">
+                              {lead.assignmentDistanceKm === null
+                                ? "Distance unavailable"
+                                : `${lead.assignmentDistanceKm.toFixed(1)} km away`}
                             </span>
                           </div>
                         )}
                       </TableCell>
-                      <TableCell>
-                        <Badge variant={response.variant}>
-                          {response.icon}
-                          {response.text}
-                        </Badge>
-                        {lead.firstResponseAt !== null ? (
-                          <p className="mt-1 text-caption text-muted-readable">
-                            {formatDashboardDateTime(lead.firstResponseAt)}
-                          </p>
-                        ) : null}
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant={followUpVariant(lead.followUpState)}>
-                          <CalendarClock aria-hidden="true" />
-                          {label(lead.followUpState)}
-                        </Badge>
-                        {lead.nextFollowUpAt !== null ? (
-                          <p className="mt-1 text-caption text-muted-readable">
-                            {formatDashboardDateTime(lead.nextFollowUpAt)}
-                          </p>
-                        ) : null}
-                      </TableCell>
-                      <TableCell>
+                      <TableCell className="min-w-0 align-top">
                         <Badge
-                          variant={
-                            lead.convertedAt !== null ? "success" : "outline"
+                          variant={status.variant}
+                          className={
+                            status.variant === "warning"
+                              ? "dark:border-amber-400/50 dark:bg-amber-400/20 dark:text-amber-100"
+                              : undefined
                           }
                         >
-                          {outcome}
+                          {status.label}
                         </Badge>
+                        <p
+                          className="mt-1 max-w-full truncate text-caption text-muted-readable"
+                          title={status.detail}
+                        >
+                          {status.detail}
+                        </p>
                       </TableCell>
-                      <TableCell className="text-caption text-muted-readable">
+                      <TableCell className="align-top whitespace-nowrap text-caption text-muted-readable text-tabular">
                         {formatDashboardDateTime(lead.lastActivityAt)}
-                      </TableCell>
-                      <TableCell>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon-sm"
-                              aria-label={`View details for ${lead.leadNo}`}
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                setSelectedLead(lead);
-                              }}
-                            >
-                              <Eye aria-hidden="true" className="size-4" />
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent>View lead details</TooltipContent>
-                        </Tooltip>
                       </TableCell>
                     </TableRow>
                   );

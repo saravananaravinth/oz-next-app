@@ -27,6 +27,7 @@ const ALLOWED_QUERY_KEYS = new Set([
   "zoom",
   "from",
   "to",
+  "filterFingerprint",
   "leadSourceId",
   "ivrFlowCode",
   "status",
@@ -122,6 +123,7 @@ export async function GET(request: NextRequest): Promise<Response> {
       assignmentStates: readManyValues(request, "assignmentState"),
       conversionStates: readManyValues(request, "conversionState"),
     },
+    filterFingerprint: readSingleValue(request, "filterFingerprint"),
   });
 
   if (!parsedRequest.success) {

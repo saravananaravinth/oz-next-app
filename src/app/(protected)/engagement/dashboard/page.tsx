@@ -11,7 +11,7 @@ import { resolveEngagementDashboardRoute } from "@/app/(protected)/engagement/da
 
 const PAGE_TITLE = "Vehicle sales engagement overview";
 const PAGE_DESCRIPTION =
-  "Vehicle-sales engagement KPIs, lead-source trend, lifecycle funnel, and operational work queue.";
+  "Vehicle-sales performance KPIs, lead-flow trends, location intelligence, and operational lead queue.";
 
 type EngagementDashboardPageProps = Readonly<{
   searchParams: Promise<EngagementDashboardRawSearchParams>;

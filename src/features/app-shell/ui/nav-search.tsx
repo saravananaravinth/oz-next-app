@@ -35,6 +35,7 @@ import { sameOriginFetch } from "@/lib/api/same-origin-client";
 import { HTTP_METHODS, HTTP_STATUS } from "@/lib/api/http-contract";
 import { isApiHttpError } from "@/lib/api/problem";
 import { safeInternalHref } from "@/lib/security/navigation";
+import { WarrantyLiveSearch } from "@/features/extended-warranty/ui/workspace-live-search";
 import { useDebounce } from "@/shared/hooks/use-debounce";
 
 export type SearchCategory =
@@ -60,7 +61,11 @@ export type GlobalSearchProps = Readonly<{
 }>;
 
 type PageSearchMode =
-  "submit" | "dealer-live" | "vehicle-live" | "component-live";
+  | "submit"
+  | "dealer-live"
+  | "vehicle-live"
+  | "component-live"
+  | "warranty-live";
 
 type PageSearchScope = Readonly<{
   title: string;
@@ -170,14 +175,13 @@ const MAX_HIGHLIGHT_RANGES = 64;
 const LIVE_SEARCH_DELAY_MS = 280;
 const LIVE_SEARCH_MAX_WAIT_MS = 750;
 const LIVE_SEARCH_TIMEOUT_MS = 8_000;
-const ENGAGEMENT_DASHBOARD_PREFIX = "/engagement/dashboard";
 const DEALER_DIRECTORY_PATH = "/engagement/dealers";
 const VEHICLE_INVENTORY_PATH = "/inventory/vehicles";
 const COMPONENT_INVENTORY_PATH = "/inventory/components";
 const DEALER_LIVE_SEARCH_ENDPOINT = "/api/engagement/dealers/search";
 const VEHICLE_LIVE_SEARCH_ENDPOINT = "/api/inventory/vehicles/search";
 const COMPONENT_LIVE_SEARCH_ENDPOINT = "/api/inventory/components/search";
-const ENGAGEMENT_CURSOR_PARAMS = ["dealerCursor", "leadCursor"] as const;
+const LEAD_LIVE_SEARCH_ENDPOINT = "/api/engagement/leads/search";
 const INVENTORY_CURSOR_PARAMS = ["cursor"] as const;
 const ASCII_CONTROL_MAX_CODE_POINT = 0x1f;
 const ASCII_DELETE_CODE_POINT = 0x7f;
@@ -279,17 +283,23 @@ const componentLiveSearchResponseSchema = z
   })
   .strict();
 
-const ENGAGEMENT_SEARCH_SCOPE = {
-  title: "Search vehicle-sales engagement",
-  description:
-    "Search the current page by lead number, customer, mobile, dealer, or dealer code.",
-  placeholder: "Lead, customer, mobile, dealer, or code",
-  inputLabel: "Search the current engagement page",
-  triggerLabel: "Search this engagement page",
-  cursorParams: ENGAGEMENT_CURSOR_PARAMS,
-  mode: "submit",
-  minimumCharacters: 1,
-} as const satisfies PageSearchScope;
+const leadLiveSearchResponseSchema = z
+  .object({
+    items: z
+      .array(
+        z
+          .object({
+            id: z.uuid(),
+            href: z.string().startsWith("/engagement/dashboard/leads/"),
+            title: z.string().min(1).max(160),
+            description: z.string().min(1).max(320),
+          })
+          .strict(),
+      )
+      .max(8)
+      .readonly(),
+  })
+  .strict();
 
 const DEALER_DIRECTORY_SEARCH_SCOPE = {
   title: "Search dealers",
@@ -542,6 +552,17 @@ function matches(result: SearchResult, query: string): boolean {
 }
 
 function resolvePageSearchScope(pathname: string): PageSearchScope | null {
+  if (pathname === "/extended-warranty")
+    return {
+      title: "Search extended warranty",
+      description: "Find sold vehicles by invoice, VIN, buyer, or mobile.",
+      placeholder: "Invoice, VIN, buyer, or mobile…",
+      inputLabel: "Search sold vehicles",
+      triggerLabel: "Search extended warranty",
+      cursorParams: ["cursor", "unitId"],
+      mode: "warranty-live",
+      minimumCharacters: 3,
+    };
   if (pathname === DEALER_DIRECTORY_PATH) {
     return DEALER_DIRECTORY_SEARCH_SCOPE;
   }
@@ -552,13 +573,6 @@ function resolvePageSearchScope(pathname: string): PageSearchScope | null {
 
   if (pathname === COMPONENT_INVENTORY_PATH) {
     return COMPONENT_INVENTORY_SEARCH_SCOPE;
-  }
-
-  if (
-    pathname === ENGAGEMENT_DASHBOARD_PREFIX ||
-    pathname.startsWith(`${ENGAGEMENT_DASHBOARD_PREFIX}/`)
-  ) {
-    return ENGAGEMENT_SEARCH_SCOPE;
   }
 
   return null;
@@ -1454,6 +1468,9 @@ export function GlobalSearch({
     React.useState<VehicleLiveSearchState | null>(null);
   const [componentLiveState, setComponentLiveState] =
     React.useState<ComponentLiveSearchState | null>(null);
+  const [leadLiveResults, setLeadLiveResults] = React.useState<
+    readonly SearchResult[]
+  >([]);
   const deferredQuery = React.useDeferredValue(query);
   const debouncedPageQuery = useDebounce(query, LIVE_SEARCH_DELAY_MS, {
     maxWait: LIVE_SEARCH_MAX_WAIT_MS,
@@ -1466,10 +1483,60 @@ export function GlobalSearch({
     const normalizedQuery =
       normalizedPageQuery(deferredQuery).toLocaleLowerCase("en-US");
 
-    return normalizedResults
+    const staticMatches = normalizedResults
       .filter((result) => matches(result, normalizedQuery))
       .slice(0, MAX_RESULTS);
-  }, [deferredQuery, normalizedResults]);
+    const liveMatches: SearchResult[] = [];
+
+    if (dealerLiveState?.kind === "success") {
+      for (const item of dealerLiveState.items) {
+        liveMatches.push({
+          id: `dealer:${item.id}`,
+          title: item.displayName,
+          description: `${item.dealerCode} · ${[item.district, item.state].filter(Boolean).join(", ")}`,
+          href: item.href,
+          category: "dealer",
+        });
+      }
+    }
+    if (vehicleLiveState?.kind === "success") {
+      for (const item of vehicleLiveState.items) {
+        liveMatches.push({
+          id: `vehicle:${item.id}`,
+          title: item.vin ?? item.modelName ?? "Vehicle",
+          description: [item.modelName, item.variantName, item.dealerName]
+            .filter(Boolean)
+            .join(" · "),
+          href: item.href,
+          category: "vehicle",
+        });
+      }
+    }
+    if (componentLiveState?.kind === "success") {
+      for (const item of componentLiveState.items) {
+        liveMatches.push({
+          id: `component:${item.id}`,
+          title: item.serialNumber ?? item.componentName,
+          description: `${item.componentCode} · ${item.componentType}`,
+          href: item.href,
+          category: "component",
+        });
+      }
+    }
+
+    liveMatches.push(
+      ...leadLiveResults.filter((result) => matches(result, normalizedQuery)),
+    );
+
+    return [...liveMatches, ...staticMatches].slice(0, MAX_RESULTS);
+  }, [
+    componentLiveState,
+    dealerLiveState,
+    deferredQuery,
+    leadLiveResults,
+    normalizedResults,
+    vehicleLiveState,
+  ]);
   const currentPageQuery = normalizedPageQuery(searchParams.get("q") ?? "");
 
   const updatePageSearch = React.useCallback(
@@ -1531,8 +1598,8 @@ export function GlobalSearch({
 
     if (
       !open ||
-      pageSearchScope?.mode !== "dealer-live" ||
-      normalized.length < pageSearchScope.minimumCharacters
+      (pageSearchScope !== null && pageSearchScope.mode !== "dealer-live") ||
+      normalized.length < (pageSearchScope?.minimumCharacters ?? 3)
     ) {
       return;
     }
@@ -1576,11 +1643,46 @@ export function GlobalSearch({
 
   React.useEffect(() => {
     const normalized = normalizedPageQuery(debouncedPageQuery);
+    if (!open || pageSearchScope !== null || normalized.length < 3) {
+      return;
+    }
+    const controller = new AbortController();
+    void sameOriginFetch(
+      `${LEAD_LIVE_SEARCH_ENDPOINT}?q=${encodeURIComponent(normalized)}`,
+      {
+        method: HTTP_METHODS.GET,
+        schema: leadLiveSearchResponseSchema,
+        timeoutMs: LIVE_SEARCH_TIMEOUT_MS,
+        signal: controller.signal,
+      },
+    )
+      .then((payload) => {
+        if (controller.signal.aborted) return;
+        setLeadLiveResults(
+          payload.items.map((item) => ({
+            id: `lead:${item.id}`,
+            title: item.title,
+            description: item.description,
+            href: safeInternalHref(item.href),
+            category: "customer",
+          })),
+        );
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setLeadLiveResults([]);
+      });
+    return () => {
+      controller.abort();
+    };
+  }, [debouncedPageQuery, open, pageSearchScope]);
+
+  React.useEffect(() => {
+    const normalized = normalizedPageQuery(debouncedPageQuery);
 
     if (
       !open ||
-      pageSearchScope?.mode !== "vehicle-live" ||
-      normalized.length < pageSearchScope.minimumCharacters
+      (pageSearchScope !== null && pageSearchScope.mode !== "vehicle-live") ||
+      normalized.length < (pageSearchScope?.minimumCharacters ?? 3)
     ) {
       return;
     }
@@ -1636,8 +1738,8 @@ export function GlobalSearch({
 
     if (
       !open ||
-      pageSearchScope?.mode !== "component-live" ||
-      normalized.length < pageSearchScope.minimumCharacters
+      (pageSearchScope !== null && pageSearchScope.mode !== "component-live") ||
+      normalized.length < (pageSearchScope?.minimumCharacters ?? 3)
     ) {
       return;
     }
@@ -1771,7 +1873,14 @@ export function GlobalSearch({
                 />
               </div>
 
-              {pageSearchScope.mode === "dealer-live" ? (
+              {pageSearchScope.mode === "warranty-live" ? (
+                <WarrantyLiveSearch
+                  query={query}
+                  debouncedQuery={debouncedPageQuery}
+                  searchParams={searchParamsString}
+                  closeSearch={closeSearch}
+                />
+              ) : pageSearchScope.mode === "dealer-live" ? (
                 <DealerLiveResults
                   query={query}
                   debouncedQuery={debouncedPageQuery}
@@ -1906,7 +2015,8 @@ export function GlobalSearch({
               disabled={!pageQueryIsReady(query, pageSearchScope)}
             >
               <Search aria-hidden="true" className="size-4" />
-              {pageSearchScope.mode === "dealer-live" ||
+              {pageSearchScope.mode === "warranty-live" ||
+              pageSearchScope.mode === "dealer-live" ||
               pageSearchScope.mode === "vehicle-live" ||
               pageSearchScope.mode === "component-live"
                 ? "Show all matches"

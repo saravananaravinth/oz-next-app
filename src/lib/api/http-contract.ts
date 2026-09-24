@@ -126,7 +126,10 @@ export type AuthCookieName = ValueOf<typeof AUTH_COOKIE>;
 export const BROWSER_API_ALLOWED_EXACT_PATHS = [
   "/erp/auth/login/otp/request",
 ] as const;
-export const BROWSER_API_ALLOWED_PREFIXES = ["/erp/engagement/public"] as const;
+export const BROWSER_API_ALLOWED_PREFIXES = [
+  "/erp/engagement/public",
+  "/erp/extended-warranty/public",
+] as const;
 
 /**
  * Same-origin Next.js routes callable from browser transports. Keep this list
@@ -139,6 +142,7 @@ export const BROWSER_SAME_ORIGIN_ALLOWED_EXACT_PATHS = [
   "/api/inventory/dealer-contexts",
   "/api/inventory/vehicles/export",
   "/api/inventory/vehicles/search",
+  "/api/extended-warranty/search",
   "/api/inventory/components/search",
 ] as const;
 
@@ -154,6 +158,8 @@ export const SERVER_API_ALLOWED_PREFIXES = [
   "/erp/wallets",
   "/erp/welfare",
   "/erp/credit-notes",
+  "/erp/payments",
+  "/erp/extended-warranty",
 ] as const;
 
 /**

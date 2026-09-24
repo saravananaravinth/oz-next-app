@@ -4,7 +4,7 @@
 import * as React from "react";
 import Link from "next/link";
 import type { Route } from "next";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 
 import {
   NotificationsSheet,
@@ -167,6 +167,8 @@ export function HeaderBar({
   currentTenantId,
 }: HeaderBarProps): React.ReactElement {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const selectedTenantId = searchParams.get("tenantId") ?? currentTenantId;
   const breadcrumbs = breadcrumbsFromPath(pathname);
 
   return (
@@ -209,7 +211,7 @@ export function HeaderBar({
         <div className="hidden lg:block">
           <TenantSelection
             tenants={tenants ?? EMPTY_TENANTS}
-            currentTenantId={currentTenantId ?? null}
+            currentTenantId={selectedTenantId ?? null}
           />
         </div>
         <GlobalSearch results={searchResults ?? EMPTY_SEARCH_RESULTS} />

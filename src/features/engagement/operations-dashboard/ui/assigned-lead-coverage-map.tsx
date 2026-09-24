@@ -23,6 +23,8 @@ import {
 } from "@/features/engagement/operations-dashboard/utils/coverage-map";
 import {
   loadGoogleMaps,
+  googleMapsFailureMessage,
+  GoogleMapsLoaderError,
   readGoogleMapsClientConfig,
   type GoogleAdvancedMarker,
   type GoogleMap,
@@ -39,6 +41,7 @@ import { useDebounce } from "@/shared/hooks";
 export type AssignedLeadCoverageMapProps = Readonly<{
   query: EngagementDashboardSearchParams;
   initialViewport: CoverageMapViewport;
+  size?: "dashboard" | "coverage";
 }>;
 
 type MapDataState =
@@ -175,6 +178,7 @@ function LoadingBadges(): React.ReactElement {
 export function AssignedLeadCoverageMap({
   query,
   initialViewport,
+  size = "coverage",
 }: AssignedLeadCoverageMapProps): React.ReactElement {
   const compatibility = coverageMapCompatibility(query);
   const configResult = React.useMemo(() => readGoogleMapsClientConfig(), []);
@@ -193,7 +197,9 @@ export function AssignedLeadCoverageMap({
     status: "loading",
   });
   const [mapReady, setMapReady] = React.useState(false);
-  const [mapRuntimeFailed, setMapRuntimeFailed] = React.useState(false);
+  const [mapRuntimeFailure, setMapRuntimeFailure] = React.useState<
+    string | null
+  >(null);
 
   React.useEffect(() => {
     if (
@@ -207,6 +213,8 @@ export function AssignedLeadCoverageMap({
     let disposed = false;
     let idleListener: GoogleMapsEventListener | null = null;
     const container = mapContainerRef.current;
+    setMapRuntimeFailure(null);
+    setMapReady(false);
 
     void loadGoogleMaps(configResult.config)
       .then((api) => {
@@ -240,8 +248,14 @@ export function AssignedLeadCoverageMap({
         });
         setMapReady(true);
       })
-      .catch(() => {
-        if (!disposed) setMapRuntimeFailed(true);
+      .catch((error: unknown) => {
+        if (!disposed) {
+          setMapRuntimeFailure(
+            error instanceof GoogleMapsLoaderError
+              ? googleMapsFailureMessage(error.code)
+              : googleMapsFailureMessage("UNKNOWN"),
+          );
+        }
       });
 
     return (): void => {
@@ -354,19 +368,21 @@ export function AssignedLeadCoverageMap({
     );
   }
 
-  if (mapRuntimeFailed) {
+  if (mapRuntimeFailure !== null) {
     return (
       <ContentStatus
         variant="warning"
-        title="Map view is temporarily unavailable"
-        description="Google Maps could not be loaded. Use the coverage table below; it remains the operational fallback."
+        title="Google Maps configuration needs attention"
+        description={`${mapRuntimeFailure} The ranked coverage list remains available.`}
         icon={<TriangleAlert aria-hidden="true" />}
       />
     );
   }
 
   return (
-    <div className="relative min-h-[36rem] overflow-hidden rounded-3xl border border-border/70 bg-muted/15 shadow-inner">
+    <div
+      className={`relative overflow-hidden rounded-3xl border border-border/70 bg-muted/15 shadow-inner ${size === "dashboard" ? "min-h-[22rem]" : "min-h-[36rem]"}`}
+    >
       <div
         ref={mapContainerRef}
         role="region"

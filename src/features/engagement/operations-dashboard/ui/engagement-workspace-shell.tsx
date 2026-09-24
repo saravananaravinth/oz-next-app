@@ -41,8 +41,8 @@ export function EngagementWorkspaceShell({
         aria-label="Vehicle-sales engagement navigation and controls"
         className="min-w-0 overflow-hidden rounded-2xl border border-border/70 bg-card/90 shadow-xs shadow-foreground/5 supports-[backdrop-filter]:backdrop-blur-xl"
       >
-        <div className="flex min-w-0 flex-col @4xl/content-root:flex-row @4xl/content-root:items-center">
-          <div className="hidden shrink-0 px-4 @4xl/content-root:block">
+        <div className="flex min-w-0 flex-wrap items-center gap-x-2 p-2">
+          <div className="hidden shrink-0 px-2 @4xl/content-root:block">
             <p className="text-overline text-muted-readable">Vehicle sales</p>
             <p className="text-body-sm font-medium text-foreground">
               Engagement workspace
@@ -51,16 +51,16 @@ export function EngagementWorkspaceShell({
           <div className="min-w-0 flex-1">
             <EngagementWorkspaceNav access={access} query={query} />
           </div>
+          {showFilters ? (
+            <div className="ml-auto min-w-0 max-w-full shrink-0">
+              <EngagementDashboardFilters
+                route={route}
+                query={query}
+                {...(filterOptions === undefined ? {} : { filterOptions })}
+              />
+            </div>
+          ) : null}
         </div>
-        {showFilters ? (
-          <div className="border-t border-border/70 bg-muted/20 p-3">
-            <EngagementDashboardFilters
-              route={route}
-              query={query}
-              {...(filterOptions === undefined ? {} : { filterOptions })}
-            />
-          </div>
-        ) : null}
       </section>
       {children}
     </ContentRoot>

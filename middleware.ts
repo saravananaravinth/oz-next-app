@@ -128,6 +128,18 @@ const PUBLIC_TOKEN_ROUTES = [
     varyCookie: false,
   },
   {
+    exactPath: "/extended-warranty/purchase",
+    prefix: "/extended-warranty/purchase/",
+    privateCache: true,
+    varyCookie: false,
+  },
+  {
+    exactPath: "/extended-warranty/order",
+    prefix: "/extended-warranty/order/",
+    privateCache: true,
+    varyCookie: false,
+  },
+  {
     exactPath: "/erp/public/warranty",
     prefix: "/erp/public/warranty/",
     privateCache: true,

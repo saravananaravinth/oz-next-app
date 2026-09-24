@@ -10,7 +10,6 @@ import type {
 
 export const ENGAGEMENT_DASHBOARD_ROUTES = {
   overview: "/engagement/dashboard",
-  journey: "/engagement/dashboard/journey",
   dealers: "/engagement/dashboard/dealers",
   coverage: "/engagement/dashboard/coverage",
   videoSequences: "/engagement/dashboard/configuration/video-sequences",
@@ -24,7 +23,6 @@ export type EngagementDashboardPatch = Readonly<{
   to?: string | null;
   comparison?: EngagementDashboardSearchParams["comparison"] | null;
   grain?: EngagementDashboardSearchParams["grain"] | null;
-  maturityHours?: number | null;
   leadSourceIds?: readonly string[] | null;
   ivrFlowCodes?: readonly string[] | null;
   statuses?: readonly string[] | null;
@@ -74,7 +72,6 @@ export function engagementWorkspaceHref(
   const to = resolved(query.to, patch.to);
   const comparison = resolved(query.comparison, patch.comparison);
   const grain = resolved(query.grain, patch.grain);
-  const maturityHours = resolved(query.maturityHours, patch.maturityHours);
   const q = resolved(query.q, patch.q);
   const dealerEngagementState = resolved(
     query.dealerEngagementState,
@@ -94,9 +91,6 @@ export function engagementWorkspaceHref(
   if (to !== null) search.set("to", to);
   if (comparison !== null) search.set("comparison", comparison);
   if (grain !== null) search.set("grain", grain);
-  if (maturityHours !== null) {
-    search.set("maturityHours", String(maturityHours));
-  }
   if (q !== null && q !== undefined && q.trim().length > 0) {
     search.set("q", q.trim());
   }

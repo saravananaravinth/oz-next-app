@@ -2,12 +2,11 @@
 import type * as React from "react";
 import Link from "next/link";
 import {
-  BarChart3,
   Building2,
-  CalendarClock,
   CheckCircle2,
   CircleAlert,
-  Clock3,
+  Handshake,
+  PhoneCall,
   UserRound,
 } from "lucide-react";
 
@@ -17,7 +16,6 @@ import {
   ContentRoot,
   ContentStatus,
 } from "@/components/common/content-shell";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 
 import type { EngagementDashboardSearchParams } from "@/features/engagement/operations-dashboard/contracts/engagement-dashboard.schema";
@@ -33,15 +31,11 @@ import {
   EngagementMetricGrid,
   type EngagementMetric,
 } from "@/features/engagement/operations-dashboard/ui/engagement-metric-grid";
-import { EngagementOverviewFunnel } from "@/features/engagement/operations-dashboard/ui/engagement-overview-funnel";
 import { EngagementLeadsTable } from "@/features/engagement/operations-dashboard/ui/engagement-leads-table";
 import { EngagementWorkspaceShell } from "@/features/engagement/operations-dashboard/ui/engagement-workspace-shell";
 import { LeadSourceChart } from "@/features/engagement/operations-dashboard/ui/lead-source-chart";
-import {
-  formatDashboardDuration,
-  formatDashboardInteger,
-  formatDashboardPercentage,
-} from "@/features/engagement/operations-dashboard/utils/engagement-dashboard-format";
+import { TopLeadLocations } from "@/features/engagement/operations-dashboard/ui/top-lead-locations";
+import { formatDashboardInteger } from "@/features/engagement/operations-dashboard/utils/engagement-dashboard-format";
 import { ENGAGEMENT_DASHBOARD_ROUTES } from "@/features/engagement/operations-dashboard/utils/engagement-dashboard-url";
 
 export type EngagementDashboardPageProps = Readonly<{
@@ -83,7 +77,7 @@ function overviewMetrics(
       id: "new-leads",
       label: "New leads",
       value: formatDashboardInteger(kpis.newLeads.value),
-      description: `${formatDashboardInteger(Math.round(kpis.newLeads.averagePerDay))} average per day in the selected period.`,
+      description: `${formatDashboardInteger(Math.round(kpis.newLeads.averagePerDay))} average per day.`,
       help: "Vehicle-sales leads created inside the selected operational date and filter scope.",
       icon: <UserRound aria-hidden="true" className="size-5" />,
       tone: "info",
@@ -98,58 +92,60 @@ function overviewMetrics(
           }),
     },
     {
-      id: "assignment-health",
-      label: "Assignment rate",
-      value: formatDashboardPercentage(kpis.assignmentHealth.ratePct),
-      description: `${formatDashboardInteger(kpis.assignmentHealth.assignedCount)} assigned of ${formatDashboardInteger(kpis.assignmentHealth.assignableCount)} assignable leads.`,
-      help: "Share of assignable leads with a dealer assignment in the selected operational scope.",
+      id: "assigned",
+      label: "Assigned",
+      value: formatDashboardInteger(kpis.assigned.value),
+      description: "Leads assigned to a dealer in the selected period.",
+      help: "Unique vehicle-sales leads with a verified dealer assignment.",
       icon: <Building2 aria-hidden="true" className="size-5" />,
-      tone: kpis.assignmentHealth.unassignedCount > 0 ? "warning" : "success",
-      badge: `${formatDashboardInteger(kpis.assignmentHealth.unassignedCount)} unassigned`,
+      tone: "info",
+      trend: {
+        value: kpis.assigned.changePct,
+        positiveIsGood: true,
+        label: "No comparable baseline",
+      },
     },
     {
-      id: "dealer-response",
-      label: "Response SLA",
-      value: formatDashboardPercentage(kpis.dealerResponseSla.ratePct),
-      description: `${formatDashboardInteger(kpis.dealerResponseSla.respondedCount)} responded; median ${formatDashboardDuration(kpis.dealerResponseSla.medianResponseMinutes)}.`,
-      help: "Dealer responses measured against the configured response SLA for eligible assigned leads.",
-      icon: <Clock3 aria-hidden="true" className="size-5" />,
-      tone: kpis.dealerResponseSla.breachedCount > 0 ? "warning" : "success",
-      badge: `${formatDashboardInteger(kpis.dealerResponseSla.breachedCount)} breached`,
+      id: "contacted",
+      label: "Contacted",
+      value: formatDashboardInteger(kpis.contacted.value),
+      description: "Leads with verified dealer interaction evidence.",
+      help: "Unique leads where the dealer opened or updated the secure lead workflow.",
+      icon: <PhoneCall aria-hidden="true" className="size-5" />,
+      tone: "info",
+      trend: {
+        value: kpis.contacted.changePct,
+        positiveIsGood: true,
+        label: "No comparable baseline",
+      },
     },
     {
-      id: "follow-up",
-      label: "Follow-up compliance",
-      value: formatDashboardPercentage(kpis.followUpCompliance.ratePct),
-      description: `${formatDashboardInteger(kpis.followUpCompliance.completedOnTimeCount)} completed on time of ${formatDashboardInteger(kpis.followUpCompliance.dueCount)} due.`,
-      help: "On-time dealer follow-up completion for due follow-up actions in the selected scope.",
-      icon: <CalendarClock aria-hidden="true" className="size-5" />,
-      tone: kpis.followUpCompliance.overdueCount > 0 ? "warning" : "success",
-      badge: `${formatDashboardInteger(kpis.followUpCompliance.overdueCount)} overdue`,
+      id: "booked",
+      label: "Booked",
+      value: formatDashboardInteger(kpis.booked.value),
+      description: "Leads linked to verified vehicle bookings.",
+      help: "Unique leads with a non-cancelled sale order or booking event.",
+      icon: <Handshake aria-hidden="true" className="size-5" />,
+      tone: "success",
+      trend: {
+        value: kpis.booked.changePct,
+        positiveIsGood: true,
+        label: "No comparable baseline",
+      },
     },
     {
       id: "conversion",
-      label: "Conversion",
-      value: formatDashboardPercentage(kpis.conversion.ratePct),
-      description: `${formatDashboardInteger(kpis.conversion.convertedCount)} converted from ${formatDashboardInteger(kpis.conversion.eligibleCount)} eligible leads.`,
-      help: "Operational lead conversion rate for the selected lead cohort and filters.",
+      label: "Converted",
+      value: formatDashboardInteger(kpis.converted.value),
+      description: "Leads linked to a sale invoice in the selected period.",
+      help: "Unique leads with a verified sale-invoice conversion event.",
       icon: <CheckCircle2 aria-hidden="true" className="size-5" />,
       tone: "success",
-      badge: `${formatDashboardInteger(kpis.conversion.bookingCount)} booked`,
-    },
-    {
-      id: "needs-attention",
-      label: "Needs attention",
-      value: formatDashboardInteger(kpis.needsAttention.totalCount),
-      description: `${formatDashboardInteger(kpis.needsAttention.criticalCount)} critical and ${formatDashboardInteger(kpis.needsAttention.highCount)} high-priority items.`,
-      help: "Open operational attention items within the selected dashboard scope.",
-      icon: <CircleAlert aria-hidden="true" className="size-5" />,
-      tone:
-        kpis.needsAttention.criticalCount > 0
-          ? "destructive"
-          : kpis.needsAttention.highCount > 0
-            ? "warning"
-            : "default",
+      trend: {
+        value: kpis.converted.changePct,
+        positiveIsGood: true,
+        label: "No comparable baseline",
+      },
     },
   ];
 }
@@ -167,67 +163,48 @@ export function EngagementDashboardPage({
       filterOptions={data.filterOptions}
     >
       <section
-        aria-labelledby="engagement-overview-kpi-heading"
+        aria-label="Engagement performance indicators"
         className="grid gap-3"
       >
-        <ContentHeader
-          id="engagement-overview-kpi-heading"
-          variant="compact"
-          eyebrow="Overview"
-          icon={<BarChart3 aria-hidden="true" />}
-          iconTone="info"
-          title="Vehicle-sales engagement performance"
-          description="Operational KPIs, source trend, lifecycle funnel, and actionable lead queue for the same validated filter scope."
-        />
         {data.summary.status === "ready" ? (
           <EngagementMetricGrid
             metrics={overviewMetrics(data.summary.data, query)}
-            columns={6}
+            columns={5}
           />
         ) : (
           sectionFailure("Engagement KPIs", data.summary)
         )}
       </section>
 
-      {data.leadSources.status === "ready" ? (
-        <ContentDataSurface
-          title="Lead-source trend"
-          description="Compare vehicle-sales acquisition volume by source over the selected period. Select a bar to cross-filter the operational view."
-          contentClassName="min-h-[26rem] px-[var(--card-spacing)] pb-[var(--card-spacing)]"
-        >
-          <LeadSourceChart series={data.leadSources.data} query={query} />
-        </ContentDataSurface>
-      ) : (
-        sectionFailure("Lead-source trend", data.leadSources)
-      )}
-
-      {data.funnel.status === "ready" ? (
-        <EngagementOverviewFunnel funnel={data.funnel.data} />
-      ) : (
-        sectionFailure("Lead lifecycle funnel", data.funnel)
-      )}
+      <div className="grid min-w-0 gap-4 2xl:grid-cols-[minmax(0,1.15fr)_minmax(28rem,.85fr)]">
+        {data.leadFlow.status === "ready" ? (
+          <ContentDataSurface
+            title="New vs closed leads"
+            description="Daily acquisition and terminal outcomes for the selected period."
+            contentClassName="min-h-[26rem] px-[var(--card-spacing)] pb-[var(--card-spacing)]"
+          >
+            <LeadSourceChart series={data.leadFlow.data} query={query} />
+          </ContentDataSurface>
+        ) : (
+          sectionFailure("Lead flow trend", data.leadFlow)
+        )}
+        {data.coverage.status === "ready" ? (
+          <ContentDataSurface
+            title="Top lead locations"
+            description="Lead concentration across Tamil Nadu districts with India-level context."
+            contentClassName="px-[var(--card-spacing)] pb-[var(--card-spacing)]"
+          >
+            <TopLeadLocations coverage={data.coverage.data} query={query} />
+          </ContentDataSurface>
+        ) : (
+          sectionFailure("Top lead locations", data.coverage)
+        )}
+      </div>
 
       <section
-        aria-labelledby="engagement-operational-queue-heading"
+        aria-label="Vehicle-sales engagement queue"
         className="grid gap-3"
       >
-        <ContentHeader
-          variant="compact"
-          eyebrow="Operational context"
-          icon={<Building2 aria-hidden="true" />}
-          iconTone="default"
-          title="Lead work queue"
-          description="Priority vehicle-sales leads for follow-up and intervention. The queue uses the same date, search, and advanced filters as the Overview KPIs, source trend, and funnel."
-          actions={
-            data.leads.status === "ready" ? (
-              <Badge variant="outline">
-                {formatDashboardInteger(data.leads.data.items.length)} shown
-              </Badge>
-            ) : undefined
-          }
-          id="engagement-operational-queue-heading"
-        />
-
         {data.leads.status === "ready" ? (
           <EngagementLeadsTable
             result={data.leads.data}

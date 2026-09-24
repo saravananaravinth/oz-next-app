@@ -5,22 +5,18 @@ import * as React from "react";
 import Link from "next/link";
 import {
   Building2,
+  CalendarRange,
   CircleDot,
   Filter,
-  Info,
   MapPin,
   RefreshCw,
   RotateCcw,
   Search,
   SlidersHorizontal,
-  X,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 
-import {
-  ContentStatus,
-  ContentToolbar,
-} from "@/components/common/content-shell";
+import { ContentStatus } from "@/components/common/content-shell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -37,6 +33,13 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Popover,
+  PopoverContent,
+  PopoverHeader,
+  PopoverTitle,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -50,8 +53,8 @@ import type {
   EngagementFilterOptions,
 } from "@/features/engagement/operations-dashboard/contracts/engagement-dashboard.schema";
 import type { EngagementDashboardSectionResult } from "@/features/engagement/operations-dashboard/contracts/engagement-dashboard.types";
+import { formatDashboardDate } from "@/features/engagement/operations-dashboard/utils/engagement-dashboard-format";
 import {
-  ENGAGEMENT_DASHBOARD_ROUTES,
   engagementDashboardResetHref,
   engagementWorkspaceHref,
   type EngagementDashboardRoute,
@@ -169,36 +172,6 @@ function draftFilterCount(query: FilterDraft): number {
 
 function activeFilterCount(query: EngagementDashboardSearchParams): number {
   return draftFilterCount(draftFromQuery(query));
-}
-
-function FieldLabel({
-  htmlFor,
-  children,
-  help,
-}: Readonly<{
-  htmlFor?: string;
-  children: React.ReactNode;
-  help: string;
-}>): React.ReactElement {
-  return (
-    <Label
-      htmlFor={htmlFor}
-      className="inline-flex items-center gap-1 text-caption"
-    >
-      {children}
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <span
-            className="inline-flex size-4 items-center justify-center rounded"
-            tabIndex={0}
-          >
-            <Info aria-hidden="true" className="size-3" />
-          </span>
-        </TooltipTrigger>
-        <TooltipContent>{help}</TooltipContent>
-      </Tooltip>
-    </Label>
-  );
 }
 
 function FilterChecklist({
@@ -337,6 +310,9 @@ export function EngagementDashboardFilters({
 }: EngagementDashboardFiltersProps): React.ReactElement {
   const router = useRouter();
   const [open, setOpen] = React.useState(false);
+  const [periodOpen, setPeriodOpen] = React.useState(false);
+  const [draftFrom, setDraftFrom] = React.useState(query.from);
+  const [draftTo, setDraftTo] = React.useState(query.to);
   const [draft, setDraft] = React.useState<FilterDraft>(() =>
     draftFromQuery(query),
   );
@@ -367,460 +343,374 @@ export function EngagementDashboardFilters({
     draft.conversionStates.length +
     draft.followUpStates.length;
   const locationFilterCount = draft.districts.length + draft.cities.length;
-  const isOverviewRoute = route === ENGAGEMENT_DASHBOARD_ROUTES.overview;
-  const isJourneyRoute = route === ENGAGEMENT_DASHBOARD_ROUTES.journey;
+  const periodError =
+    draftFrom.length === 0 || draftTo.length === 0
+      ? "Select both dates."
+      : draftFrom > draftTo
+        ? "Start date must be on or before end date."
+        : null;
 
   return (
-    <ContentToolbar
-      variant="ghost"
-      className="gap-3"
+    <div
+      className="flex min-w-0 flex-wrap items-center justify-end gap-2"
       aria-label="Dashboard filters"
     >
-      <div className="flex min-w-0 flex-1 flex-wrap items-end gap-2.5">
-        <div className="grid w-full min-w-0 gap-1.5 sm:w-[11.5rem] sm:flex-none">
-          <FieldLabel
-            htmlFor="engagement-from"
-            help={
-              isJourneyRoute
-                ? "First process-run date included in the authoritative journey cohort."
-                : "First lead creation date included in the selected workspace cohort."
-            }
-          >
-            {isJourneyRoute ? "Cohort from" : "Created from"}
-          </FieldLabel>
-          <Input
-            id="engagement-from"
-            className="w-full"
-            type="date"
-            placeholder="Select start date"
-            value={query.from}
-            max={query.to}
-            onChange={(event) => {
-              const value = event.currentTarget.value;
-
-              if (value.length > 0) {
-                navigate({ from: value });
-              }
-            }}
-          />
-        </div>
-        <div className="grid w-full min-w-0 gap-1.5 sm:w-[11.5rem] sm:flex-none">
-          <FieldLabel
-            htmlFor="engagement-to"
-            help={
-              isJourneyRoute
-                ? "Last process-run date included in the authoritative journey cohort."
-                : "Last lead creation date included in the selected workspace cohort."
-            }
-          >
-            {isJourneyRoute ? "Cohort to" : "Created to"}
-          </FieldLabel>
-          <Input
-            id="engagement-to"
-            className="w-full"
-            type="date"
-            placeholder="Select end date"
-            value={query.to}
-            min={query.from}
-            onChange={(event) => {
-              const value = event.currentTarget.value;
-
-              if (value.length > 0) {
-                navigate({ to: value });
-              }
-            }}
-          />
-        </div>
-        {isJourneyRoute ? (
-          <form
-            className="grid w-full min-w-0 gap-1.5 sm:w-[13rem] sm:flex-none"
-            onSubmit={(event) => {
-              event.preventDefault();
-              const formData = new FormData(event.currentTarget);
-              const rawValue = formData.get("engagement-maturity-hours");
-              const value =
-                typeof rawValue === "string" && /^\d+$/u.test(rawValue)
-                  ? Number(rawValue)
-                  : Number.NaN;
-
-              if (Number.isInteger(value) && value >= 1 && value <= 720) {
-                navigate({ maturityHours: value });
-              }
-            }}
-          >
-            <FieldLabel
-              htmlFor="engagement-maturity-hours"
-              help="Only runs older than this horizon can enter the matured conversion denominator. Current and incomplete runs remain visible as diagnostics."
-            >
-              Maturity horizon
-            </FieldLabel>
-            <div className="flex min-w-0 gap-1.5">
+      <Popover
+        open={periodOpen}
+        onOpenChange={(nextOpen) => {
+          setPeriodOpen(nextOpen);
+          if (nextOpen) {
+            setDraftFrom(query.from);
+            setDraftTo(query.to);
+          }
+        }}
+      >
+        <PopoverTrigger asChild>
+          <Button type="button" variant="outline" className="max-w-full">
+            <CalendarRange aria-hidden="true" className="size-4" />
+            <span className="truncate">
+              {formatDashboardDate(query.from)} –{" "}
+              {formatDashboardDate(query.to)}
+            </span>
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent align="end" className="w-[min(22rem,calc(100vw-2rem))]">
+          <PopoverHeader>
+            <PopoverTitle>Reporting period</PopoverTitle>
+          </PopoverHeader>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="grid gap-1.5">
+              <Label htmlFor="engagement-from">From</Label>
               <Input
-                key={String(query.maturityHours)}
-                id="engagement-maturity-hours"
-                name="engagement-maturity-hours"
-                type="number"
-                inputMode="numeric"
-                placeholder="24"
-                min={1}
-                max={720}
-                step={1}
-                defaultValue={query.maturityHours}
-                aria-label="Journey maturity horizon in hours"
+                id="engagement-from"
+                type="date"
+                placeholder="Start date"
+                value={draftFrom}
+                max={draftTo || undefined}
+                aria-invalid={periodError !== null}
+                onChange={(event) => {
+                  setDraftFrom(event.currentTarget.value);
+                }}
               />
-              <Button type="submit" variant="outline">
-                Apply
-              </Button>
             </div>
-          </form>
-        ) : null}
-
-        {isOverviewRoute ? (
-          <form
-            className="grid w-full min-w-0 gap-1.5 sm:w-[18rem] sm:flex-none"
-            onSubmit={(event) => {
-              event.preventDefault();
-              const formData = new FormData(event.currentTarget);
-              const value = formData.get("engagement-lead-search");
-
-              navigate({
-                q:
-                  typeof value === "string" && value.trim().length > 0
-                    ? value.trim()
-                    : null,
-              });
-            }}
-          >
-            <FieldLabel
-              htmlFor="engagement-lead-search"
-              help="Search backend-supported lead and customer fields within the selected actor, tenant, date, and flow scope."
-            >
-              Lead / customer search
-            </FieldLabel>
-            <div className="flex min-w-0 gap-1.5">
+            <div className="grid gap-1.5">
+              <Label htmlFor="engagement-to">To</Label>
               <Input
-                key={query.q ?? "engagement-lead-search-empty"}
-                id="engagement-lead-search"
-                name="engagement-lead-search"
-                type="search"
-                defaultValue={query.q ?? ""}
-                maxLength={100}
-                autoComplete="off"
-                placeholder="Lead, customer, mobile..."
-                className="min-w-0 flex-1"
+                id="engagement-to"
+                type="date"
+                placeholder="End date"
+                value={draftTo}
+                min={draftFrom || undefined}
+                aria-invalid={periodError !== null}
+                onChange={(event) => {
+                  setDraftTo(event.currentTarget.value);
+                }}
               />
-              <Button
-                type="submit"
-                variant="outline"
-                size="icon"
-                aria-label="Search engagement leads"
-              >
-                <Search aria-hidden="true" className="size-4" />
-              </Button>
             </div>
-          </form>
-        ) : null}
-
-        {!isJourneyRoute ? (
-          <Dialog
-            open={open}
-            onOpenChange={(nextOpen) => {
-              setOpen(nextOpen);
-
-              if (nextOpen) {
-                setDraft(draftFromQuery(query));
-              }
-            }}
-          >
-            <DialogTrigger asChild>
-              <Button type="button" variant="outline" className="self-end">
-                <Filter aria-hidden="true" className="size-4" />
-                More filters
-                {count > 0 ? <Badge variant="secondary">{count}</Badge> : null}
-              </Button>
-            </DialogTrigger>
-            <DialogContent height="viewport" className="sm:max-w-6xl">
-              <DialogHeader>
-                <div className="flex flex-wrap items-center gap-2">
-                  <DialogTitle>Filter vehicle-sales engagement</DialogTitle>
-                  <Badge variant={draftCount > 0 ? "secondary" : "outline"}>
-                    {draftCount} selected
-                  </Badge>
-                </div>
-                <DialogDescription>
-                  Filters are grouped by business purpose and apply consistently
-                  to the operational workspace. Search long option lists
-                  independently without losing current selections.
-                </DialogDescription>
-              </DialogHeader>
-
-              <DialogBody>
-                {options === null ? (
-                  <ContentStatus
-                    variant={
-                      filterOptions?.status === "forbidden"
-                        ? "warning"
-                        : "destructive"
-                    }
-                    title="Filter options unavailable"
-                    description="The current date controls remain usable. Retry before applying advanced filters."
-                  />
-                ) : (
-                  <Tabs defaultValue="lead" className="grid gap-4">
-                    <TabsList className="grid h-auto w-full grid-cols-1 sm:grid-cols-3">
-                      <TabsTrigger value="lead">
-                        <CircleDot aria-hidden="true" />
-                        Lead
-                        {leadFilterCount > 0 ? (
-                          <Badge variant="secondary">{leadFilterCount}</Badge>
-                        ) : null}
-                      </TabsTrigger>
-                      <TabsTrigger value="assignment">
-                        <Building2 aria-hidden="true" />
-                        Assignment
-                        {assignmentFilterCount > 0 ? (
-                          <Badge variant="secondary">
-                            {assignmentFilterCount}
-                          </Badge>
-                        ) : null}
-                      </TabsTrigger>
-                      <TabsTrigger value="location">
-                        <MapPin aria-hidden="true" />
-                        Location
-                        {locationFilterCount > 0 ? (
-                          <Badge variant="secondary">
-                            {locationFilterCount}
-                          </Badge>
-                        ) : null}
-                      </TabsTrigger>
-                    </TabsList>
-
-                    <TabsContent
-                      value="lead"
-                      className="m-0 grid gap-4 md:grid-cols-2 xl:grid-cols-3"
-                    >
-                      <FilterChecklist
-                        label="Lead source"
-                        options={options.leadSources.map((item) => ({
-                          value: item.id,
-                          label: item.active
-                            ? item.name
-                            : `${item.name} · Inactive`,
-                        }))}
-                        values={draft.leadSourceIds}
-                        onChange={(leadSourceIds) => {
-                          setDraft({ ...draft, leadSourceIds });
-                        }}
-                      />
-                      <FilterChecklist
-                        label="Vehicle-sales flow"
-                        options={options.ivrFlows.map((item) => ({
-                          value: item.code,
-                          label: item.active
-                            ? item.name
-                            : `${item.name} · Inactive`,
-                        }))}
-                        values={draft.ivrFlowCodes}
-                        onChange={(ivrFlowCodes) => {
-                          setDraft({ ...draft, ivrFlowCodes });
-                        }}
-                      />
-                      <FilterChecklist
-                        label="Lead status"
-                        options={options.statuses.map((item) => ({
-                          value: item,
-                          label: item.replaceAll("_", " "),
-                        }))}
-                        values={draft.statuses}
-                        onChange={(statuses) => {
-                          setDraft({ ...draft, statuses });
-                        }}
-                      />
-                    </TabsContent>
-
-                    <TabsContent
-                      value="assignment"
-                      className="m-0 grid gap-4 md:grid-cols-2 xl:grid-cols-3"
-                    >
-                      <FilterChecklist
-                        label="Dealer"
-                        options={options.dealers.map((item) => ({
-                          value: item.id,
-                          label: `${item.name} · ${item.code}${item.active ? "" : " · Inactive"}`,
-                        }))}
-                        values={draft.dealerOrgUnitIds}
-                        onChange={(dealerOrgUnitIds) => {
-                          setDraft({ ...draft, dealerOrgUnitIds });
-                        }}
-                      />
-                      <FilterChecklist
-                        label="Assignment state"
-                        options={ASSIGNMENT_OPTIONS}
-                        values={draft.assignmentStates}
-                        onChange={(assignmentStates) => {
-                          setDraft({
-                            ...draft,
-                            assignmentStates:
-                              assignmentStates.filter(isAssignmentState),
-                          });
-                        }}
-                      />
-                      <FilterChecklist
-                        label="Conversion state"
-                        options={CONVERSION_OPTIONS}
-                        values={draft.conversionStates}
-                        onChange={(conversionStates) => {
-                          setDraft({
-                            ...draft,
-                            conversionStates:
-                              conversionStates.filter(isConversionState),
-                          });
-                        }}
-                      />
-                      <FilterChecklist
-                        label="Follow-up state"
-                        options={FOLLOW_UP_OPTIONS}
-                        values={draft.followUpStates}
-                        onChange={(followUpStates) => {
-                          setDraft({
-                            ...draft,
-                            followUpStates:
-                              followUpStates.filter(isFollowUpState),
-                          });
-                        }}
-                      />
-                    </TabsContent>
-
-                    <TabsContent
-                      value="location"
-                      className="m-0 grid gap-4 md:grid-cols-2"
-                    >
-                      <FilterChecklist
-                        label="District"
-                        options={options.districts.map((item) => ({
-                          value: item,
-                          label: item,
-                        }))}
-                        values={draft.districts}
-                        onChange={(districts) => {
-                          setDraft({ ...draft, districts });
-                        }}
-                      />
-                      <FilterChecklist
-                        label="City"
-                        options={options.cities.map((item) => ({
-                          value: item,
-                          label: item,
-                        }))}
-                        values={draft.cities}
-                        onChange={(cities) => {
-                          setDraft({ ...draft, cities });
-                        }}
-                      />
-                    </TabsContent>
-                  </Tabs>
-                )}
-              </DialogBody>
-
-              <DialogFooter className="sm:justify-between">
-                <div className="flex flex-col-reverse gap-2 sm:flex-row">
-                  <DialogClose asChild>
-                    <Button type="button" variant="ghost">
-                      Cancel
-                    </Button>
-                  </DialogClose>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    disabled={draftCount === 0}
-                    onClick={() => {
-                      setDraft(emptyDraft());
-                    }}
-                  >
-                    Clear all
-                  </Button>
-                </div>
-                <div className="flex flex-col-reverse gap-2 sm:flex-row">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => {
-                      setDraft(draftFromQuery(query));
-                    }}
-                  >
-                    Restore applied
-                  </Button>
-                  <Button
-                    type="button"
-                    disabled={options === null}
-                    onClick={() => {
-                      navigate({ ...draft });
-                      setOpen(false);
-                    }}
-                  >
-                    <SlidersHorizontal aria-hidden="true" />
-                    Apply{" "}
-                    {draftCount > 0
-                      ? `${String(draftCount)} filters`
-                      : "filters"}
-                  </Button>
-                </div>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
-        ) : null}
-      </div>
-
-      <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
-        {isOverviewRoute && query.q !== undefined ? (
-          <Badge variant="outline" className="max-w-72 gap-1.5">
-            <Search aria-hidden="true" className="size-3" />
-            <span className="truncate">{query.q}</span>
+          </div>
+          {periodError === null ? null : (
+            <p role="alert" className="text-caption text-destructive">
+              {periodError}
+            </p>
+          )}
+          <div className="flex justify-end gap-2">
             <Button
               type="button"
               variant="ghost"
-              size="icon-xs"
-              aria-label="Clear page search"
               onClick={() => {
-                navigate({ q: null });
+                navigate({ from: null, to: null });
+                setPeriodOpen(false);
               }}
             >
-              <X aria-hidden="true" className="size-3" />
+              Default 30 days
             </Button>
-          </Badge>
-        ) : null}
-        <Tooltip>
-          <TooltipTrigger asChild>
             <Button
               type="button"
-              variant="outline"
+              disabled={periodError !== null}
               onClick={() => {
-                router.refresh();
+                navigate({ from: draftFrom, to: draftTo });
+                setPeriodOpen(false);
               }}
             >
-              <RefreshCw aria-hidden="true" className="size-4" />
-              Refresh
+              Apply
             </Button>
-          </TooltipTrigger>
-          <TooltipContent>
-            Reload dashboard data without changing the current filters.
-          </TooltipContent>
-        </Tooltip>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button variant="ghost" asChild>
-              <Link href={engagementDashboardResetHref(route)} prefetch={false}>
-                <RotateCcw aria-hidden="true" className="size-4" />
-                Reset
-              </Link>
+          </div>
+        </PopoverContent>
+      </Popover>
+      {
+        <Dialog
+          open={open}
+          onOpenChange={(nextOpen) => {
+            setOpen(nextOpen);
+
+            if (nextOpen) {
+              setDraft(draftFromQuery(query));
+            }
+          }}
+        >
+          <DialogTrigger asChild>
+            <Button type="button" variant="outline" className="self-end">
+              <Filter aria-hidden="true" className="size-4" />
+              More filters
+              {count > 0 ? <Badge variant="secondary">{count}</Badge> : null}
             </Button>
-          </TooltipTrigger>
-          <TooltipContent>
-            Restore the default 30-day view, 72-hour journey maturity horizon,
-            and clear every filter.
-          </TooltipContent>
-        </Tooltip>
-      </div>
-    </ContentToolbar>
+          </DialogTrigger>
+          <DialogContent height="viewport" className="sm:max-w-6xl">
+            <DialogHeader>
+              <div className="flex flex-wrap items-center gap-2">
+                <DialogTitle>Filter vehicle-sales engagement</DialogTitle>
+                <Badge variant={draftCount > 0 ? "secondary" : "outline"}>
+                  {draftCount} selected
+                </Badge>
+              </div>
+              <DialogDescription>
+                Filters are grouped by business purpose and apply consistently
+                to the operational workspace. Search long option lists
+                independently without losing current selections.
+              </DialogDescription>
+            </DialogHeader>
+
+            <DialogBody>
+              {options === null ? (
+                <ContentStatus
+                  variant={
+                    filterOptions?.status === "forbidden"
+                      ? "warning"
+                      : "destructive"
+                  }
+                  title="Filter options unavailable"
+                  description="The current date controls remain usable. Retry before applying advanced filters."
+                />
+              ) : (
+                <Tabs defaultValue="lead" className="grid gap-4">
+                  <TabsList className="grid h-auto w-full grid-cols-1 sm:grid-cols-3">
+                    <TabsTrigger value="lead">
+                      <CircleDot aria-hidden="true" />
+                      Lead
+                      {leadFilterCount > 0 ? (
+                        <Badge variant="secondary">{leadFilterCount}</Badge>
+                      ) : null}
+                    </TabsTrigger>
+                    <TabsTrigger value="assignment">
+                      <Building2 aria-hidden="true" />
+                      Assignment
+                      {assignmentFilterCount > 0 ? (
+                        <Badge variant="secondary">
+                          {assignmentFilterCount}
+                        </Badge>
+                      ) : null}
+                    </TabsTrigger>
+                    <TabsTrigger value="location">
+                      <MapPin aria-hidden="true" />
+                      Location
+                      {locationFilterCount > 0 ? (
+                        <Badge variant="secondary">{locationFilterCount}</Badge>
+                      ) : null}
+                    </TabsTrigger>
+                  </TabsList>
+
+                  <TabsContent
+                    value="lead"
+                    className="m-0 grid gap-4 md:grid-cols-2 xl:grid-cols-3"
+                  >
+                    <FilterChecklist
+                      label="Lead source"
+                      options={options.leadSources.map((item) => ({
+                        value: item.id,
+                        label: item.active
+                          ? item.name
+                          : `${item.name} · Inactive`,
+                      }))}
+                      values={draft.leadSourceIds}
+                      onChange={(leadSourceIds) => {
+                        setDraft({ ...draft, leadSourceIds });
+                      }}
+                    />
+                    <FilterChecklist
+                      label="Vehicle-sales flow"
+                      options={options.ivrFlows.map((item) => ({
+                        value: item.code,
+                        label: item.active
+                          ? item.name
+                          : `${item.name} · Inactive`,
+                      }))}
+                      values={draft.ivrFlowCodes}
+                      onChange={(ivrFlowCodes) => {
+                        setDraft({ ...draft, ivrFlowCodes });
+                      }}
+                    />
+                    <FilterChecklist
+                      label="Lead status"
+                      options={options.statuses.map((item) => ({
+                        value: item,
+                        label: item.replaceAll("_", " "),
+                      }))}
+                      values={draft.statuses}
+                      onChange={(statuses) => {
+                        setDraft({ ...draft, statuses });
+                      }}
+                    />
+                  </TabsContent>
+
+                  <TabsContent
+                    value="assignment"
+                    className="m-0 grid gap-4 md:grid-cols-2 xl:grid-cols-3"
+                  >
+                    <FilterChecklist
+                      label="Dealer"
+                      options={options.dealers.map((item) => ({
+                        value: item.id,
+                        label: `${item.name} · ${item.code}${item.active ? "" : " · Inactive"}`,
+                      }))}
+                      values={draft.dealerOrgUnitIds}
+                      onChange={(dealerOrgUnitIds) => {
+                        setDraft({ ...draft, dealerOrgUnitIds });
+                      }}
+                    />
+                    <FilterChecklist
+                      label="Assignment state"
+                      options={ASSIGNMENT_OPTIONS}
+                      values={draft.assignmentStates}
+                      onChange={(assignmentStates) => {
+                        setDraft({
+                          ...draft,
+                          assignmentStates:
+                            assignmentStates.filter(isAssignmentState),
+                        });
+                      }}
+                    />
+                    <FilterChecklist
+                      label="Conversion state"
+                      options={CONVERSION_OPTIONS}
+                      values={draft.conversionStates}
+                      onChange={(conversionStates) => {
+                        setDraft({
+                          ...draft,
+                          conversionStates:
+                            conversionStates.filter(isConversionState),
+                        });
+                      }}
+                    />
+                    <FilterChecklist
+                      label="Follow-up state"
+                      options={FOLLOW_UP_OPTIONS}
+                      values={draft.followUpStates}
+                      onChange={(followUpStates) => {
+                        setDraft({
+                          ...draft,
+                          followUpStates:
+                            followUpStates.filter(isFollowUpState),
+                        });
+                      }}
+                    />
+                  </TabsContent>
+
+                  <TabsContent
+                    value="location"
+                    className="m-0 grid gap-4 md:grid-cols-2"
+                  >
+                    <FilterChecklist
+                      label="District"
+                      options={options.districts.map((item) => ({
+                        value: item,
+                        label: item,
+                      }))}
+                      values={draft.districts}
+                      onChange={(districts) => {
+                        setDraft({ ...draft, districts });
+                      }}
+                    />
+                    <FilterChecklist
+                      label="City"
+                      options={options.cities.map((item) => ({
+                        value: item,
+                        label: item,
+                      }))}
+                      values={draft.cities}
+                      onChange={(cities) => {
+                        setDraft({ ...draft, cities });
+                      }}
+                    />
+                  </TabsContent>
+                </Tabs>
+              )}
+            </DialogBody>
+
+            <DialogFooter className="sm:justify-between">
+              <div className="flex flex-col-reverse gap-2 sm:flex-row">
+                <DialogClose asChild>
+                  <Button type="button" variant="ghost">
+                    Cancel
+                  </Button>
+                </DialogClose>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  disabled={draftCount === 0}
+                  onClick={() => {
+                    setDraft(emptyDraft());
+                  }}
+                >
+                  Clear all
+                </Button>
+              </div>
+              <div className="flex flex-col-reverse gap-2 sm:flex-row">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    setDraft(draftFromQuery(query));
+                  }}
+                >
+                  Restore applied
+                </Button>
+                <Button
+                  type="button"
+                  disabled={options === null}
+                  onClick={() => {
+                    navigate({ ...draft });
+                    setOpen(false);
+                  }}
+                >
+                  <SlidersHorizontal aria-hidden="true" />
+                  Apply{" "}
+                  {draftCount > 0 ? `${String(draftCount)} filters` : "filters"}
+                </Button>
+              </div>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      }
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => {
+              router.refresh();
+            }}
+          >
+            <RefreshCw aria-hidden="true" className="size-4" />
+            Refresh
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>
+          Reload dashboard data without changing the current filters.
+        </TooltipContent>
+      </Tooltip>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button variant="ghost" asChild>
+            <Link href={engagementDashboardResetHref(route)} prefetch={false}>
+              <RotateCcw aria-hidden="true" className="size-4" />
+              Reset
+            </Link>
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>
+          Restore the default 30-day view and clear every filter.
+        </TooltipContent>
+      </Tooltip>
+    </div>
   );
 }

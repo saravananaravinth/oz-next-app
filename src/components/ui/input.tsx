@@ -3,8 +3,7 @@ import type * as React from "react";
 
 import { cn } from "@/lib/utils";
 
-export type InputProps = Omit<React.ComponentProps<"input">, "placeholder"> &
-  Readonly<{ placeholder: string }>;
+export type InputProps = React.ComponentProps<"input">;
 
 const INPUT_CLASS_NAME = [
   "flex h-11 w-full min-w-0 rounded-2xl border border-input bg-background px-3 py-2 text-body-sm text-foreground shadow-xs outline-none placeholder:text-muted-foreground/80",

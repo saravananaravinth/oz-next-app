@@ -22,22 +22,21 @@ import {
   engagementFilterOptionsSchema,
   engagementFunnelSchema,
   engagementLeadDetailSchema,
-  engagementLeadSourceSeriesSchema,
+  engagementLeadFlowSeriesSchema,
   engagementVideoSequenceListResultSchema,
   type EngagementCoverageResult,
   type EngagementDashboardSearchParams,
+  type EngagementDashboardLeadListResult,
   type EngagementDealerDetail,
   type EngagementDealerPerformanceResult,
   type EngagementLeadDetail,
   type EngagementVideoSequenceListResult,
 } from "@/features/engagement/operations-dashboard/contracts/engagement-dashboard.schema";
-import { engagementJourneyAnalyticsSnapshotSchema } from "@/features/engagement/operations-dashboard/contracts/journey-analytics-snapshot.schema";
 import type {
   EngagementCoverageWorkspaceData,
   EngagementDashboardSectionResult,
   EngagementDealerWorkspaceData,
   EngagementIssueWorkspaceData,
-  EngagementJourneyWorkspaceData,
   EngagementOverviewData,
   EngagementVideoSequenceWorkspaceData,
 } from "@/features/engagement/operations-dashboard/contracts/engagement-dashboard.types";
@@ -151,7 +150,7 @@ export async function readEngagementOverview(
     grain: input.query.grain === "AUTO" ? undefined : input.query.grain,
   });
 
-  const [summary, leadSources, funnel, filterOptions, leads] =
+  const [summary, leadFlow, funnel, filterOptions, leads, coverage] =
     await Promise.all([
       settle(
         dashboardClient.request({
@@ -163,9 +162,9 @@ export async function readEngagementOverview(
       ),
       settle(
         dashboardClient.request({
-          path: "/lead-sources/timeseries",
+          path: "/lead-flow/timeseries",
           query: seriesQuery,
-          schema: engagementLeadSourceSeriesSchema,
+          schema: engagementLeadFlowSeriesSchema,
           ...options,
         }),
       ),
@@ -190,37 +189,36 @@ export async function readEngagementOverview(
           ...options,
         }),
       ),
+      settle(
+        dashboardClient.request({
+          path: "/coverage",
+          query: common,
+          schema: engagementCoverageResultSchema,
+          ...options,
+        }),
+      ),
     ]);
 
-  return { summary, leadSources, funnel, filterOptions, leads };
+  return { summary, leadFlow, funnel, filterOptions, leads, coverage };
 }
 
-function journeyQuery(
-  query: EngagementDashboardSearchParams,
-): Readonly<Record<string, ErpFeatureQueryValue>> {
-  return {
-    from: query.from,
-    to: query.to,
-    maturityHours: query.maturityHours,
-  };
-}
-
-export async function readEngagementJourneyWorkspace(
+export async function searchEngagementDashboardLeads(
   input: Readonly<{
-    query: EngagementDashboardSearchParams;
+    query: string;
     access: ResolvedEngagementDashboardAccess;
   }>,
-): Promise<EngagementJourneyWorkspaceData> {
-  const journey = await settle(
-    dashboardClient.request({
-      path: "/journey/snapshot",
-      query: journeyQuery(input.query),
-      schema: engagementJourneyAnalyticsSnapshotSchema,
-      ...actorContextOptions(input.access),
-    }),
-  );
-
-  return { journey };
+): Promise<EngagementDashboardLeadListResult> {
+  return await dashboardClient.request({
+    path: "/leads",
+    query: {
+      from: "2020-01-01",
+      to: new Date().toISOString().slice(0, 10),
+      q: input.query,
+      limit: 25,
+    },
+    schema: engagementDashboardLeadListResultSchema,
+    ...actorContextOptions(input.access),
+  });
 }
 
 export async function readEngagementDealerWorkspace(

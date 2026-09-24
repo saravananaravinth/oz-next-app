@@ -7,99 +7,45 @@ import {
   lstatSync,
   mkdirSync,
   readFileSync,
+  renameSync,
+  rmSync,
   writeFileSync,
 } from "node:fs";
-import { basename, extname, join, relative, resolve } from "node:path";
+import {
+  basename,
+  extname,
+  isAbsolute,
+  join,
+  relative,
+  resolve,
+  sep,
+} from "node:path";
 import process from "node:process";
 
 const EXPECTED_REPOSITORY_NAME = "oz-next-app";
 const DEFAULT_OUTPUT_DIRECTORY = "bundles";
-const MANIFEST_FILE_NAME = "oz-next-app-bundles.manifest.json";
+const BUNDLE_FILE_NAME = "oz-next-app-project.md";
+const BUNDLE_SCHEMA_VERSION = 3;
+const BUNDLE_FORMAT = "ozotec-project-source-v1";
 const HEADER_SCAN_LIMIT = 16;
 
-const CONTENT_EXCLUDED_FILE_NAMES = new Set([
-  "package-lock.json",
-  "npm-shrinkwrap.json",
-  "yarn.lock",
-  "pnpm-lock.yaml",
-]);
-
-const BUNDLE_DEFINITIONS = Object.freeze([
-  {
-    output: "oz-next-app-app.md",
-    title: "App Folder Bundle",
-    treeRoot: "app",
-    sourcePrefix: "src/app/",
-    mode: "prefix",
-  },
-  {
-    output: "oz-next-app-components.md",
-    title: "Components Folder Bundle",
-    treeRoot: "components",
-    sourcePrefix: "src/components/",
-    mode: "components",
-  },
-  {
-    output: "oz-next-app-components-ui.md",
-    title: "Shared UI Components Bundle",
-    treeRoot: "components/ui",
-    sourcePrefix: "src/components/ui/",
-    mode: "prefix",
-  },
-  {
-    output: "oz-next-app-features.md",
-    title: "Features Folder Bundle",
-    treeRoot: "features",
-    sourcePrefix: "src/features/",
-    mode: "prefix",
-  },
-  {
-    output: "oz-next-app-lib.md",
-    title: "Lib Folder Bundle",
-    treeRoot: "lib",
-    sourcePrefix: "src/lib/",
-    mode: "prefix",
-  },
-  {
-    output: "oz-next-app-server.md",
-    title: "Server Folder Bundle",
-    treeRoot: "server",
-    sourcePrefix: "src/server/",
-    mode: "prefix",
-  },
-  {
-    output: "oz-next-app-shared.md",
-    title: "Shared Folder Bundle",
-    treeRoot: "shared",
-    sourcePrefix: "src/shared/",
-    mode: "prefix",
-  },
-  {
-    output: "oz-next-app-types.md",
-    title: "Types Folder Bundle",
-    treeRoot: "types",
-    sourcePrefix: "src/types/",
-    mode: "prefix",
-  },
-  {
-    output: "oz-next-app-root.md",
-    title: "Root Files Bundle",
-    treeRoot: EXPECTED_REPOSITORY_NAME,
-    sourcePrefix: "",
-    mode: "root",
-  },
-  {
-    output: "oz-next-app-structure.md",
-    title: "oz-next-app Structure",
-    treeRoot: EXPECTED_REPOSITORY_NAME,
-    sourcePrefix: "",
-    mode: "structure",
-  },
+const LEGACY_GENERATED_BUNDLE_FILE_NAMES = Object.freeze([
+  "oz-next-app-app.md",
+  "oz-next-app-components.md",
+  "oz-next-app-components-ui.md",
+  "oz-next-app-features.md",
+  "oz-next-app-lib.md",
+  "oz-next-app-server.md",
+  "oz-next-app-shared.md",
+  "oz-next-app-types.md",
+  "oz-next-app-root.md",
+  "oz-next-app-structure.md",
+  "oz-next-app-bundles.manifest.json",
 ]);
 
 const GENERATED_BUNDLE_FILE_NAMES = new Set([
-  ...BUNDLE_DEFINITIONS.map((definition) => definition.output),
-  MANIFEST_FILE_NAME,
+  BUNDLE_FILE_NAME,
+  ...LEGACY_GENERATED_BUNDLE_FILE_NAMES,
 ]);
 
 const GENERATED_LOCK_FILE_NAMES = new Set([
@@ -127,10 +73,14 @@ const BINARY_EXTENSIONS = new Set([
   ".jar",
   ".jpeg",
   ".jpg",
+  ".jks",
+  ".keystore",
   ".mov",
   ".mp3",
   ".mp4",
   ".otf",
+  ".p12",
+  ".pfx",
   ".pdf",
   ".png",
   ".so",
@@ -148,11 +98,21 @@ const BINARY_EXTENSIONS = new Set([
   ".zip",
 ]);
 
+const SENSITIVE_TEXT_EXTENSIONS = new Set([".key", ".pem"]);
+
+const SAFE_SECRET_TEMPLATE_SUFFIXES = Object.freeze([
+  ".dist",
+  ".example",
+  ".sample",
+  ".template",
+]);
+
 function parseArgs(argv) {
   const result = {
     outDir: DEFAULT_OUTPUT_DIRECTORY,
     expectedHead: null,
     relativePathMode: "generate",
+    requireClean: false,
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -181,6 +141,11 @@ function parseArgs(argv) {
 
       result.expectedHead = value;
       index += 1;
+      continue;
+    }
+
+    if (argument === "--require-clean") {
+      result.requireClean = true;
       continue;
     }
 
@@ -216,6 +181,10 @@ function parseArgs(argv) {
           "  --expected-head <sha>",
           "      Fail unless HEAD equals the supplied full Git SHA.",
           "",
+          "  --require-clean",
+          "      Fail bundle generation when relevant tracked/untracked working-tree changes exist.",
+          "      Header check/fix modes do not require a clean working tree.",
+          "",
           "  --check-relative-paths",
           "      Read-only validation of canonical source path headers.",
           "      This mode is safe to run on a dirty working tree.",
@@ -228,7 +197,11 @@ function parseArgs(argv) {
           "  -h, --help",
           "      Show this help.",
           "",
-          "Bundle generation uses the current tracked working-tree contents and is allowed while tracked files are modified.",
+          `Bundle generation writes one Project Source file: ${BUNDLE_FILE_NAME}.`,
+          "The bundle embeds repository/commit/branch/worktree/content-hash metadata.",
+          "Generation reads current on-disk tracked contents and includes non-ignored",
+          "untracked files. Binary content, generated lockfiles, generated bundle",
+          "artifacts, and sensitive local files are not embedded as source content.",
           "",
         ].join("\n"),
       );
@@ -249,6 +222,20 @@ function runGit(args, encoding = "utf8") {
     stdio: ["ignore", "pipe", "pipe"],
     maxBuffer: 128 * 1024 * 1024,
   });
+}
+
+function runGitNullSeparated(args) {
+  const output = execFileSync("git", [...args, "-z"], {
+    cwd: process.cwd(),
+    encoding: "buffer",
+    stdio: ["ignore", "pipe", "pipe"],
+    maxBuffer: 128 * 1024 * 1024,
+  });
+
+  return output
+    .toString("utf8")
+    .split("\0")
+    .filter((value) => value.length > 0);
 }
 
 function assertRepositoryIdentity(expectedHead) {
@@ -284,54 +271,96 @@ function assertRepositoryIdentity(expectedHead) {
     throw new Error("Unable to resolve the HEAD commit timestamp.");
   }
 
-  return { repoRoot, head, commitTimestamp };
-}
+  const branchValue = runGit(["rev-parse", "--abbrev-ref", "HEAD"]).trim();
 
-function inspectTrackedWorkingTree() {
-  const status = runGit([
-    "status",
-    "--porcelain=v1",
-    "--untracked-files=no",
-  ]).trim();
-
-  if (status.length === 0) {
-    return { dirty: false, changedFileCount: 0 };
-  }
+  const branch =
+    branchValue === "HEAD" || branchValue.length === 0 ? null : branchValue;
 
   return {
-    dirty: true,
-    changedFileCount: status.split("\n").filter((line) => line.length > 0)
-      .length,
+    repoRoot,
+    head,
+    shortHead: head.slice(0, 12),
+    branch,
+    commitTimestamp,
   };
 }
 
 function listTrackedFiles() {
-  const output = execFileSync("git", ["ls-files", "-z"], {
-    cwd: process.cwd(),
-    encoding: "buffer",
-    stdio: ["ignore", "pipe", "pipe"],
-    maxBuffer: 128 * 1024 * 1024,
-  });
+  const deletedPaths = new Set(runGitNullSeparated(["ls-files", "--deleted"]));
 
-  const deletedOutput = execFileSync("git", ["ls-files", "--deleted", "-z"], {
-    cwd: process.cwd(),
-    encoding: "buffer",
-    stdio: ["ignore", "pipe", "pipe"],
-    maxBuffer: 128 * 1024 * 1024,
-  });
+  return runGitNullSeparated(["ls-files", "--cached"])
+    .filter((path) => !deletedPaths.has(path))
+    .sort(comparePaths);
+}
 
-  const deletedPaths = new Set(
-    deletedOutput
-      .toString("utf8")
-      .split("\0")
-      .filter((value) => value.length > 0),
+function listUntrackedFiles() {
+  return runGitNullSeparated([
+    "ls-files",
+    "--others",
+    "--exclude-standard",
+  ]).sort(comparePaths);
+}
+
+function outputRepositoryPrefix(repoRoot, outDir) {
+  const outputDirectory = resolve(outDir);
+  const repositoryRelative = relative(repoRoot, outputDirectory);
+
+  if (repositoryRelative.length === 0) {
+    return "";
+  }
+
+  if (
+    isAbsolute(repositoryRelative) ||
+    repositoryRelative === ".." ||
+    repositoryRelative.startsWith(`..${sep}`)
+  ) {
+    return null;
+  }
+
+  return assertCanonicalRepositoryRelativePath(repositoryRelative);
+}
+
+function listRepositorySourceFiles(
+  trackedFiles,
+  untrackedFiles,
+  generatedOutputPrefix,
+) {
+  return [...new Set([...trackedFiles, ...untrackedFiles])]
+    .map((path) => assertCanonicalRepositoryRelativePath(path))
+    .filter((path) => !isGeneratedBundlePath(path, generatedOutputPrefix))
+    .sort(comparePaths);
+}
+
+function inspectWorkingTree(untrackedFiles, generatedOutputPrefix) {
+  const deletedTrackedPaths = new Set(
+    runGitNullSeparated(["ls-files", "--deleted"])
+      .map((path) => assertCanonicalRepositoryRelativePath(path))
+      .filter((path) => !isGeneratedBundlePath(path, generatedOutputPrefix)),
   );
 
-  return output
-    .toString("utf8")
-    .split("\0")
-    .filter((value) => value.length > 0 && !deletedPaths.has(value))
-    .sort(comparePaths);
+  const changedTrackedPaths = runGitNullSeparated([
+    "diff",
+    "HEAD",
+    "--name-only",
+  ])
+    .map((path) => assertCanonicalRepositoryRelativePath(path))
+    .filter((path) => !isGeneratedBundlePath(path, generatedOutputPrefix));
+
+  const relevantUntrackedPaths = untrackedFiles
+    .map((path) => assertCanonicalRepositoryRelativePath(path))
+    .filter((path) => !isGeneratedBundlePath(path, generatedOutputPrefix));
+
+  return {
+    dirty: changedTrackedPaths.length > 0 || relevantUntrackedPaths.length > 0,
+
+    changedTrackedFileCount: changedTrackedPaths.length,
+
+    deletedTrackedFileCount: changedTrackedPaths.filter((path) =>
+      deletedTrackedPaths.has(path),
+    ).length,
+
+    untrackedFileCount: relevantUntrackedPaths.length,
+  };
 }
 
 function comparePaths(left, right) {
@@ -348,7 +377,11 @@ function normalizeRepositoryPath(path) {
 function assertCanonicalRepositoryRelativePath(path) {
   const normalized = normalizeRepositoryPath(path);
 
-  if (normalized.length === 0 || normalized.startsWith("/")) {
+  if (
+    normalized.length === 0 ||
+    normalized.startsWith("/") ||
+    /[\u0000-\u001F\u007F]/u.test(normalized)
+  ) {
     throw new Error(`Invalid repository-relative path: ${path}`);
   }
 
@@ -365,14 +398,27 @@ function assertCanonicalRepositoryRelativePath(path) {
   return normalized;
 }
 
-function isGeneratedBundlePath(path) {
+function isGeneratedBundlePath(path, generatedOutputPrefix = null) {
   const normalized = normalizeRepositoryPath(path);
 
-  return (
+  if (
     normalized === DEFAULT_OUTPUT_DIRECTORY ||
     normalized.startsWith(`${DEFAULT_OUTPUT_DIRECTORY}/`) ||
     GENERATED_BUNDLE_FILE_NAMES.has(basename(normalized))
-  );
+  ) {
+    return true;
+  }
+
+  if (
+    generatedOutputPrefix !== null &&
+    generatedOutputPrefix.length > 0 &&
+    (normalized === generatedOutputPrefix ||
+      normalized.startsWith(`${generatedOutputPrefix}/`))
+  ) {
+    return true;
+  }
+
+  return false;
 }
 
 function isBinaryExtension(path) {
@@ -384,20 +430,103 @@ function hasBinaryContent(path) {
   const inspectionLength = Math.min(data.length, 16_384);
 
   for (let index = 0; index < inspectionLength; index += 1) {
-    if (data[index] === 0) return true;
+    if (data[index] === 0) {
+      return true;
+    }
   }
 
   return false;
 }
 
+function hasSafeSecretTemplateSuffix(fileName) {
+  const lowerName = fileName.toLowerCase();
+
+  return SAFE_SECRET_TEMPLATE_SUFFIXES.some((suffix) =>
+    lowerName.endsWith(suffix),
+  );
+}
+
+function sensitiveBundlePathReason(repositoryPath) {
+  const normalized = normalizeRepositoryPath(repositoryPath);
+
+  const fileName = basename(normalized);
+
+  const lowerName = fileName.toLowerCase();
+
+  const extension = extname(lowerName);
+
+  const isSafeTemplate = hasSafeSecretTemplateSuffix(lowerName);
+
+  if (
+    (lowerName === ".env" || lowerName.startsWith(".env.")) &&
+    !isSafeTemplate
+  ) {
+    return "environment-secret-file";
+  }
+
+  if (
+    (lowerName === ".dev.vars" || lowerName.startsWith(".dev.vars.")) &&
+    !isSafeTemplate
+  ) {
+    return "cloudflare-local-secret-file";
+  }
+
+  if (lowerName === ".npmrc" || lowerName === ".pypirc") {
+    return "package-registry-credential-file";
+  }
+
+  if (
+    (lowerName === "credentials" || lowerName.startsWith("credentials.")) &&
+    !isSafeTemplate
+  ) {
+    return "credential-file";
+  }
+
+  if (
+    (lowerName === "secrets" || lowerName.startsWith("secrets.")) &&
+    !isSafeTemplate
+  ) {
+    return "secret-file";
+  }
+
+  if (SENSITIVE_TEXT_EXTENSIONS.has(extension)) {
+    return "private-key-or-certificate-material";
+  }
+
+  if (
+    extension === ".p12" ||
+    extension === ".pfx" ||
+    extension === ".jks" ||
+    extension === ".keystore"
+  ) {
+    return "private-key-or-keystore-material";
+  }
+
+  return null;
+}
+
 function relativePathExemptionReason(repositoryPath) {
   const normalized = normalizeRepositoryPath(repositoryPath);
+
   const fileName = basename(normalized);
+
   const extension = extname(normalized).toLowerCase();
 
-  if (isGeneratedBundlePath(normalized)) return "generated-bundle-artifact";
-  if (GENERATED_LOCK_FILE_NAMES.has(fileName)) return "generated-lock-file";
-  if (isBinaryExtension(normalized)) return "binary-file";
+  if (isGeneratedBundlePath(normalized)) {
+    return "generated-bundle-artifact";
+  }
+
+  if (GENERATED_LOCK_FILE_NAMES.has(fileName)) {
+    return "generated-lock-file";
+  }
+
+  if (sensitiveBundlePathReason(normalized) !== null) {
+    return "sensitive-local-file";
+  }
+
+  if (isBinaryExtension(normalized)) {
+    return "binary-file";
+  }
 
   if (extension === ".json" || extension === ".webmanifest") {
     return "strict-json";
@@ -462,8 +591,11 @@ function isShellShebang(line) {
 
 function headerPolicyFor(repositoryPath, rawContent) {
   const normalized = assertCanonicalRepositoryRelativePath(repositoryPath);
+
   const fileName = basename(normalized);
+
   const extension = extname(normalized).toLowerCase();
+
   const firstLine = firstPhysicalLine(rawContent);
 
   if (
@@ -592,7 +724,9 @@ function canonicalHeaderFor(repositoryPath, commentStyle) {
 
 function splitDocument(rawContent) {
   const hasBom = rawContent.startsWith("\uFEFF");
+
   const content = hasBom ? rawContent.slice(1) : rawContent;
+
   const lines = [];
   let offset = 0;
 
@@ -701,6 +835,7 @@ function unwrapPathHeader(line) {
 
   for (const pattern of patterns) {
     const match = pattern.exec(line);
+
     const payload = match?.[1]?.trim();
 
     if (payload !== undefined && payload.length > 0) {
@@ -713,6 +848,7 @@ function unwrapPathHeader(line) {
 
 function classifyPathHeaderPayload(payload, repositoryPath) {
   const normalizedPath = normalizeRepositoryPath(repositoryPath);
+
   const canonical = `${EXPECTED_REPOSITORY_NAME}/${normalizedPath}`;
 
   if (payload === canonical) {
@@ -762,6 +898,7 @@ function insertionIndexFor(policy, lines) {
 
 function analyzeRelativePathFile(repositoryPath) {
   const normalizedPath = assertCanonicalRepositoryRelativePath(repositoryPath);
+
   const exemptionReason = relativePathExemptionReason(normalizedPath);
 
   if (exemptionReason !== null) {
@@ -777,14 +914,6 @@ function analyzeRelativePathFile(repositoryPath) {
   try {
     stat = lstatSync(resolve(normalizedPath));
   } catch (error) {
-    if (error instanceof Error && "code" in error && error.code === "ENOENT") {
-      return {
-        kind: "skipped",
-        path: normalizedPath,
-        reason: "missing-tracked-file",
-      };
-    }
-
     return {
       kind: "unsafe",
       path: normalizedPath,
@@ -797,9 +926,9 @@ function analyzeRelativePathFile(repositoryPath) {
     return {
       kind: "unsafe",
       path: normalizedPath,
-      reason: "tracked-symlink",
+      reason: "repository-symlink",
       detail:
-        "Tracked symlinks are not rewritten or bundled as source content.",
+        "Repository symlinks are not rewritten or bundled as source content.",
     };
   }
 
@@ -808,7 +937,7 @@ function analyzeRelativePathFile(repositoryPath) {
       kind: "unsafe",
       path: normalizedPath,
       reason: "not-regular-file",
-      detail: "Expected a regular tracked file.",
+      detail: "Expected a regular repository file.",
     };
   }
 
@@ -821,6 +950,7 @@ function analyzeRelativePathFile(repositoryPath) {
   }
 
   const rawContent = readFileSync(normalizedPath, "utf8");
+
   const policy = headerPolicyFor(normalizedPath, rawContent);
 
   if (policy === null) {
@@ -829,7 +959,7 @@ function analyzeRelativePathFile(repositoryPath) {
       path: normalizedPath,
       reason: "unsupported-text-format",
       detail:
-        "No semantics-preserving first-line comment syntax is configured for this tracked text file.",
+        "No semantics-preserving first-line comment syntax is configured for this repository text file.",
     };
   }
 
@@ -839,7 +969,9 @@ function analyzeRelativePathFile(repositoryPath) {
   );
 
   const document = splitDocument(rawContent);
+
   const scanLength = Math.min(document.lines.length, HEADER_SCAN_LIMIT);
+
   const sameRepositoryHeaderIndices = [];
   const differentRepositoryHeaders = [];
 
@@ -943,8 +1075,8 @@ function analyzeRelativePathFile(repositoryPath) {
   };
 }
 
-function analyzeTrackedRelativePaths(trackedFiles) {
-  return trackedFiles.map((path) => analyzeRelativePathFile(path));
+function analyzeRepositoryRelativePaths(repositoryFiles) {
+  return repositoryFiles.map((path) => analyzeRelativePathFile(path));
 }
 
 function formatRelativePathFailures(results, operation) {
@@ -955,13 +1087,15 @@ function formatRelativePathFailures(results, operation) {
   const displayed = failures.slice(0, 100);
 
   const lines = [
-    `Relative-path ${operation} failed for ${failures.length} tracked file(s).`,
+    `Relative-path ${operation} failed for ${failures.length} repository file(s).`,
     "",
   ];
 
   for (const result of displayed) {
     lines.push(`- ${result.path}`);
+
     lines.push(`  status: ${result.kind}`);
+
     lines.push(`  reason: ${result.reason}`);
 
     if ("expectedHeader" in result) {
@@ -987,8 +1121,8 @@ function formatRelativePathFailures(results, operation) {
   return lines.join("\n");
 }
 
-function checkRelativePaths(trackedFiles) {
-  const results = analyzeTrackedRelativePaths(trackedFiles);
+function checkRelativePaths(repositoryFiles) {
+  const results = analyzeRepositoryRelativePaths(repositoryFiles);
 
   const failures = results.filter(
     (result) => result.kind === "repair" || result.kind === "unsafe",
@@ -1006,10 +1140,8 @@ function checkRelativePaths(trackedFiles) {
 
   const exempt = results.filter((result) => result.kind === "exempt").length;
 
-  const skipped = results.filter((result) => result.kind === "skipped").length;
-
   process.stdout.write(
-    `Relative-path check passed: ${enforced} enforced, ${exempt} exempt, ${skipped} skipped (missing).\n`,
+    `Relative-path check passed: ${enforced} enforced, ${exempt} exempt.\n`,
   );
 
   return {
@@ -1019,15 +1151,15 @@ function checkRelativePaths(trackedFiles) {
   };
 }
 
-function fixRelativePaths(trackedFiles) {
-  const results = analyzeTrackedRelativePaths(trackedFiles);
+function fixRelativePaths(repositoryFiles) {
+  const results = analyzeRepositoryRelativePaths(repositoryFiles);
 
   const unsafe = results.filter((result) => result.kind === "unsafe");
 
   if (unsafe.length > 0) {
     throw new Error(
       `${formatRelativePathFailures(results, "repair preflight")}\n\n` +
-        "No files were written because repair preflight found unsafe or unsupported tracked files.",
+        "No files were written because repair preflight found unsafe or unsupported repository files.",
     );
   }
 
@@ -1052,9 +1184,6 @@ function fixRelativePaths(trackedFiles) {
       `Exempt: ${
         results.filter((result) => result.kind === "exempt").length
       } file(s)`,
-      `Skipped (missing): ${
-        results.filter((result) => result.kind === "skipped").length
-      } file(s)`,
       "",
       repairs.length > 0
         ? "Review the preserved local edits plus header repairs, run --check-relative-paths, then run repository verification before committing."
@@ -1076,120 +1205,90 @@ function isTextFile(path) {
   }
 
   if (!stat.isFile()) {
-    throw new Error(`Expected a regular tracked file: ${path}`);
+    throw new Error(`Expected a regular repository file: ${path}`);
   }
 
   return !hasBinaryContent(path);
 }
 
-function isSecretLikePath(path) {
-  const normalized = normalizeRepositoryPath(path).toLowerCase();
-  const fileName = basename(normalized);
+function assertNoSensitiveBundlePaths(repositoryFiles) {
+  const sensitivePaths = repositoryFiles
+    .map((path) => ({
+      path,
+      reason: sensitiveBundlePathReason(path),
+    }))
+    .filter((entry) => entry.reason !== null);
 
-  if (
-    fileName === ".env" ||
-    fileName.startsWith(".env.") ||
-    fileName === ".dev.vars" ||
-    fileName.startsWith(".dev.vars.")
-  ) {
-    return true;
+  if (sensitivePaths.length === 0) {
+    return;
   }
 
-  if (fileName === ".npmrc" || fileName === ".pypirc") {
-    return true;
+  const lines = [
+    `Refusing to generate a Project Source bundle with ${sensitivePaths.length} sensitive file(s):`,
+    "",
+  ];
+
+  for (const entry of sensitivePaths.slice(0, 100)) {
+    lines.push(`- ${entry.path} (${entry.reason})`);
   }
 
-  if (
-    fileName === "credentials" ||
-    fileName.startsWith("credentials.") ||
-    fileName === "secrets" ||
-    fileName.startsWith("secrets.")
-  ) {
-    return true;
+  if (sensitivePaths.length > 100) {
+    lines.push(
+      `...and ${sensitivePaths.length - 100} additional sensitive file(s).`,
+    );
   }
 
-  const extension = extname(fileName);
-
-  return (
-    extension === ".pem" ||
-    extension === ".p12" ||
-    extension === ".pfx" ||
-    extension === ".key" ||
-    extension === ".keystore" ||
-    extension === ".jks"
+  lines.push(
+    "",
+    "Move secrets to ignored local/secret storage or rename documented secret-free templates to",
+    "a supported .example/.sample/.template/.dist form before generating the bundle.",
   );
+
+  throw new Error(lines.join("\n"));
 }
 
-function isEligibleContentFile(path) {
-  if (isGeneratedBundlePath(path)) {
-    return false;
+function selectBundleFiles(repositoryFiles) {
+  assertNoSensitiveBundlePaths(repositoryFiles);
+
+  const included = [];
+  const excluded = [];
+
+  for (const path of repositoryFiles) {
+    if (GENERATED_LOCK_FILE_NAMES.has(basename(path))) {
+      excluded.push({
+        path,
+        reason: "generated-lock-file",
+      });
+
+      continue;
+    }
+
+    if (isBinaryExtension(path)) {
+      excluded.push({
+        path,
+        reason: "binary-file",
+      });
+
+      continue;
+    }
+
+    if (!isTextFile(path)) {
+      excluded.push({
+        path,
+        reason: "binary-content",
+      });
+
+      continue;
+    }
+
+    included.push(path);
   }
 
-  if (isSecretLikePath(path)) {
-    return false;
-  }
+  return {
+    included: included.sort(comparePaths),
 
-  if (CONTENT_EXCLUDED_FILE_NAMES.has(basename(path))) {
-    return false;
-  }
-
-  return isTextFile(path);
-}
-
-function isRootBundleCandidate(path) {
-  const normalized = normalizeRepositoryPath(path);
-
-  if (normalized.startsWith(".github/workflows/")) {
-    return true;
-  }
-
-  if (normalized.startsWith("src/")) {
-    const srcRelative = normalized.slice("src/".length);
-
-    return srcRelative.length > 0 && !srcRelative.includes("/");
-  }
-
-  return !normalized.includes("/");
-}
-
-function selectFiles(definition, trackedFiles) {
-  if (definition.mode === "structure") {
-    return trackedFiles
-      .filter((path) => !isGeneratedBundlePath(path))
-      .sort(comparePaths);
-  }
-
-  if (definition.mode === "root") {
-    return trackedFiles
-      .filter(isRootBundleCandidate)
-      .filter(isEligibleContentFile)
-      .sort(comparePaths);
-  }
-
-  if (definition.mode === "components") {
-    return trackedFiles
-      .filter((path) => path.startsWith("src/components/"))
-      .filter((path) => !path.startsWith("src/components/ui/"))
-      .filter(isEligibleContentFile)
-      .sort(comparePaths);
-  }
-
-  if (definition.mode === "prefix") {
-    return trackedFiles
-      .filter((path) => path.startsWith(definition.sourcePrefix))
-      .filter(isEligibleContentFile)
-      .sort(comparePaths);
-  }
-
-  throw new Error(`Unsupported bundle mode: ${definition.mode}`);
-}
-
-function bundleRelativePath(definition, repositoryPath) {
-  if (definition.mode === "root" || definition.mode === "structure") {
-    return repositoryPath;
-  }
-
-  return repositoryPath.slice(definition.sourcePrefix.length);
+    excluded,
+  };
 }
 
 function createTree(paths, rootLabel) {
@@ -1211,6 +1310,7 @@ function createTree(paths, rootLabel) {
 
     for (let index = 0; index < parts.length; index += 1) {
       const part = parts[index];
+
       const isFile = index === parts.length - 1;
 
       if (isFile) {
@@ -1254,8 +1354,11 @@ function createTree(paths, rootLabel) {
 
     for (let index = 0; index < entries.length; index += 1) {
       const entry = entries[index];
+
       const isLast = index === entries.length - 1;
+
       const branch = isLast ? "`-- " : "|-- ";
+
       const suffix = entry.kind === "directory" ? "/" : "";
 
       lines.push(`${prefix}${branch}${entry.name}${suffix}`);
@@ -1273,6 +1376,7 @@ function createTree(paths, rootLabel) {
 
 function languageFor(path) {
   const fileName = basename(path);
+
   const extension = extname(path).toLowerCase();
 
   if (fileName === "Dockerfile" || fileName.startsWith("Dockerfile.")) {
@@ -1318,6 +1422,9 @@ function languageFor(path) {
     case ".scss":
       return "scss";
 
+    case ".less":
+      return "less";
+
     case ".html":
       return "html";
 
@@ -1329,7 +1436,13 @@ function languageFor(path) {
       return "toml";
 
     case ".sh":
+    case ".bash":
+    case ".zsh":
+    case ".ksh":
       return "bash";
+
+    case ".ps1":
+      return "powershell";
 
     case ".sql":
       return "sql";
@@ -1337,6 +1450,12 @@ function languageFor(path) {
     case ".graphql":
     case ".gql":
       return "graphql";
+
+    case ".py":
+      return "python";
+
+    case ".rb":
+      return "ruby";
 
     default:
       return "text";
@@ -1382,20 +1501,19 @@ function assertSourceHeaderBeforeBundling(repositoryPath) {
   );
 }
 
-function renderFileSection(definition, repositoryPath) {
+function renderFileSection(repositoryPath) {
   assertSourceHeaderBeforeBundling(repositoryPath);
-
-  const relativePath = bundleRelativePath(definition, repositoryPath);
 
   const content = normalizeBundleTextContent(
     readFileSync(repositoryPath, "utf8"),
   );
 
   const fence = markdownFenceFor(content);
+
   const language = languageFor(repositoryPath);
 
   return [
-    `## ${definition.headingPrefix}${relativePath}`,
+    `### File: ${repositoryPath}`,
     "",
     `${fence}${language}`,
     content,
@@ -1403,17 +1521,24 @@ function renderFileSection(definition, repositoryPath) {
   ].join("\n");
 }
 
-function renderContentBundle(definition, files) {
-  const relativeFiles = files.map((path) =>
-    bundleRelativePath(definition, path),
-  );
+function renderBundleBody(repositoryFiles, contentFiles) {
+  const tree = createTree(repositoryFiles, EXPECTED_REPOSITORY_NAME);
 
-  const tree = createTree(relativeFiles, definition.treeRoot);
+  const parts = [
+    "## Repository tree",
+    "",
+    "> The tree records all non-ignored repository files considered for this snapshot.",
+    "> Binary files and generated lockfiles may appear in the tree without embedded content.",
+    "",
+    "```text",
+    tree,
+    "```",
+    "",
+    "## Source files",
+  ];
 
-  const parts = [`# ${definition.title}`, "", "```text", tree, "```"];
-
-  for (const file of files) {
-    parts.push("", renderFileSection(definition, file));
+  for (const file of contentFiles) {
+    parts.push("", renderFileSection(file));
   }
 
   parts.push("");
@@ -1421,135 +1546,372 @@ function renderContentBundle(definition, files) {
   return parts.join("\n");
 }
 
-function renderStructureBundle(definition, files) {
-  const tree = createTree(files, definition.treeRoot);
-
-  return [`# ${definition.title}`, "", "```text", tree, "```", ""].join("\n");
+function sha256Text(content) {
+  return createHash("sha256").update(content, "utf8").digest("hex");
 }
 
-function sha256(content) {
-  return createHash("sha256").update(content, "utf8").digest("hex");
+function repositoryTreeSha256(repositoryFiles) {
+  const hash = createHash("sha256");
+
+  const separator = Buffer.from([0]);
+
+  for (const path of repositoryFiles) {
+    hash.update(path, "utf8");
+
+    hash.update(separator);
+  }
+
+  return hash.digest("hex");
+}
+
+function sourceSnapshotSha256(files) {
+  const hash = createHash("sha256");
+
+  const separator = Buffer.from([0]);
+
+  for (const path of files) {
+    hash.update(path, "utf8");
+
+    hash.update(separator);
+
+    hash.update(readFileSync(path));
+
+    hash.update(separator);
+  }
+
+  return hash.digest("hex");
+}
+
+function summarizeExclusions(excluded) {
+  const counts = new Map();
+
+  for (const entry of excluded) {
+    counts.set(entry.reason, (counts.get(entry.reason) ?? 0) + 1);
+  }
+
+  return Object.fromEntries(
+    [...counts.entries()].sort(([left], [right]) => comparePaths(left, right)),
+  );
+}
+
+function buildMetadata(input) {
+  return {
+    schemaVersion: BUNDLE_SCHEMA_VERSION,
+
+    format: BUNDLE_FORMAT,
+
+    repository: {
+      name: EXPECTED_REPOSITORY_NAME,
+
+      branch: input.repository.branch,
+
+      detachedHead: input.repository.branch === null,
+
+      head: input.repository.head,
+
+      shortHead: input.repository.shortHead,
+
+      commitTimestamp: input.repository.commitTimestamp,
+    },
+
+    generation: {
+      generatedAt: input.generatedAt,
+
+      generator: "generate-bundles.mjs",
+
+      nodeVersion: process.version,
+
+      outputFile: BUNDLE_FILE_NAME,
+
+      source: "current-working-tree-filesystem",
+
+      trackedContent: "current-on-disk",
+
+      untrackedContent: "included-when-non-ignored",
+
+      snapshotKind: input.workingTree.dirty ? "working-tree" : "clean-head",
+    },
+
+    workingTree: {
+      dirty: input.workingTree.dirty,
+
+      changedTrackedFileCount: input.workingTree.changedTrackedFileCount,
+
+      deletedTrackedFileCount: input.workingTree.deletedTrackedFileCount,
+
+      untrackedFileCount: input.workingTree.untrackedFileCount,
+    },
+
+    source: {
+      existingTrackedFileCount: input.trackedFileCount,
+
+      repositoryCandidateFileCount: input.repositoryFileCount,
+
+      repositoryTreeSha256: input.repositoryTreeSha256,
+
+      includedFileCount: input.includedFileCount,
+
+      includedTrackedFileCount: input.includedTrackedFileCount,
+
+      includedUntrackedFileCount: input.includedUntrackedFileCount,
+
+      excludedFileCount: input.excludedFileCount,
+
+      excludedByReason: input.excludedByReason,
+
+      snapshotSha256: input.sourceSnapshotSha256,
+
+      contentFileHeader: {
+        required: true,
+
+        format: "format-aware canonical repository-relative path comment",
+
+        scope: "source-repository-files",
+
+        enforcedFileCount: input.headerCheck.enforced,
+
+        exemptFileCount: input.headerCheck.exempt,
+      },
+    },
+
+    bundleBody: {
+      bytes: input.bundleBodyBytes,
+
+      sha256: input.bundleBodySha256,
+    },
+  };
+}
+
+function renderProjectBundle(metadata, bundleBody) {
+  return [
+    "# oz-next-app Project Source Bundle",
+    "",
+    "> Generated for ChatGPT/Ozotec Project Source analysis from the current repository filesystem.",
+    "> `repository.head` identifies the Git commit. When `workingTree.dirty` is true,",
+    "> bundled source also contains current on-disk tracked edits and non-ignored",
+    "> untracked files.",
+    "> `source.snapshotSha256` fingerprints the exact embedded source paths and raw file bytes.",
+    "> `source.repositoryTreeSha256` fingerprints the repository path inventory represented by the tree.",
+    "",
+    "## Snapshot metadata",
+    "",
+    "```json",
+    JSON.stringify(metadata, null, 2),
+    "```",
+    "",
+    bundleBody,
+  ].join("\n");
+}
+
+function removeLegacyGeneratedArtifacts(outputDirectory) {
+  const removed = [];
+
+  for (const fileName of LEGACY_GENERATED_BUNDLE_FILE_NAMES) {
+    const path = join(outputDirectory, fileName);
+
+    try {
+      rmSync(path, {
+        force: true,
+      });
+
+      removed.push(fileName);
+    } catch (error) {
+      throw new Error(
+        `Unable to remove legacy generated artifact "${path}": ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
+  }
+
+  return removed;
+}
+
+function writeFileAtomically(outputPath, content) {
+  const temporaryPath = `${outputPath}.tmp-${String(process.pid)}`;
+
+  try {
+    writeFileSync(temporaryPath, content, {
+      encoding: "utf8",
+      mode: 0o644,
+      flag: "w",
+    });
+
+    renameSync(temporaryPath, outputPath);
+
+    chmodSync(outputPath, 0o644);
+  } finally {
+    rmSync(temporaryPath, {
+      force: true,
+    });
+  }
 }
 
 function main() {
   const args = parseArgs(process.argv.slice(2));
 
-  const { head, commitTimestamp } = assertRepositoryIdentity(args.expectedHead);
+  const repository = assertRepositoryIdentity(args.expectedHead);
+
+  const generatedOutputPrefix = outputRepositoryPrefix(
+    repository.repoRoot,
+    args.outDir,
+  );
 
   const trackedFiles = listTrackedFiles();
 
-  if (trackedFiles.length === 0) {
-    throw new Error("The repository contains no tracked files.");
+  const untrackedFiles = listUntrackedFiles();
+
+  const repositoryFiles = listRepositorySourceFiles(
+    trackedFiles,
+    untrackedFiles,
+    generatedOutputPrefix,
+  );
+
+  if (repositoryFiles.length === 0) {
+    throw new Error("The repository contains no non-ignored source files.");
   }
 
   if (args.relativePathMode === "check-relative-paths") {
-    checkRelativePaths(trackedFiles);
+    checkRelativePaths(repositoryFiles);
+
     return;
   }
 
   if (args.relativePathMode === "fix-relative-paths") {
-    fixRelativePaths(trackedFiles);
+    fixRelativePaths(repositoryFiles);
+
     return;
   }
 
-  const workingTree = inspectTrackedWorkingTree();
-  const headerCheck = checkRelativePaths(trackedFiles);
+  const workingTree = inspectWorkingTree(untrackedFiles, generatedOutputPrefix);
+
+  if (args.requireClean && workingTree.dirty) {
+    throw new Error(
+      "Bundle generation requires a clean working tree because --require-clean was supplied. " +
+        `Found ${workingTree.changedTrackedFileCount} changed tracked file(s), ` +
+        `${workingTree.deletedTrackedFileCount} deleted tracked file(s), and ` +
+        `${workingTree.untrackedFileCount} non-ignored untracked file(s).`,
+    );
+  }
+
+  const headerCheck = checkRelativePaths(repositoryFiles);
+
+  const selection = selectBundleFiles(repositoryFiles);
+
+  const bundleFiles = selection.included;
+
+  if (bundleFiles.length === 0) {
+    throw new Error(
+      "The repository contains no eligible text files for the Project Source bundle.",
+    );
+  }
+
+  const trackedFileSet = new Set(trackedFiles);
+
+  const untrackedFileSet = new Set(untrackedFiles);
+
+  const includedTrackedFileCount = bundleFiles.filter((path) =>
+    trackedFileSet.has(path),
+  ).length;
+
+  const includedUntrackedFileCount = bundleFiles.filter((path) =>
+    untrackedFileSet.has(path),
+  ).length;
+
+  const bundleBody = renderBundleBody(repositoryFiles, bundleFiles);
+
+  const bundleBodyBytes = Buffer.byteLength(bundleBody, "utf8");
+
+  const bundleBodySha256 = sha256Text(bundleBody);
+
+  const treeSha256 = repositoryTreeSha256(repositoryFiles);
+
+  const snapshotSha256 = sourceSnapshotSha256(bundleFiles);
+
+  const generatedAt = new Date().toISOString();
+
+  const metadata = buildMetadata({
+    repository,
+    generatedAt,
+    workingTree,
+
+    trackedFileCount: trackedFiles.length,
+
+    repositoryFileCount: repositoryFiles.length,
+
+    repositoryTreeSha256: treeSha256,
+
+    includedFileCount: bundleFiles.length,
+
+    includedTrackedFileCount,
+
+    includedUntrackedFileCount,
+
+    excludedFileCount: selection.excluded.length,
+
+    excludedByReason: summarizeExclusions(selection.excluded),
+
+    sourceSnapshotSha256: snapshotSha256,
+
+    headerCheck,
+
+    bundleBodyBytes,
+
+    bundleBodySha256,
+  });
+
+  const content = renderProjectBundle(metadata, bundleBody);
+
   const outputDirectory = resolve(args.outDir);
+
+  const outputPath = join(outputDirectory, BUNDLE_FILE_NAME);
+
+  const bundleBytes = Buffer.byteLength(content, "utf8");
+
+  const bundleSha256 = sha256Text(content);
 
   mkdirSync(outputDirectory, {
     recursive: true,
     mode: 0o755,
   });
 
-  const bundleResults = [];
+  const removedLegacyArtifacts =
+    removeLegacyGeneratedArtifacts(outputDirectory);
 
-  for (const definition of BUNDLE_DEFINITIONS) {
-    const files = selectFiles(definition, trackedFiles);
-
-    if (files.length === 0) {
-      throw new Error(`Bundle "${definition.output}" resolved no files.`);
-    }
-
-    const content =
-      definition.mode === "structure"
-        ? renderStructureBundle(definition, files)
-        : renderContentBundle(definition, files);
-
-    const outputPath = join(outputDirectory, definition.output);
-
-    writeFileSync(outputPath, content, {
-      encoding: "utf8",
-      mode: 0o644,
-    });
-
-    bundleResults.push({
-      bundle: definition.output,
-      fileCount: files.length,
-      bytes: Buffer.byteLength(content, "utf8"),
-      sha256: sha256(content),
-    });
-  }
-
-  const manifest = {
-    schemaVersion: 2,
-    repository: EXPECTED_REPOSITORY_NAME,
-    head,
-    commitTimestamp,
-    trackedFileCount: trackedFiles.length,
-    workingTree: {
-      dirty: workingTree.dirty,
-      changedTrackedFileCount: workingTree.changedFileCount,
-      source: "current-tracked-working-tree",
-    },
-    contentFileHeader: {
-      required: true,
-      format: "format-aware canonical repository-relative path comment",
-      scope: "source-repository-files",
-    },
-    bundles: bundleResults,
-  };
-
-  const manifestContent = `${JSON.stringify(manifest, null, 2)}\n`;
-
-  const manifestPath = join(outputDirectory, MANIFEST_FILE_NAME);
-
-  writeFileSync(manifestPath, manifestContent, {
-    encoding: "utf8",
-    mode: 0o644,
-  });
+  writeFileAtomically(outputPath, content);
 
   process.stdout.write(
     [
       "",
-      "oz-next-app bundle generation completed.",
+      "oz-next-app Project Source bundle generation completed.",
       "",
-      `Repository: ${EXPECTED_REPOSITORY_NAME}`,
-      `HEAD:       ${head}`,
-      `Commit:     ${commitTimestamp}`,
-      `Tracked:    ${trackedFiles.length} files`,
-      `Worktree:   ${
+      `Repository:      ${EXPECTED_REPOSITORY_NAME}`,
+      `Branch:          ${repository.branch ?? "(detached HEAD)"}`,
+      `HEAD:            ${repository.head}`,
+      `Commit:          ${repository.commitTimestamp}`,
+      `Generated:       ${generatedAt}`,
+      `Tracked:         ${trackedFiles.length} existing tracked file(s)`,
+      `Candidates:      ${repositoryFiles.length} non-ignored repository file(s)`,
+      `Included:        ${bundleFiles.length} text file(s) (${includedUntrackedFileCount} untracked)`,
+      `Excluded:        ${selection.excluded.length} content file(s)`,
+      `Worktree:        ${
         workingTree.dirty
-          ? `dirty (${workingTree.changedFileCount} tracked change(s))`
+          ? `dirty (${workingTree.changedTrackedFileCount} tracked change(s), ${workingTree.deletedTrackedFileCount} deletion(s), ${workingTree.untrackedFileCount} untracked file(s))`
           : "clean"
       }`,
-      `Headers:    ${headerCheck.enforced} enforced, ${headerCheck.exempt} exempt`,
+      `Headers:         ${headerCheck.enforced} enforced, ${headerCheck.exempt} exempt`,
+      `Tree SHA-256:    ${treeSha256}`,
+      `Source snapshot: ${snapshotSha256}`,
+      `Bundle body:     ${bundleBodySha256}`,
+      `Bundle SHA-256:  ${bundleSha256}`,
+      `Bundle bytes:    ${bundleBytes}`,
+      `Legacy cleanup:  ${removedLegacyArtifacts.length} generated artifact name(s) processed`,
+      `Output:          ${
+        relative(process.cwd(), outputPath) || BUNDLE_FILE_NAME
+      }`,
       "",
     ].join("\n"),
   );
-
-  for (const result of bundleResults) {
-    process.stdout.write(
-      [
-        `- ${result.bundle}`,
-        `  files:  ${result.fileCount}`,
-        `  bytes:  ${result.bytes}`,
-        `  sha256: ${result.sha256}`,
-        "",
-      ].join("\n"),
-    );
-  }
-
-  process.stdout.write(`Manifest: ${relative(process.cwd(), manifestPath)}\n`);
 }
 
 try {

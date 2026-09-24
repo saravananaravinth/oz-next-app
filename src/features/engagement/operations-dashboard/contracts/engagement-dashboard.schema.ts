@@ -1,10 +1,8 @@
 // oz-next-app/src/features/engagement/operations-dashboard/contracts/engagement-dashboard.schema.ts
 import { z } from "zod";
 
-import {
-  ENGAGEMENT_JOURNEY_MATURITY_HOURS_DEFAULT,
-  ENGAGEMENT_JOURNEY_MATURITY_HOURS_MAX,
-} from "@/features/engagement/operations-dashboard/contracts/journey-analytics.schema";
+const ENGAGEMENT_JOURNEY_MATURITY_HOURS_DEFAULT = 24;
+const ENGAGEMENT_JOURNEY_MATURITY_HOURS_MAX = 720;
 
 const DASHBOARD_TIMEZONE = "Asia/Kolkata" as const;
 const DAY_MS = 86_400_000;
@@ -112,10 +110,6 @@ const sourceCodeSchema = z
   .min(1)
   .max(128)
   .regex(SOURCE_CODE_PATTERN);
-const sourceIdentifierSchema = z.union([
-  uuidSchema,
-  z.literal("00000000-0000-0000-0000-000000000000"),
-]);
 const nonNegativeIntSchema = z.number().int().nonnegative();
 const nonNegativeNumberSchema = z.number().nonnegative();
 const percentageSchema = z.number().min(0).max(100);
@@ -398,6 +392,10 @@ export const engagementDashboardSummarySchema = z
         newLeads: comparisonSchema
           .extend({ averagePerDay: nonNegativeNumberSchema })
           .strict(),
+        assigned: comparisonSchema,
+        contacted: comparisonSchema,
+        booked: comparisonSchema,
+        converted: comparisonSchema,
         assignmentHealth: z
           .object({
             assignedCount: nonNegativeIntSchema,
@@ -447,61 +445,32 @@ export const engagementDashboardSummarySchema = z
   })
   .strict();
 
-const sourceSchema = z
-  .object({
-    leadSourceId: sourceIdentifierSchema,
-    code: sourceCodeSchema,
-    name: z.string().trim().min(1).max(256),
-    totalCount: nonNegativeIntSchema,
-  })
-  .strict();
-
-export const engagementLeadSourceSeriesSchema = z
+export const engagementLeadFlowSeriesSchema = z
   .object({
     range: rangeSchema
       .extend({ grain: z.enum(ENGAGEMENT_DASHBOARD_API_GRAINS) })
       .strict(),
     generatedAt: isoDateTimeSchema,
-    sources: z.array(sourceSchema).max(7).readonly(),
+    totals: z
+      .object({
+        newCount: nonNegativeIntSchema,
+        closedCount: nonNegativeIntSchema,
+      })
+      .strict(),
     points: z
       .array(
         z
           .object({
             periodStart: isoDateSchema,
-            totalCount: nonNegativeIntSchema,
-            sourceCounts: z
-              .record(sourceCodeSchema, nonNegativeIntSchema)
-              .readonly(),
+            newCount: nonNegativeIntSchema,
+            closedCount: nonNegativeIntSchema,
           })
           .strict(),
       )
       .max(366)
       .readonly(),
   })
-  .strict()
-  .superRefine((value, context) => {
-    const sourceCodes = new Set(value.sources.map((source) => source.code));
-    for (const [pointIndex, point] of value.points.entries()) {
-      let total = 0;
-      for (const [code, count] of Object.entries(point.sourceCounts)) {
-        total += count;
-        if (!sourceCodes.has(code)) {
-          context.addIssue({
-            code: "custom",
-            path: ["points", pointIndex, "sourceCounts", code],
-            message: "Source count key is not declared in sources.",
-          });
-        }
-      }
-      if (total !== point.totalCount) {
-        context.addIssue({
-          code: "custom",
-          path: ["points", pointIndex, "totalCount"],
-          message: "totalCount must equal the sum of sourceCounts.",
-        });
-      }
-    }
-  });
+  .strict();
 
 export const engagementFunnelSchema = z
   .object({
@@ -637,8 +606,10 @@ export const engagementDashboardLeadListItemSchema = z
       .object({
         city: z.string().trim().max(128).nullable(),
         district: z.string().trim().max(128).nullable(),
+        state: z.string().trim().max(128).nullable(),
       })
       .strict(),
+    assignmentDistanceKm: nonNegativeNumberSchema.nullable(),
     ownerAssignedAt: isoDateTimeSchema.nullable(),
     firstResponseAt: isoDateTimeSchema.nullable(),
     nextFollowUpAt: isoDateTimeSchema.nullable(),
@@ -1229,8 +1200,8 @@ export const videoSequenceItemUpdateActionInputSchema = z
 export type EngagementDashboardSummary = z.infer<
   typeof engagementDashboardSummarySchema
 >;
-export type EngagementLeadSourceSeries = z.infer<
-  typeof engagementLeadSourceSeriesSchema
+export type EngagementLeadFlowSeries = z.infer<
+  typeof engagementLeadFlowSeriesSchema
 >;
 export type EngagementFunnel = z.infer<typeof engagementFunnelSchema>;
 export type EngagementDealerPerformanceItem = z.infer<

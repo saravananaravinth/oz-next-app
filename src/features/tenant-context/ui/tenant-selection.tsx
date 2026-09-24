@@ -3,6 +3,7 @@
 
 import * as React from "react";
 import { BadgeCheck, Building2, ShieldCheck } from "lucide-react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 import {
   Select,
@@ -11,6 +12,7 @@ import {
   SelectTrigger,
 } from "@/components/ui/select";
 import type { TenantMembership } from "@/lib/api/contracts";
+import { safeInternalHref } from "@/lib/security/navigation";
 import { cn } from "@/lib/utils";
 
 export type TenantSelectionProps = Readonly<{
@@ -154,6 +156,9 @@ export function TenantSelection({
   currentTenantId,
   onTenantPreviewChange,
 }: TenantSelectionProps): React.ReactElement {
+  const pathname = usePathname();
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const normalizedTenants = React.useMemo(
     () => normalizeTenants(tenants),
     [tenants],
@@ -172,7 +177,7 @@ export function TenantSelection({
       }
     }
 
-    return normalizedTenants[0] ?? null;
+    return null;
   }, [currentTenantId, normalizedTenants]);
 
   const handleTenantChange = React.useCallback(
@@ -192,8 +197,26 @@ export function TenantSelection({
       }
 
       onTenantPreviewChange?.(normalizedTenantId);
+      const nextSearchParams = new URLSearchParams(searchParams.toString());
+      nextSearchParams.set("tenantId", normalizedTenantId);
+      for (const key of [
+        "connection",
+        "item",
+        "cursor",
+        "dealerOrgUnitId",
+        "orderId",
+      ]) {
+        nextSearchParams.delete(key);
+      }
+      const fallbackHref = safeInternalHref(pathname);
+      const nextHref = safeInternalHref(
+        `${pathname}?${nextSearchParams.toString()}`,
+        fallbackHref,
+      );
+      router.replace(nextHref, { scroll: false });
+      router.refresh();
     },
-    [normalizedTenants, onTenantPreviewChange],
+    [normalizedTenants, onTenantPreviewChange, pathname, router, searchParams],
   );
 
   if (selectedTenant === null) {
