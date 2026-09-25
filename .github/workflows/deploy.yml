@@ -51,11 +51,10 @@ jobs:
       NEXT_PUBLIC_APP_ORIGIN: https://erp.ozotecev.com
       NEXT_PUBLIC_API_BASE_URL: https://api.erp.ozotecev.com
       NEXT_PUBLIC_AUTH_CLIENT_ID: erp-web
-      NEXT_PUBLIC_APP_VERSION: 0.22.0
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v7.0.0
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -75,6 +74,8 @@ jobs:
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          NEXT_PUBLIC_GOOGLE_MAPS_BROWSER_KEY: ${{ secrets.NEXT_PUBLIC_GOOGLE_MAPS_BROWSER_KEY }}
+          NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID: ${{ secrets.NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID }}
         run: |
           set -euo pipefail
 
@@ -92,7 +93,8 @@ jobs:
             NEXT_PUBLIC_APP_ORIGIN
             NEXT_PUBLIC_API_BASE_URL
             NEXT_PUBLIC_AUTH_CLIENT_ID
-            NEXT_PUBLIC_APP_VERSION
+            NEXT_PUBLIC_GOOGLE_MAPS_BROWSER_KEY
+            NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID
           )
 
           missing=0
@@ -158,7 +160,8 @@ jobs:
           app_origin = os.environ["NEXT_PUBLIC_APP_ORIGIN"]
           api_base_url = os.environ["NEXT_PUBLIC_API_BASE_URL"]
           auth_client_id = os.environ["NEXT_PUBLIC_AUTH_CLIENT_ID"]
-          app_version = os.environ["NEXT_PUBLIC_APP_VERSION"]
+          google_maps_browser_key = os.environ["NEXT_PUBLIC_GOOGLE_MAPS_BROWSER_KEY"]
+          google_maps_map_id = os.environ["NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID"]
 
           if app_env != "production":
               fail("Invalid app environment", "NEXT_PUBLIC_APP_ENV must be production for this workflow.")
@@ -196,8 +199,17 @@ jobs:
           if not re.fullmatch(r"[A-Za-z0-9._:-]{2,128}", auth_client_id):
               fail("Invalid auth client ID", "NEXT_PUBLIC_AUTH_CLIENT_ID contains unsupported characters.")
 
-          if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", app_version):
-              fail("Invalid app version", "NEXT_PUBLIC_APP_VERSION must be SemVer major.minor.patch.")
+          if not re.fullmatch(r"AIza[0-9A-Za-z_-]{35}", google_maps_browser_key):
+              fail(
+                  "Invalid Google Maps browser key",
+                  "NEXT_PUBLIC_GOOGLE_MAPS_BROWSER_KEY has an invalid browser-key format.",
+              )
+
+          if not re.fullmatch(r"(?:[A-Fa-f0-9]{16}|[A-Fa-f0-9]{24})", google_maps_map_id):
+              fail(
+                  "Invalid Google Maps Map ID",
+                  "NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID must be a 16- or 24-character hexadecimal production Map ID.",
+              )
 
           expected_route = f"{urlparse(canonical_app_origin).netloc}/*"
           if os.environ["WORKER_ROUTE"] != expected_route:
@@ -206,6 +218,323 @@ jobs:
                   f"WORKER_ROUTE must be {expected_route}.",
               )
           PY
+
+      - name: Setup Node.js 24
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020b0 # v7.0.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Pin npm toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          npm install --global "npm@${NPM_VERSION}"
+
+          actual_node_version="$(node --version)"
+          actual_npm_version="$(npm --version)"
+
+          if [[ "${actual_node_version}" != v24.* ]]; then
+            echo "::error title=Unexpected Node.js version::Expected Node.js 24, received ${actual_node_version}."
+            exit 1
+          fi
+
+          if [[ "${actual_npm_version}" != "${NPM_VERSION}" ]]; then
+            echo "::error title=Unexpected npm version::Expected npm ${NPM_VERSION}, received ${actual_npm_version}."
+            exit 1
+          fi
+
+      - name: Validate dependency manifests
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ ! -f package.json || ! -f package-lock.json ]]; then
+            echo "::error title=Missing dependency manifest::package.json and package-lock.json must both be committed."
+            exit 1
+          fi
+
+          node --input-type=module <<'NODE'
+          import assert from "node:assert/strict";
+          import fs from "node:fs";
+
+          const packageJson = JSON.parse(fs.readFileSync("package.json", "utf8"));
+          const packageLock = JSON.parse(fs.readFileSync("package-lock.json", "utf8"));
+          const rootLock = packageLock?.packages?.[""];
+          const expectedPackageManager = `npm@${process.env.NPM_VERSION}`;
+
+          const normalizeRecord = (value) =>
+            Object.fromEntries(
+              Object.entries(value ?? {}).sort(([left], [right]) =>
+                left.localeCompare(right),
+              ),
+            );
+
+          assert.equal(packageJson.name, "oz-next-app", "Unexpected package name.");
+          assert.match(
+            packageJson.version,
+            /^[0-9]+\.[0-9]+\.[0-9]+$/,
+            "package.json version must be SemVer major.minor.patch.",
+          );
+          assert.equal(
+            packageJson.packageManager,
+            expectedPackageManager,
+            `packageManager must be ${expectedPackageManager}.`,
+          );
+          assert.equal(
+            packageJson.engines?.node,
+            ">=24.15.0 <25.0.0",
+            "Node.js engine must remain >=24.15.0 <25.0.0.",
+          );
+          assert.equal(
+            packageJson.engines?.npm,
+            ">=12.0.1 <13.0.0",
+            "npm engine must remain >=12.0.1 <13.0.0.",
+          );
+          assert.equal(packageLock?.lockfileVersion, 3, "package-lock.json must use lockfileVersion 3.");
+          assert.ok(
+            typeof rootLock === "object" && rootLock !== null,
+            "package-lock.json must contain the root package record.",
+          );
+          assert.equal(rootLock.name, packageJson.name, "Lockfile package name is out of sync.");
+          assert.equal(rootLock.version, packageJson.version, "Lockfile package version is out of sync.");
+          assert.deepEqual(
+            rootLock.engines,
+            packageJson.engines,
+            "engines in package-lock.json are not synchronized with package.json.",
+          );
+
+          for (const section of [
+            "dependencies",
+            "devDependencies",
+            "optionalDependencies",
+          ]) {
+            assert.deepEqual(
+              normalizeRecord(rootLock[section]),
+              normalizeRecord(packageJson[section]),
+              `${section} in package-lock.json is not synchronized with package.json.`,
+            );
+          }
+          NODE
+
+      - name: Install dependencies from lockfile
+        run: npm ci --no-audit --no-fund
+
+      - name: Print toolchain versions
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --version
+          npm --version
+          git --version
+          python3 --version
+
+      - name: Validate Wrangler CLI
+        shell: bash
+        run: npm exec -- wrangler --version
+
+      - name: Resolve release metadata
+        id: release_meta
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          package_json_version="$(node -p "JSON.parse(require('fs').readFileSync('package.json', 'utf8')).version")"
+          if [[ ! "${package_json_version}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error title=Invalid package version::package.json version must be SemVer major.minor.patch."
+            exit 1
+          fi
+
+          short_sha="$(git rev-parse --short=12 HEAD)"
+          requested_release_type="${REQUESTED_RELEASE_TYPE:-auto}"
+
+          case "${requested_release_type}" in
+            auto|patch|minor|major|none) ;;
+            *)
+              echo "::error title=Invalid release type::release_type must be auto, patch, minor, major, or none."
+              exit 1
+              ;;
+          esac
+
+          version_candidates="$({
+            gh release list --limit 500 --json tagName,name --jq '.[] | [.tagName, .name] | .[]' 2>/dev/null || true
+            git tag --list "${RELEASE_NAME}-v*" || true
+          } | awk -v tag_prefix="${RELEASE_NAME}-v" -v title_prefix="${RELEASE_NAME} v" '
+            index($0, tag_prefix) == 1 {
+              value = substr($0, length(tag_prefix) + 1)
+              if (value ~ /^[0-9]+\.[0-9]+\.[0-9]+$/) {
+                print value
+              }
+            }
+            index($0, title_prefix) == 1 {
+              value = substr($0, length(title_prefix) + 1)
+              if (value ~ /^[0-9]+\.[0-9]+\.[0-9]+$/) {
+                print value
+              }
+            }
+          ' | sort -Vu | uniq)"
+
+          base_version="$(printf '%s\n' "${version_candidates}" | sed '/^$/d' | tail -n 1)"
+          first_release=false
+          if [[ -z "${base_version}" ]]; then
+            base_version="${package_json_version}"
+            first_release=true
+          fi
+
+          previous_tag=""
+          if [[ "${first_release}" == "false" ]]; then
+            previous_tag="$(git tag --list "${RELEASE_NAME}-v${base_version}" | head -n 1 || true)"
+
+            if [[ -z "${previous_tag}" ]]; then
+              previous_tag="$(gh release list --limit 500 --json tagName,name --jq '.[] | [.tagName, .name] | @tsv' 2>/dev/null \
+                | awk -F '\t' -v release_name="${RELEASE_NAME}" -v version="${base_version}" '
+                    $1 == release_name "-v" version { print $1; exit }
+                    $2 == release_name " v" version { print $1; exit }
+                  ' || true)"
+            fi
+          fi
+
+          commit_range=""
+          if [[ -n "${previous_tag}" ]] && git rev-parse -q --verify "${previous_tag}^{commit}" >/dev/null; then
+            commit_range="${previous_tag}..HEAD"
+          fi
+
+          git_log_args=()
+          if [[ -n "${commit_range}" ]]; then
+            git_log_args+=("${commit_range}")
+          fi
+
+          commit_messages="$(git log "${git_log_args[@]}" --pretty=%B --no-merges)"
+
+          release_type="none"
+          if [[ "${requested_release_type}" == "none" ]]; then
+            release_type="none"
+          elif [[ "${requested_release_type}" != "auto" ]]; then
+            release_type="${requested_release_type}"
+          elif printf '%s\n' "${commit_messages}" | grep -Eq '(^BREAKING CHANGE:|^BREAKING-CHANGE:|^[a-zA-Z][a-zA-Z0-9-]*(\([^)]+\))?!:)'; then
+            release_type="major"
+          elif printf '%s\n' "${commit_messages}" | grep -Eq '^feat(\([^)]+\))?:'; then
+            release_type="minor"
+          elif printf '%s\n' "${commit_messages}" | grep -Eq '^(fix|perf|security|revert)(\([^)]+\))?:'; then
+            release_type="patch"
+          fi
+
+          release_required=false
+          package_version="${base_version}"
+          app_version="${base_version}+build.${GITHUB_RUN_NUMBER}.${short_sha}"
+          release_tag=""
+          release_title=""
+
+          if [[ "${release_type}" == "none" ]]; then
+            echo "::notice title=Deployment without GitHub release::No releasable Conventional Commit was found. The verified commit will deploy with runtime version ${app_version}."
+          else
+            IFS='.' read -r current_major current_minor current_patch <<< "${base_version}"
+
+            if [[ "${first_release}" == "true" ]]; then
+              package_version="${base_version}"
+            elif [[ "${release_type}" == "major" ]]; then
+              package_version="$((current_major + 1)).0.0"
+            elif [[ "${release_type}" == "minor" ]]; then
+              package_version="${current_major}.$((current_minor + 1)).0"
+            else
+              package_version="${current_major}.${current_minor}.$((current_patch + 1))"
+            fi
+
+            release_required=true
+            app_version="${package_version}"
+            release_tag="${RELEASE_NAME}-v${package_version}"
+            release_title="${RELEASE_NAME} v${package_version}"
+
+            if gh release view "${release_tag}" >/dev/null 2>&1; then
+              echo "::error title=Release already exists::${release_tag} already exists. Use a new Conventional Commit or manual release_type override after the next commit."
+              exit 1
+            fi
+
+            if git rev-parse -q --verify "refs/tags/${release_tag}" >/dev/null; then
+              echo "::error title=Tag already exists::${release_tag} already exists in Git."
+              exit 1
+            fi
+
+            existing_release_titles="$(gh release list --limit 500 --json name --jq '.[].name' 2>/dev/null || true)"
+            if printf '%s\n' "${existing_release_titles}" | grep -Fxq "${release_title}"; then
+              echo "::error title=Release title already exists::${release_title} already exists."
+              exit 1
+            fi
+          fi
+
+          {
+            echo "release_required=${release_required}"
+            echo "release_type=${release_type}"
+            echo "base_version=${base_version}"
+            echo "package_version=${package_version}"
+            echo "app_version=${app_version}"
+            echo "short_sha=${short_sha}"
+            echo "previous_tag=${previous_tag}"
+            echo "commit_range=${commit_range}"
+            echo "release_tag=${release_tag}"
+            echo "release_title=${release_title}"
+          } >> "${GITHUB_OUTPUT}"
+
+          {
+            echo "NEXT_PUBLIC_APP_VERSION=${app_version}"
+            echo "OZ_RELEASE_BASE_VERSION=${base_version}"
+            echo "OZ_RELEASE_PACKAGE_VERSION=${package_version}"
+          } >> "${GITHUB_ENV}"
+
+      - name: Stamp computed release version
+        shell: bash
+        env:
+          APP_VERSION: ${{ steps.release_meta.outputs.app_version }}
+        run: |
+          set -euo pipefail
+
+          node --input-type=module <<'NODE'
+          import fs from "node:fs";
+
+          const filePath = "wrangler.toml";
+
+          const values = {
+            NEXT_PUBLIC_APP_ENV: process.env.NEXT_PUBLIC_APP_ENV,
+            NEXT_PUBLIC_APP_ORIGIN: process.env.NEXT_PUBLIC_APP_ORIGIN,
+            NEXT_PUBLIC_API_BASE_URL: process.env.NEXT_PUBLIC_API_BASE_URL,
+            NEXT_PUBLIC_AUTH_CLIENT_ID: process.env.NEXT_PUBLIC_AUTH_CLIENT_ID,
+            NEXT_PUBLIC_APP_VERSION: process.env.APP_VERSION,
+          };
+
+          for (const [key, value] of Object.entries(values)) {
+            if (typeof value !== "string" || value.trim().length === 0) {
+              throw new Error(`${key} is required.`);
+            }
+          }
+
+          if (!/^[0-9]+\.[0-9]+\.[0-9]+(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/.test(values.NEXT_PUBLIC_APP_VERSION)) {
+            throw new Error(
+              "NEXT_PUBLIC_APP_VERSION must be SemVer major.minor.patch with optional build metadata.",
+            );
+          }
+
+          const escapeRegExp = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+          let current = fs.readFileSync(filePath, "utf8");
+
+          for (const [key, value] of Object.entries(values)) {
+            const pattern = new RegExp(`^${escapeRegExp(key)}\\s*=\\s*".*"$`, "m");
+
+            if (!pattern.test(current)) {
+              throw new Error(`wrangler.toml must contain ${key}.`);
+            }
+
+            current = current.replace(pattern, `${key} = ${JSON.stringify(value)}`);
+          }
+
+          fs.writeFileSync(filePath, current);
+          NODE
+
+          grep -E '^(NEXT_PUBLIC_APP_ENV|NEXT_PUBLIC_APP_ORIGIN|NEXT_PUBLIC_API_BASE_URL|NEXT_PUBLIC_AUTH_CLIENT_ID|NEXT_PUBLIC_APP_VERSION) = ' wrangler.toml
 
       - name: Validate Worker deployment manifest
         shell: bash
@@ -446,7 +775,7 @@ jobs:
           require(vars_section["NEXT_PUBLIC_APP_ORIGIN"] == expected_app_origin, "App origin mismatch", "wrangler.toml app origin must match workflow env.")
           require(vars_section["NEXT_PUBLIC_API_BASE_URL"] == expected_api_origin, "API origin mismatch", "wrangler.toml API origin must match workflow env.")
           require(vars_section["NEXT_PUBLIC_AUTH_CLIENT_ID"] == expected_auth_client_id, "Auth client mismatch", "wrangler.toml auth client must match workflow env.")
-          require(vars_section["NEXT_PUBLIC_APP_VERSION"] == expected_app_version, "App version mismatch", "wrangler.toml app version must match workflow env before release patch.")
+          require(vars_section["NEXT_PUBLIC_APP_VERSION"] == expected_app_version, "App version mismatch", "wrangler.toml app version must match the computed deployment version.")
 
           parse_https_origin("NEXT_PUBLIC_APP_ORIGIN", vars_section["NEXT_PUBLIC_APP_ORIGIN"])
           api_origin = parse_https_origin("NEXT_PUBLIC_API_BASE_URL", vars_section["NEXT_PUBLIC_API_BASE_URL"])
@@ -457,329 +786,50 @@ jobs:
           )
           PY
 
-      - name: Setup Node.js 24
-        uses: actions/setup-node@v7.0.0
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: npm
-          cache-dependency-path: package-lock.json
-
-      - name: Pin npm toolchain
+      - name: Validate browser build configuration
         shell: bash
+        env:
+          NEXT_PUBLIC_GOOGLE_MAPS_BROWSER_KEY: ${{ secrets.NEXT_PUBLIC_GOOGLE_MAPS_BROWSER_KEY }}
+          NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID: ${{ secrets.NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID }}
         run: |
           set -euo pipefail
-
-          npm install --global "npm@${NPM_VERSION}"
-
-          actual_node_version="$(node --version)"
-          actual_npm_version="$(npm --version)"
-
-          if [[ "${actual_node_version}" != v24.* ]]; then
-            echo "::error title=Unexpected Node.js version::Expected Node.js 24, received ${actual_node_version}."
-            exit 1
-          fi
-
-          if [[ "${actual_npm_version}" != "${NPM_VERSION}" ]]; then
-            echo "::error title=Unexpected npm version::Expected npm ${NPM_VERSION}, received ${actual_npm_version}."
-            exit 1
-          fi
-
-      - name: Validate dependency manifests
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          if [[ ! -f package.json || ! -f package-lock.json ]]; then
-            echo "::error title=Missing dependency manifest::package.json and package-lock.json must both be committed."
-            exit 1
-          fi
 
           node --input-type=module <<'NODE'
           import assert from "node:assert/strict";
-          import fs from "node:fs";
 
-          const packageJson = JSON.parse(fs.readFileSync("package.json", "utf8"));
-          const packageLock = JSON.parse(fs.readFileSync("package-lock.json", "utf8"));
-          const rootLock = packageLock?.packages?.[""];
-          const expectedPackageManager = `npm@${process.env.NPM_VERSION}`;
+          const appVersion = process.env.NEXT_PUBLIC_APP_VERSION;
+          const browserKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_BROWSER_KEY;
+          const mapId = process.env.NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID;
 
-          const normalizeRecord = (value) =>
-            Object.fromEntries(
-              Object.entries(value ?? {}).sort(([left], [right]) =>
-                left.localeCompare(right),
-              ),
-            );
-
-          assert.equal(packageJson.name, "oz-next-app", "Unexpected package name.");
           assert.match(
-            packageJson.version,
-            /^[0-9]+\.[0-9]+\.[0-9]+$/,
-            "package.json version must be SemVer major.minor.patch.",
+            appVersion ?? "",
+            /^[0-9]+\.[0-9]+\.[0-9]+(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/,
+            "NEXT_PUBLIC_APP_VERSION must be a generated SemVer release/build version.",
           );
-          assert.equal(
-            packageJson.version,
-            process.env.NEXT_PUBLIC_APP_VERSION,
-            "Base NEXT_PUBLIC_APP_VERSION must match package.json before release patching.",
+          assert.match(
+            browserKey ?? "",
+            /^AIza[0-9A-Za-z_-]{35}$/,
+            "NEXT_PUBLIC_GOOGLE_MAPS_BROWSER_KEY is missing or invalid.",
           );
-          assert.equal(
-            packageJson.packageManager,
-            expectedPackageManager,
-            `packageManager must be ${expectedPackageManager}.`,
+          assert.match(
+            mapId ?? "",
+            /^(?:[A-Fa-f0-9]{16}|[A-Fa-f0-9]{24})$/,
+            "NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID is missing or invalid.",
           );
-          assert.equal(
-            packageJson.engines?.node,
-            ">=24.15.0 <25.0.0",
-            "Node.js engine must remain >=24.15.0 <25.0.0.",
-          );
-          assert.equal(
-            packageJson.engines?.npm,
-            ">=12.0.1 <13.0.0",
-            "npm engine must remain >=12.0.1 <13.0.0.",
-          );
-          assert.equal(packageLock?.lockfileVersion, 3, "package-lock.json must use lockfileVersion 3.");
-          assert.ok(
-            typeof rootLock === "object" && rootLock !== null,
-            "package-lock.json must contain the root package record.",
-          );
-          assert.equal(rootLock.name, packageJson.name, "Lockfile package name is out of sync.");
-          assert.equal(rootLock.version, packageJson.version, "Lockfile package version is out of sync.");
-          assert.deepEqual(
-            rootLock.engines,
-            packageJson.engines,
-            "engines in package-lock.json are not synchronized with package.json.",
-          );
-
-          for (const section of [
-            "dependencies",
-            "devDependencies",
-            "optionalDependencies",
-          ]) {
-            assert.deepEqual(
-              normalizeRecord(rootLock[section]),
-              normalizeRecord(packageJson[section]),
-              `${section} in package-lock.json is not synchronized with package.json.`,
-            );
-          }
           NODE
-
-      - name: Install dependencies from lockfile
-        run: npm ci
-
-      - name: Print toolchain versions
-        shell: bash
-        run: |
-          set -euo pipefail
-          node --version
-          npm --version
-          git --version
-          python3 --version
-
-      - name: Validate Wrangler CLI
-        shell: bash
-        run: npm exec -- wrangler --version
 
       - name: Verify application
+        env:
+          NEXT_PUBLIC_GOOGLE_MAPS_BROWSER_KEY: ${{ secrets.NEXT_PUBLIC_GOOGLE_MAPS_BROWSER_KEY }}
+          NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID: ${{ secrets.NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID }}
         run: npm run verify
-
-      - name: Resolve release metadata
-        id: release_meta
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-
-          package_json_version="$(node -p "JSON.parse(require('fs').readFileSync('package.json', 'utf8')).version")"
-          if [[ ! "${package_json_version}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "::error title=Invalid package version::package.json version must be SemVer major.minor.patch."
-            exit 1
-          fi
-
-          short_sha="$(git rev-parse --short=12 HEAD)"
-          requested_release_type="${REQUESTED_RELEASE_TYPE:-auto}"
-
-          case "${requested_release_type}" in
-            auto|patch|minor|major|none) ;;
-            *)
-              echo "::error title=Invalid release type::release_type must be auto, patch, minor, major, or none."
-              exit 1
-              ;;
-          esac
-
-          version_candidates="$({
-            gh release list --limit 100 --json tagName,name --jq '.[] | [.tagName, .name] | .[]' 2>/dev/null || true
-            git tag --list "${RELEASE_NAME}-v*" || true
-          } | awk -v tag_prefix="${RELEASE_NAME}-v" -v title_prefix="${RELEASE_NAME} v" '
-            index($0, tag_prefix) == 1 {
-              value = substr($0, length(tag_prefix) + 1)
-              if (match(value, /^[0-9]+\.[0-9]+\.[0-9]+/)) {
-                print substr(value, RSTART, RLENGTH)
-              }
-            }
-            index($0, title_prefix) == 1 {
-              value = substr($0, length(title_prefix) + 1)
-              if (match(value, /^[0-9]+\.[0-9]+\.[0-9]+/)) {
-                print substr(value, RSTART, RLENGTH)
-              }
-            }
-          ' | sort -Vu | uniq)"
-
-          base_version="$(printf '%s\n' "${version_candidates}" | sed '/^$/d' | tail -n 1)"
-          first_release=false
-          if [[ -z "${base_version}" ]]; then
-            base_version="${package_json_version}"
-            first_release=true
-          fi
-
-          previous_tag=""
-          if [[ "${first_release}" == "false" ]]; then
-            previous_tag="$(git tag --list "${RELEASE_NAME}-v${base_version}*" | sort -V | tail -n 1 || true)"
-
-            if [[ -z "${previous_tag}" ]]; then
-              previous_tag="$(gh release list --limit 100 --json tagName,name --jq '.[] | [.tagName, .name] | @tsv' 2>/dev/null \
-                | awk -F '\t' -v release_name="${RELEASE_NAME}" -v version="${base_version}" '
-                    $1 ~ "^" release_name "-v" version { print $1; exit }
-                    $2 == release_name " v" version { print $1; exit }
-                  ' || true)"
-            fi
-          fi
-
-          commit_range=""
-          if [[ -n "${previous_tag}" ]] && git rev-parse -q --verify "${previous_tag}^{commit}" >/dev/null; then
-            commit_range="${previous_tag}..HEAD"
-          fi
-
-          git_log_args=()
-          if [[ -n "${commit_range}" ]]; then
-            git_log_args+=("${commit_range}")
-          fi
-
-          commit_messages="$(git log "${git_log_args[@]}" --pretty=%B)"
-
-          release_type="none"
-          if [[ "${requested_release_type}" == "none" ]]; then
-            release_type="none"
-          elif [[ "${requested_release_type}" != "auto" ]]; then
-            release_type="${requested_release_type}"
-          elif printf '%s\n' "${commit_messages}" | grep -Eq '(^BREAKING CHANGE:|^BREAKING-CHANGE:|^[a-zA-Z]+(\([^)]+\))?!:)'; then
-            release_type="major"
-          elif printf '%s\n' "${commit_messages}" | grep -Eq '^feat(\([^)]+\))?:'; then
-            release_type="minor"
-          elif printf '%s\n' "${commit_messages}" | grep -Eq '^(fix|perf|security|revert)(\([^)]+\))?:'; then
-            release_type="patch"
-          fi
-
-          release_required=false
-          package_version="${base_version}"
-          app_version="${base_version}+build.${GITHUB_RUN_NUMBER}.${short_sha}"
-          release_tag=""
-          release_title=""
-
-          if [[ "${release_type}" == "none" ]]; then
-            echo "::notice title=Deployment without GitHub release::No releasable Conventional Commit was found. The verified commit will deploy with runtime version ${app_version}."
-          else
-            IFS='.' read -r current_major current_minor current_patch <<< "${base_version}"
-
-            if [[ "${first_release}" == "true" ]]; then
-              package_version="${base_version}"
-            elif [[ "${release_type}" == "major" ]]; then
-              package_version="$((current_major + 1)).0.0"
-            elif [[ "${release_type}" == "minor" ]]; then
-              package_version="${current_major}.$((current_minor + 1)).0"
-            else
-              package_version="${current_major}.${current_minor}.$((current_patch + 1))"
-            fi
-
-            release_required=true
-            app_version="${package_version}"
-            release_tag="${RELEASE_NAME}-v${package_version}"
-            release_title="${RELEASE_NAME} v${package_version}"
-
-            if gh release view "${release_tag}" >/dev/null 2>&1; then
-              echo "::error title=Release already exists::${release_tag} already exists. Use a new Conventional Commit or manual release_type override after the next commit."
-              exit 1
-            fi
-
-            if git rev-parse -q --verify "refs/tags/${release_tag}" >/dev/null; then
-              echo "::error title=Tag already exists::${release_tag} already exists in Git."
-              exit 1
-            fi
-
-            existing_release_titles="$(gh release list --limit 100 --json name --jq '.[].name' 2>/dev/null || true)"
-            if printf '%s\n' "${existing_release_titles}" | grep -Fxq "${release_title}"; then
-              echo "::error title=Release title already exists::${release_title} already exists."
-              exit 1
-            fi
-          fi
-
-          {
-            echo "release_required=${release_required}"
-            echo "release_type=${release_type}"
-            echo "base_version=${base_version}"
-            echo "package_version=${package_version}"
-            echo "app_version=${app_version}"
-            echo "short_sha=${short_sha}"
-            echo "previous_tag=${previous_tag}"
-            echo "commit_range=${commit_range}"
-            echo "release_tag=${release_tag}"
-            echo "release_title=${release_title}"
-          } >> "${GITHUB_OUTPUT}"
-
-      - name: Patch public runtime version
-        shell: bash
-        env:
-          APP_VERSION: ${{ steps.release_meta.outputs.app_version }}
-        run: |
-          set -euo pipefail
-
-          node --input-type=module <<'NODE'
-          import fs from "node:fs";
-
-          const filePath = "wrangler.toml";
-
-          const values = {
-            NEXT_PUBLIC_APP_ENV: process.env.NEXT_PUBLIC_APP_ENV,
-            NEXT_PUBLIC_APP_ORIGIN: process.env.NEXT_PUBLIC_APP_ORIGIN,
-            NEXT_PUBLIC_API_BASE_URL: process.env.NEXT_PUBLIC_API_BASE_URL,
-            NEXT_PUBLIC_AUTH_CLIENT_ID: process.env.NEXT_PUBLIC_AUTH_CLIENT_ID,
-            NEXT_PUBLIC_APP_VERSION: process.env.APP_VERSION,
-          };
-
-          for (const [key, value] of Object.entries(values)) {
-            if (typeof value !== "string" || value.trim().length === 0) {
-              throw new Error(`${key} is required.`);
-            }
-          }
-
-          if (!/^[0-9]+\.[0-9]+\.[0-9]+(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/.test(values.NEXT_PUBLIC_APP_VERSION)) {
-            throw new Error(
-              "NEXT_PUBLIC_APP_VERSION must be SemVer major.minor.patch with optional build metadata.",
-            );
-          }
-
-          const escapeRegExp = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-
-          let current = fs.readFileSync(filePath, "utf8");
-
-          for (const [key, value] of Object.entries(values)) {
-            const pattern = new RegExp(`^${escapeRegExp(key)}\\s*=\\s*".*"$`, "m");
-
-            if (!pattern.test(current)) {
-              throw new Error(`wrangler.toml must contain ${key}.`);
-            }
-
-            current = current.replace(pattern, `${key} = ${JSON.stringify(value)}`);
-          }
-
-          fs.writeFileSync(filePath, current);
-          NODE
-
-          grep -E '^(NEXT_PUBLIC_APP_ENV|NEXT_PUBLIC_APP_ORIGIN|NEXT_PUBLIC_API_BASE_URL|NEXT_PUBLIC_AUTH_CLIENT_ID|NEXT_PUBLIC_APP_VERSION) = ' wrangler.toml
 
       - name: Build OpenNext Cloudflare bundle
         shell: bash
         env:
           NEXT_PUBLIC_APP_VERSION: ${{ steps.release_meta.outputs.app_version }}
+          NEXT_PUBLIC_GOOGLE_MAPS_BROWSER_KEY: ${{ secrets.NEXT_PUBLIC_GOOGLE_MAPS_BROWSER_KEY }}
+          NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID: ${{ secrets.NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID }}
         run: npm run build:cf
 
       - name: Validate OpenNext output
@@ -1012,7 +1062,8 @@ jobs:
             echo "- \`npm run verify\` completed (architecture, cycle detection, typecheck, lint, formatting, Vitest, production build, and audit)"
             echo "- Worker deployment manifest validated using TOML parsing"
             echo "- \`keep_names = false\` enforced for OpenNext Cloudflare runtime"
-            echo "- Public runtime version patched to \`${{ steps.release_meta.outputs.app_version }}\`"
+            echo "- Runtime version derived automatically as \`${{ steps.release_meta.outputs.app_version }}\`"
+            echo "- Google Maps browser build configuration validated without logging credential values"
             echo "- \`npm run build:cf\` completed"
             echo "- OpenNext output validated"
             echo "- OpenNext \`__name\` guard passed"
@@ -1061,6 +1112,8 @@ jobs:
             echo "| Previous version | ${{ steps.release_meta.outputs.base_version }} |"
             echo "| Package version | ${{ steps.release_meta.outputs.package_version }} |"
             echo "| Runtime version | ${{ steps.release_meta.outputs.app_version }} |"
+            echo "| Version source | Git tags/releases + Conventional Commits |"
+            echo "| Google Maps build config | validated |"
             echo "| Commit | ${GITHUB_SHA} |"
             echo "| GitHub release | ${release_status} |"
             echo "| Smoke checks | login, protected redirect, and blocked operational route passed |"
