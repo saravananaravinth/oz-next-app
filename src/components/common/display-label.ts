@@ -8,16 +8,21 @@ const DELETE_CONTROL_CHARACTER_CODE = 0x7f;
 
 const WHITESPACE_RE = /\s+/gu;
 const WORD_SEPARATOR_RE = /[_\-.:/]+/gu;
+const DISPLAY_WORD_TOKEN_RE = /[\p{L}\p{M}\p{N}]+/gu;
+const LEADING_NUMBER_TOKEN_RE = /^(\p{N}+)(\p{L}+)$/u;
+const TRAILING_NUMBER_TOKEN_RE = /^(\p{L}+)(\p{N}+)$/u;
 const ACRONYM_BOUNDARY_RE = /([\p{Lu}]+)([\p{Lu}][\p{Ll}])/gu;
-const CAMEL_CASE_BOUNDARY_RE = /([\p{Ll}\d])([\p{Lu}])/gu;
+const CAMEL_CASE_BOUNDARY_RE = /([\p{Ll}])([\p{Lu}])/gu;
 
 const ACRONYM_LABELS = new Map<string, string>([
   ["2fa", "2FA"],
+  ["ac", "AC"],
   ["api", "API"],
   ["cin", "CIN"],
   ["crm", "CRM"],
   ["csv", "CSV"],
   ["db", "DB"],
+  ["dc", "DC"],
   ["ekyc", "eKYC"],
   ["erp", "ERP"],
   ["ev", "EV"],
@@ -29,18 +34,36 @@ const ACRONYM_LABELS = new Map<string, string>([
   ["ivr", "IVR"],
   ["jwt", "JWT"],
   ["kyc", "KYC"],
+  ["lfp", "LFP"],
+  ["lmfp", "LMFP"],
   ["mfa", "MFA"],
+  ["oem", "OEM"],
+  ["nmc", "NMC"],
   ["otp", "OTP"],
   ["pan", "PAN"],
   ["pdf", "PDF"],
   ["r2", "R2"],
+  ["rto", "RTO"],
+  ["sku", "SKU"],
   ["sla", "SLA"],
   ["sms", "SMS"],
+  ["std", "STD"],
   ["ui", "UI"],
   ["upi", "UPI"],
   ["url", "URL"],
   ["uuid", "UUID"],
   ["vin", "VIN"],
+  ["whatsapp", "WhatsApp"],
+]);
+
+const MEASUREMENT_UNIT_LABELS = new Map<string, string>([
+  ["a", "A"],
+  ["ah", "Ah"],
+  ["kw", "kW"],
+  ["kwh", "kWh"],
+  ["mah", "mAh"],
+  ["v", "V"],
+  ["w", "W"],
 ]);
 
 function isControlCharacterCode(code: number): boolean {
@@ -104,6 +127,12 @@ export function cleanDisplayText(
   return truncateDisplayText(resolved, maxLength);
 }
 
+function capitalizeWord(value: string): string {
+  return value
+    .toLocaleLowerCase("en-US")
+    .replace(/^\p{L}/u, (character) => character.toLocaleUpperCase("en-US"));
+}
+
 function formatToken(value: string): string {
   const lower = value.toLocaleLowerCase("en-US");
   const acronym = ACRONYM_LABELS.get(lower);
@@ -112,7 +141,66 @@ function formatToken(value: string): string {
     return acronym;
   }
 
-  return `${lower.slice(0, 1).toLocaleUpperCase("en-US")}${lower.slice(1)}`;
+  const leadingNumber = LEADING_NUMBER_TOKEN_RE.exec(value);
+  if (leadingNumber !== null) {
+    const numericPart = leadingNumber[1];
+    const unitPart = leadingNumber[2];
+
+    if (numericPart !== undefined && unitPart !== undefined) {
+      const unit =
+        MEASUREMENT_UNIT_LABELS.get(unitPart.toLocaleLowerCase("en-US")) ??
+        capitalizeWord(unitPart);
+      return `${numericPart}${unit}`;
+    }
+  }
+
+  const trailingNumber = TRAILING_NUMBER_TOKEN_RE.exec(value);
+  if (trailingNumber !== null) {
+    const wordPart = trailingNumber[1];
+    const numericPart = trailingNumber[2];
+
+    if (wordPart !== undefined && numericPart !== undefined) {
+      const word =
+        ACRONYM_LABELS.get(wordPart.toLocaleLowerCase("en-US")) ??
+        capitalizeWord(wordPart);
+      return `${word}${numericPart}`;
+    }
+  }
+
+  return capitalizeWord(value);
+}
+
+export function formatCapitalizedDisplayText(
+  value: string | null | undefined,
+  fallback: string,
+  maxLength = DEFAULT_MAX_DISPLAY_LABEL_LENGTH,
+): string {
+  const cleaned = cleanDisplayText(value, fallback, maxLength);
+
+  if (cleaned.length === 0) {
+    return "";
+  }
+
+  const formatted = cleaned.replace(DISPLAY_WORD_TOKEN_RE, formatToken);
+
+  return truncateDisplayText(formatted, maxLength);
+}
+
+export function formatCapitalizedDisplayList(
+  values: ReadonlyArray<string | null | undefined>,
+  fallback: string,
+  separator = " · ",
+  maxLength = DEFAULT_MAX_DISPLAY_LABEL_LENGTH,
+): string {
+  const formattedValues = values
+    .map((value) => formatCapitalizedDisplayText(value, "", maxLength))
+    .filter((value) => value.length > 0);
+
+  if (formattedValues.length === 0) {
+    return cleanDisplayText(fallback, "", maxLength);
+  }
+
+  return truncateDisplayText(formattedValues.join(separator), maxLength);
 }
 
 function normalizeLabelText(value: string): string {

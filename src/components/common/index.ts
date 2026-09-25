@@ -1,6 +1,9 @@
 // oz-next-app/src/components/common/index.ts
 export {
   cleanDisplayText,
+  formatCapitalizedDisplayList,
+  formatCapitalizedDisplayText,
+  formatDisplayLabel,
   formatRoleLabel,
   formatUniqueRoleLabels,
 } from "@/components/common/display-label";

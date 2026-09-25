@@ -31,6 +31,11 @@ import {
   ContentRoot,
   ContentStatus,
 } from "@/components/common/content-shell";
+import {
+  formatCapitalizedDisplayList,
+  formatCapitalizedDisplayText,
+  formatDisplayLabel,
+} from "@/components/common/display-label";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -100,33 +105,41 @@ type ExtendedWarrantyWorkspacePageProps = Readonly<{
 type WorkspaceStatus = ExtendedWarrantyWorkspaceQuery["status"];
 type ReconciliationFilter = ExtendedWarrantyWorkspaceQuery["reconciliation"];
 
+const STATUS_VALUES = [
+  "ALL",
+  "NOT_PURCHASED",
+  "LINK_SENT",
+  "PAYMENT_PENDING",
+  "PAYMENT_RECONCILING",
+  "ORDERED",
+  "PROCESSING",
+  "INVOICED",
+  "PACKED",
+  "SHIPPED",
+  "PENDING",
+  "DELIVERED",
+  "INSTALLATION_PENDING",
+  "REVIEW_PENDING",
+  "APPROVED",
+  "ACTIVATION_PENDING",
+  "CERTIFICATE_PENDING",
+  "INSTALLED",
+  "REJECTED",
+  "CANCELLED",
+  "EXPIRED",
+  "REFUNDED",
+  "FAILED",
+] as const satisfies readonly WorkspaceStatus[];
+
 const STATUS_OPTIONS: ReadonlyArray<
   Readonly<{ value: WorkspaceStatus; label: string }>
-> = [
-  { value: "ALL", label: "All statuses" },
-  { value: "NOT_PURCHASED", label: "Not purchased" },
-  { value: "LINK_SENT", label: "Link sent" },
-  { value: "PAYMENT_PENDING", label: "Payment pending" },
-  { value: "PAYMENT_RECONCILING", label: "Payment reconciling" },
-  { value: "ORDERED", label: "Ordered" },
-  { value: "PROCESSING", label: "Processing" },
-  { value: "INVOICED", label: "Invoiced" },
-  { value: "PACKED", label: "Packed" },
-  { value: "SHIPPED", label: "Shipped" },
-  { value: "PENDING", label: "Pending" },
-  { value: "DELIVERED", label: "Delivered" },
-  { value: "INSTALLATION_PENDING", label: "Installation pending" },
-  { value: "REVIEW_PENDING", label: "Review pending" },
-  { value: "APPROVED", label: "Approved" },
-  { value: "ACTIVATION_PENDING", label: "Activation pending" },
-  { value: "CERTIFICATE_PENDING", label: "Certificate pending" },
-  { value: "INSTALLED", label: "Installed" },
-  { value: "REJECTED", label: "Rejected" },
-  { value: "CANCELLED", label: "Cancelled" },
-  { value: "EXPIRED", label: "Expired" },
-  { value: "REFUNDED", label: "Refunded" },
-  { value: "FAILED", label: "Failed" },
-] as const;
+> = STATUS_VALUES.map((value) => ({
+  value,
+  label:
+    value === "ALL"
+      ? "All Statuses"
+      : formatDisplayLabel(value, "Unknown Status"),
+}));
 
 const ROW_LIMIT_OPTIONS = [25, 50, 100] as const;
 
@@ -170,10 +183,7 @@ function formatMinorAmount(
 }
 
 function statusLabel(status: ExtendedWarrantyWorkspaceItem["status"]): string {
-  return (
-    STATUS_OPTIONS.find((option) => option.value === status)?.label ??
-    status.toLowerCase().replaceAll("_", " ")
-  );
+  return formatDisplayLabel(status, "Unknown Status");
 }
 
 function statusBadge(
@@ -208,7 +218,7 @@ function statusBadge(
           : "outline";
 
   return (
-    <Badge variant={variant} className="whitespace-nowrap capitalize">
+    <Badge variant={variant} className="whitespace-nowrap">
       {statusLabel(status)}
     </Badge>
   );
@@ -301,7 +311,7 @@ function PurchaseLinkActionButton({
   if (item.purchaseLinkAction === "NONE") return null;
 
   const prepare = item.purchaseLinkAction === "PREPARE";
-  const label = prepare ? "Prepare link" : "Send link";
+  const label = prepare ? "Prepare Link" : "Send Link";
   const pendingLabel = prepare ? "Preparing…" : "Sending…";
   const blockerText = item.eligibilityBlockers.join("; ");
   const reason =
@@ -487,7 +497,7 @@ function VehicleActionCluster({
           <Button
             size="icon"
             variant="ghost"
-            aria-label="View warranty details"
+            aria-label="View Warranty Details"
             onClick={() => {
               openVehicle(item.unitId);
             }}
@@ -495,7 +505,7 @@ function VehicleActionCluster({
             <ChevronRight className="size-4" aria-hidden="true" />
           </Button>
         </TooltipTrigger>
-        <TooltipContent>View warranty details</TooltipContent>
+        <TooltipContent>View Warranty Details</TooltipContent>
       </Tooltip>
     </div>
   );
@@ -625,7 +635,7 @@ export function ExtendedWarrantyWorkspacePage({
                 className={`mr-2 size-4 ${syncingStock ? "animate-spin motion-reduce:animate-none" : ""}`}
                 aria-hidden="true"
               />
-              {syncingStock ? "Syncing…" : "Sync stock"}
+              {syncingStock ? "Syncing…" : "Sync Stock"}
             </Button>
           ) : null}
         </header>
@@ -635,7 +645,7 @@ export function ExtendedWarrantyWorkspacePage({
           className="!grid-cols-[repeat(5,minmax(10rem,1fr))] gap-3 overflow-x-auto pb-1"
         >
           <StaticMetric
-            title="Available stock"
+            title="Available Stock"
             value={
               data.overview.availableStock === null
                 ? "Unavailable"
@@ -686,7 +696,7 @@ export function ExtendedWarrantyWorkspacePage({
           <CardHeader className="gap-4 border-b pb-4">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
               <div className="min-w-0">
-                <CardTitle>Sold vehicles</CardTitle>
+                <CardTitle>Sold Vehicles</CardTitle>
                 <CardDescription>
                   Latest sold vehicles by invoice date.
                 </CardDescription>
@@ -716,7 +726,7 @@ export function ExtendedWarrantyWorkspacePage({
                     }}
                   >
                     <AlertTriangle className="mr-2 size-4" aria-hidden="true" />
-                    Needs attention
+                    Needs Attention
                   </Button>
                   <Button variant="outline" onClick={openFilters}>
                     <Filter className="mr-2 size-4" aria-hidden="true" />
@@ -741,7 +751,7 @@ export function ExtendedWarrantyWorkspacePage({
                       navigate({ q: null, cursor: null, unitId: null });
                     }}
                   >
-                    Global search: {query.q}
+                    Global Search: {query.q}
                     <X className="ml-2 size-3.5" aria-hidden="true" />
                   </Button>
                 ) : null}
@@ -772,7 +782,7 @@ export function ExtendedWarrantyWorkspacePage({
                     }}
                   >
                     {query.reconciliation === "ATTENTION"
-                      ? "Needs attention"
+                      ? "Needs Attention"
                       : "Clear"}
                     <X className="ml-2 size-3.5" aria-hidden="true" />
                   </Button>
@@ -790,7 +800,7 @@ export function ExtendedWarrantyWorkspacePage({
                     });
                   }}
                 >
-                  Clear all
+                  Clear All
                 </Button>
               </div>
             ) : null}
@@ -818,7 +828,7 @@ export function ExtendedWarrantyWorkspacePage({
                         });
                       }}
                     >
-                      Clear filters
+                      Clear Filters
                     </Button>
                   </div>
                 ) : null}
@@ -861,7 +871,7 @@ export function ExtendedWarrantyWorkspacePage({
                                 reasons={item.reconciliationReasons}
                               />
                               <span>
-                                {item.invoiceNumber ?? "Invoice missing"}
+                                {item.invoiceNumber ?? "Invoice Missing"}
                               </span>
                             </div>
                             <div className="mt-1 whitespace-nowrap text-xs text-muted-foreground">
@@ -873,45 +883,66 @@ export function ExtendedWarrantyWorkspacePage({
                               {item.vin ?? "—"}
                             </div>
                             <div className="mt-1 truncate text-xs text-muted-foreground">
-                              {[item.modelName, item.colorName]
-                                .filter(Boolean)
-                                .join(" · ") || "—"}
+                              {formatCapitalizedDisplayList(
+                                [item.modelName, item.colorName],
+                                "—",
+                              )}
                             </div>
                           </TableCell>
                           <TableCell className="align-middle py-3">
                             <div className="truncate font-medium">
-                              {item.variantName ?? "—"}
+                              {formatCapitalizedDisplayText(
+                                item.variantName,
+                                "—",
+                              )}
                             </div>
                             <div className="mt-1 truncate text-xs text-muted-foreground">
-                              {[item.batteryType, item.batteryPowerKw]
-                                .filter(Boolean)
-                                .join(" · ") || "—"}
+                              {formatCapitalizedDisplayList(
+                                [item.batteryType, item.batteryPowerKw],
+                                "—",
+                              )}
                             </div>
                           </TableCell>
                           <TableCell className="align-middle py-3">
                             <div
                               className="truncate font-medium"
-                              title={item.sellerName ?? undefined}
+                              title={formatCapitalizedDisplayText(
+                                item.sellerName,
+                                "",
+                              )}
                             >
-                              {item.sellerName ?? "—"}
+                              {formatCapitalizedDisplayText(
+                                item.sellerName,
+                                "—",
+                              )}
                             </div>
                             <div className="mt-1 truncate text-xs text-muted-foreground">
-                              {[item.sellerDistrict, item.sellerState]
-                                .filter(Boolean)
-                                .join(", ") || "—"}
+                              {formatCapitalizedDisplayList(
+                                [item.sellerDistrict, item.sellerState],
+                                "—",
+                                ", ",
+                              )}
                             </div>
                           </TableCell>
                           <TableCell className="align-middle py-3">
                             <div
                               className="truncate font-medium"
-                              title={item.buyerName ?? undefined}
+                              title={formatCapitalizedDisplayText(
+                                item.buyerName,
+                                "",
+                              )}
                             >
-                              {item.buyerName ?? "—"}
+                              {formatCapitalizedDisplayText(
+                                item.buyerName,
+                                "—",
+                              )}
                             </div>
                             <div className="mt-1 truncate text-xs text-muted-foreground">
-                              {[item.buyerDistrict, item.buyerState]
-                                .filter(Boolean)
-                                .join(", ") || "—"}
+                              {formatCapitalizedDisplayList(
+                                [item.buyerDistrict, item.buyerState],
+                                "—",
+                                ", ",
+                              )}
                             </div>
                           </TableCell>
                           <TableCell className="align-middle py-3">
@@ -919,7 +950,10 @@ export function ExtendedWarrantyWorkspacePage({
                               {item.maskedMobile ?? "—"}
                             </div>
                             <div className="mt-1 whitespace-nowrap text-xs text-muted-foreground">
-                              {item.preferredMsgChannel ?? "—"}
+                              {formatCapitalizedDisplayText(
+                                item.preferredMsgChannel,
+                                "—",
+                              )}
                             </div>
                           </TableCell>
                           <TableCell className="align-middle py-3 whitespace-nowrap">
@@ -957,7 +991,7 @@ export function ExtendedWarrantyWorkspacePage({
                               reasons={item.reconciliationReasons}
                             />
                             <span className="truncate">
-                              {item.invoiceNumber ?? "Invoice missing"}
+                              {item.invoiceNumber ?? "Invoice Missing"}
                             </span>
                           </div>
                           <div className="mt-1 text-xs text-muted-foreground">
@@ -968,14 +1002,20 @@ export function ExtendedWarrantyWorkspacePage({
                       </div>
                       <div className="grid gap-1 text-sm">
                         <span className="font-mono font-medium">
-                          {item.vin ?? "VIN unavailable"}
+                          {item.vin ?? "VIN Unavailable"}
                         </span>
                         <span className="text-muted-foreground">
-                          {[item.modelName, item.variantName, item.colorName]
-                            .filter(Boolean)
-                            .join(" · ") || "—"}
+                          {formatCapitalizedDisplayList(
+                            [item.modelName, item.variantName, item.colorName],
+                            "—",
+                          )}
                         </span>
-                        <span>{item.buyerName ?? "Buyer unavailable"}</span>
+                        <span>
+                          {formatCapitalizedDisplayText(
+                            item.buyerName,
+                            "Buyer Unavailable",
+                          )}
+                        </span>
                       </div>
                       <VehicleActionCluster
                         tenantId={tenantId}
@@ -1005,7 +1045,7 @@ export function ExtendedWarrantyWorkspacePage({
                   >
                     <SelectTrigger
                       className="h-8 w-[76px]"
-                      aria-label="Rows per page"
+                      aria-label="Rows per Page"
                     >
                       <SelectValue placeholder="25" />
                     </SelectTrigger>
@@ -1053,7 +1093,7 @@ export function ExtendedWarrantyWorkspacePage({
                 }}
               >
                 <SelectTrigger id="ew-status-filter">
-                  <SelectValue placeholder="All statuses" />
+                  <SelectValue placeholder="All Statuses" />
                 </SelectTrigger>
                 <SelectContent>
                   {STATUS_OPTIONS.map((option) => (
@@ -1074,17 +1114,17 @@ export function ExtendedWarrantyWorkspacePage({
                 }}
               >
                 <SelectTrigger id="ew-reconciliation-filter">
-                  <SelectValue placeholder="All vehicles" />
+                  <SelectValue placeholder="All Vehicles" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="ALL">All vehicles</SelectItem>
-                  <SelectItem value="ATTENTION">Needs attention</SelectItem>
+                  <SelectItem value="ALL">All Vehicles</SelectItem>
+                  <SelectItem value="ATTENTION">Needs Attention</SelectItem>
                   <SelectItem value="CLEAR">Clear</SelectItem>
                 </SelectContent>
               </Select>
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="ew-limit-filter">Rows per page</Label>
+              <Label htmlFor="ew-limit-filter">Rows per Page</Label>
               <Select value={draftLimit} onValueChange={setDraftLimit}>
                 <SelectTrigger id="ew-limit-filter">
                   <SelectValue placeholder="25" />
@@ -1124,7 +1164,7 @@ export function ExtendedWarrantyWorkspacePage({
                 });
               }}
             >
-              Apply filters
+              Apply Filters
             </Button>
           </div>
         </SheetContent>
@@ -1192,7 +1232,7 @@ export function ExtendedWarrantyWorkspacePage({
 
                 <section className="grid gap-4 border-b pb-6">
                   <div>
-                    <h2 className="font-semibold">Purchase & workflow</h2>
+                    <h2 className="font-semibold">Purchase & Workflow</h2>
                     <p className="text-sm text-muted-foreground">
                       Current purchase, payment, fulfillment, and certificate
                       state.
@@ -1204,8 +1244,8 @@ export function ExtendedWarrantyWorkspacePage({
                       value={detail.orderNumber ?? "—"}
                     />
                     <DetailField
-                      label="Order status"
-                      value={detail.orderStatus ?? "—"}
+                      label="Order Status"
+                      value={formatDisplayLabel(detail.orderStatus, "—")}
                     />
                     <DetailField
                       label="Amount"
@@ -1215,36 +1255,39 @@ export function ExtendedWarrantyWorkspacePage({
                       )}
                     />
                     <DetailField
-                      label="Payment confirmed"
+                      label="Payment Confirmed"
                       value={formatDateTime(detail.paymentConfirmedAt)}
                     />
                     <DetailField
                       label="Fulfillment"
-                      value={detail.fulfillmentStatus ?? "—"}
+                      value={formatDisplayLabel(detail.fulfillmentStatus, "—")}
                     />
                     <DetailField
-                      label="Delivered at"
+                      label="Delivered At"
                       value={formatDateTime(detail.deliveredAt)}
                     />
                     <DetailField
-                      label="Installation submitted"
+                      label="Installation Submitted"
                       value={formatDateTime(detail.installationSubmittedAt)}
                     />
                     <DetailField
                       label="Review"
-                      value={detail.reviewDecision ?? "—"}
+                      value={formatDisplayLabel(detail.reviewDecision, "—")}
                     />
                     <DetailField
                       label="Certificate"
                       value={detail.certificateNumber ?? "—"}
                     />
                     <DetailField
-                      label="Certificate issued"
+                      label="Certificate Issued"
                       value={formatDateTime(detail.certificateIssuedAt)}
                     />
                     <DetailField
                       label="Carrier"
-                      value={detail.carrierName ?? "—"}
+                      value={formatCapitalizedDisplayText(
+                        detail.carrierName,
+                        "—",
+                      )}
                     />
                     <DetailField
                       label="Tracking"
@@ -1264,7 +1307,7 @@ export function ExtendedWarrantyWorkspacePage({
                                   rel="noopener noreferrer"
                                   className="inline-flex items-center gap-1 text-primary hover:underline"
                                 >
-                                  {detail.trackingNumber ?? "Open tracking"}
+                                  {detail.trackingNumber ?? "Open Tracking"}
                                   <ExternalLink
                                     className="size-3.5"
                                     aria-hidden="true"
@@ -1278,7 +1321,7 @@ export function ExtendedWarrantyWorkspacePage({
                 </section>
 
                 <section className="grid gap-4 border-b pb-6">
-                  <h2 className="font-semibold">Vehicle, customer & seller</h2>
+                  <h2 className="font-semibold">Vehicle, Customer & Seller</h2>
                   <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
                     <DetailField
                       label="VIN"
@@ -1288,58 +1331,61 @@ export function ExtendedWarrantyWorkspacePage({
                     />
                     <DetailField
                       label="Model"
-                      value={
-                        [detail.modelName, detail.colorName]
-                          .filter(Boolean)
-                          .join(" · ") || "—"
-                      }
+                      value={formatCapitalizedDisplayList(
+                        [detail.modelName, detail.colorName],
+                        "—",
+                      )}
                     />
                     <DetailField
                       label="Variant"
-                      value={
+                      value={formatCapitalizedDisplayList(
                         [
                           detail.variantName,
                           detail.batteryType,
                           detail.batteryPowerKw,
-                        ]
-                          .filter(Boolean)
-                          .join(" · ") || "—"
-                      }
+                        ],
+                        "—",
+                      )}
                     />
                     <DetailField
                       label="Buyer"
-                      value={detail.buyerName ?? "—"}
+                      value={formatCapitalizedDisplayText(
+                        detail.buyerName,
+                        "—",
+                      )}
                     />
                     <DetailField
-                      label="Buyer location"
-                      value={
-                        [detail.buyerDistrict, detail.buyerState]
-                          .filter(Boolean)
-                          .join(", ") || "—"
-                      }
+                      label="Buyer Location"
+                      value={formatCapitalizedDisplayList(
+                        [detail.buyerDistrict, detail.buyerState],
+                        "—",
+                        ", ",
+                      )}
                     />
                     <DetailField
                       label="Contact"
-                      value={
-                        [detail.maskedMobile, detail.preferredMsgChannel]
-                          .filter(Boolean)
-                          .join(" · ") || "—"
-                      }
+                      value={formatCapitalizedDisplayList(
+                        [detail.maskedMobile, detail.preferredMsgChannel],
+                        "—",
+                      )}
                     />
                     <DetailField
                       label="Seller"
-                      value={detail.sellerName ?? "—"}
+                      value={formatCapitalizedDisplayText(
+                        detail.sellerName,
+                        "—",
+                      )}
                     />
                     <DetailField
-                      label="Seller location"
-                      value={
-                        [detail.sellerDistrict, detail.sellerState]
-                          .filter(Boolean)
-                          .join(", ") || "—"
-                      }
+                      label="Seller Location"
+                      value={formatCapitalizedDisplayList(
+                        [detail.sellerDistrict, detail.sellerState],
+                        "—",
+                        ", ",
+                      )}
                     />
                     <DetailField
-                      label="Invoice date"
+                      label="Invoice Date"
                       value={formatDate(detail.saleDate)}
                     />
                   </div>
@@ -1349,7 +1395,7 @@ export function ExtendedWarrantyWorkspacePage({
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                     <div>
                       <h2 className="font-semibold">
-                        Purchase attempts & payments
+                        Purchase Attempts & Payments
                       </h2>
                       <p className="text-sm text-muted-foreground">
                         Compact history of order attempts and payment
@@ -1377,7 +1423,7 @@ export function ExtendedWarrantyWorkspacePage({
                           });
                         }}
                       >
-                        {reconciling ? "Queuing…" : "Reconcile payment"}
+                        {reconciling ? "Queuing…" : "Reconcile Payment"}
                       </Button>
                     ) : null}
                   </div>
@@ -1410,9 +1456,10 @@ export function ExtendedWarrantyWorkspacePage({
                               )}
                             </span>
                             <Badge variant="outline">
-                              {attempt.status
-                                .toLowerCase()
-                                .replaceAll("_", " ")}
+                              {formatDisplayLabel(
+                                attempt.status,
+                                "Unknown Status",
+                              )}
                             </Badge>
                           </div>
                         </div>
@@ -1425,9 +1472,10 @@ export function ExtendedWarrantyWorkspacePage({
                           <div>
                             <div className="font-medium">
                               Payment{" "}
-                              {payment.status
-                                .toLowerCase()
-                                .replaceAll("_", " ")}
+                              {formatDisplayLabel(
+                                payment.status,
+                                "Unknown Status",
+                              )}
                             </div>
                             <div className="text-xs text-muted-foreground">
                               {formatDateTime(payment.createdAt)}
@@ -1449,10 +1497,12 @@ export function ExtendedWarrantyWorkspacePage({
                           <div>
                             <div className="font-medium">{job.reason}</div>
                             <div className="text-xs text-muted-foreground">
-                              Next attempt {formatDateTime(job.nextAttemptAt)}
+                              Next Attempt {formatDateTime(job.nextAttemptAt)}
                             </div>
                           </div>
-                          <Badge variant="outline">{job.status}</Badge>
+                          <Badge variant="outline">
+                            {formatDisplayLabel(job.status, "Unknown Status")}
+                          </Badge>
                         </div>
                       ))}
                     </div>
@@ -1467,7 +1517,7 @@ export function ExtendedWarrantyWorkspacePage({
                 ) : null}
                 {review === null ? null : (
                   <section className="grid gap-4 border-b pb-6">
-                    <h2 className="font-semibold">Installation & review</h2>
+                    <h2 className="font-semibold">Installation & Review</h2>
                     <video
                       controls
                       preload="metadata"
@@ -1494,7 +1544,7 @@ export function ExtendedWarrantyWorkspacePage({
 
                 <section className="grid gap-4">
                   <div>
-                    <h2 className="font-semibold">Activity timeline</h2>
+                    <h2 className="font-semibold">Activity Timeline</h2>
                     <p className="text-sm text-muted-foreground">
                       Latest 100 recorded warranty events, newest first.
                     </p>
@@ -1518,13 +1568,22 @@ export function ExtendedWarrantyWorkspacePage({
                           <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
                             <div>
                               <div className="text-sm font-medium">
-                                {event.eventType}
+                                {formatDisplayLabel(
+                                  event.eventType,
+                                  "Warranty Event",
+                                )}
                               </div>
                               <div className="text-xs text-muted-foreground">
-                                {event.actorKind}
+                                {formatDisplayLabel(
+                                  event.actorKind,
+                                  "Unknown Actor",
+                                )}
                                 {event.reasonCode === null
                                   ? ""
-                                  : ` · ${event.reasonCode}`}
+                                  : ` · ${formatDisplayLabel(
+                                      event.reasonCode,
+                                      "Reason",
+                                    )}`}
                               </div>
                             </div>
                             <div className="text-xs tabular-nums text-muted-foreground">
@@ -1560,7 +1619,7 @@ export function PaymentProviderSettingsPage({
             Settings
           </div>
           <h1 className="text-3xl font-semibold tracking-tight">
-            Payment integrations
+            Payment Integrations
           </h1>
           <p className="text-sm text-muted-foreground">
             Tenant-scoped payment provider accounts used by the Extended
@@ -1570,7 +1629,7 @@ export function PaymentProviderSettingsPage({
 
         <Card>
           <CardHeader>
-            <CardTitle>Configured accounts</CardTitle>
+            <CardTitle>Configured Accounts</CardTitle>
             <CardDescription>
               Tenant {tenantId} currently has {accounts.length} configured
               provider account{accounts.length === 1 ? "" : "s"}.
@@ -1599,11 +1658,21 @@ export function PaymentProviderSettingsPage({
                     {accounts.map((account) => (
                       <TableRow key={account.providerAccountId}>
                         <TableCell className="font-medium">
-                          {account.providerCode}
+                          {formatDisplayLabel(account.providerCode, "Provider")}
                         </TableCell>
-                        <TableCell>{account.environment}</TableCell>
                         <TableCell>
-                          <Badge variant="outline">{account.status}</Badge>
+                          {formatDisplayLabel(
+                            account.environment,
+                            "Environment",
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="outline">
+                            {formatDisplayLabel(
+                              account.status,
+                              "Unknown Status",
+                            )}
+                          </Badge>
                         </TableCell>
                         <TableCell>
                           {account.isDefault ? "Yes" : "No"}
