@@ -13,12 +13,14 @@ import { HTTP_METHODS } from "@/lib/api/http-contract";
 import { requestId } from "@/lib/security/request-identifiers";
 import { serverFetch } from "@/server/api/edge-fetch";
 import {
+  extendedWarrantyPrepareLinkResultSchema,
   extendedWarrantySendPurchaseLinkResultSchema,
   extendedWarrantyStockSyncResultSchema,
   extendedWarrantyWorkspaceDetailSchema,
   extendedWarrantyWorkspaceQuerySchema,
   extendedWarrantyWorkspaceSchema,
   paymentProviderAccountsSchema,
+  type ExtendedWarrantyPrepareLinkResult,
   type ExtendedWarrantySendPurchaseLinkResult,
   type ExtendedWarrantyStockSyncResult,
   type ExtendedWarrantyWorkspace,
@@ -132,6 +134,28 @@ export async function syncExtendedWarrantyStockAction(
       method: HTTP_METHODS.POST,
       schema: extendedWarrantyStockSyncResultSchema,
       idempotencyKey: requestId("ew-stock-sync"),
+      timeoutMs: 45_000,
+      cache: "no-store",
+      ...contextOptions(access),
+    },
+  );
+  revalidatePath("/extended-warranty");
+  return result;
+}
+
+export async function prepareExtendedWarrantyPurchaseLinkAction(
+  input: Readonly<{ tenantId: string; unitId: string }>,
+): Promise<ExtendedWarrantyPrepareLinkResult> {
+  const parsed = sendPurchaseLinkActionSchema.parse(input);
+  const access = await requireActionAccess(parsed.tenantId, [
+    "extended-warranty:order:update",
+  ]);
+  const result = await serverFetch(
+    `/erp/extended-warranty/workspace/${encodeURIComponent(parsed.unitId)}/prepare-link`,
+    {
+      method: HTTP_METHODS.POST,
+      schema: extendedWarrantyPrepareLinkResultSchema,
+      idempotencyKey: requestId("ew-prepare-link"),
       timeoutMs: 45_000,
       cache: "no-store",
       ...contextOptions(access),

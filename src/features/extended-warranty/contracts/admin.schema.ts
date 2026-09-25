@@ -83,6 +83,8 @@ export const extendedWarrantyWorkspaceItemSchema = z
     invoiceId: z.uuid().nullable(),
     invoiceNumber: z.string().nullable(),
     invoiceAt: dateTime,
+    invoiceLineId: z.uuid().nullable(),
+    saleDate: z.iso.date().nullable(),
     vin: z.string().nullable(),
     modelName: z.string().nullable(),
     colorName: z.string().nullable(),
@@ -105,6 +107,9 @@ export const extendedWarrantyWorkspaceItemSchema = z
     latestEventType: z.string().nullable(),
     isReconciliationAttention: z.boolean(),
     canSendPurchaseLink: z.boolean(),
+    purchaseLinkAction: z.enum(["PREPARE", "SEND", "NONE"]),
+    purchaseLinkActionEnabled: z.boolean(),
+    purchaseLinkActionReason: z.string().nullable(),
     eligibilityBlockers: z.array(z.string()),
     reconciliationReasons: z.array(z.string()),
     certificateFileId: z.uuid().nullable(),
@@ -141,6 +146,8 @@ export const extendedWarrantyWorkspaceDetailSchema = z
     baseVehicleEntitlementId: z.uuid().nullable(),
     invoiceNumber: z.string().nullable(),
     invoiceAt: dateTime,
+    invoiceLineId: z.uuid().nullable(),
+    saleDate: z.iso.date().nullable(),
     vin: z.string().nullable(),
     modelName: z.string().nullable(),
     colorName: z.string().nullable(),
@@ -175,6 +182,9 @@ export const extendedWarrantyWorkspaceDetailSchema = z
     certificateIssuedAt: dateTime,
     certificateFileId: z.uuid().nullable(),
     canSendPurchaseLink: z.boolean(),
+    purchaseLinkAction: z.enum(["PREPARE", "SEND", "NONE"]),
+    purchaseLinkActionEnabled: z.boolean(),
+    purchaseLinkActionReason: z.string().nullable(),
     eligibilityBlockers: z.array(z.string()),
     reconciliationReasons: z.array(z.string()),
     paymentIntentId: z.uuid().nullable(),
@@ -226,6 +236,14 @@ export const extendedWarrantyStockSyncResultSchema = z
   })
   .strict();
 
+export const extendedWarrantyPrepareLinkResultSchema = z
+  .object({
+    outcome: z.enum(["queued", "deduplicated", "skipped"]),
+    invoiceLineId: z.uuid(),
+    taskId: z.string().min(1).max(256).nullable(),
+    detail: z.string().min(1).max(512),
+  })
+  .strict();
 export const extendedWarrantySendPurchaseLinkResultSchema = z
   .object({
     outcome: z.enum(["created", "skipped", "already_exists"]),
@@ -277,6 +295,9 @@ export type ExtendedWarrantyWorkspaceDetail = z.infer<
 >;
 export type ExtendedWarrantyStockSyncResult = z.infer<
   typeof extendedWarrantyStockSyncResultSchema
+>;
+export type ExtendedWarrantyPrepareLinkResult = z.infer<
+  typeof extendedWarrantyPrepareLinkResultSchema
 >;
 export type ExtendedWarrantySendPurchaseLinkResult = z.infer<
   typeof extendedWarrantySendPurchaseLinkResultSchema

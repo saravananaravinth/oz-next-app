@@ -5,10 +5,11 @@ import * as React from "react";
 import type { Route } from "next";
 import Link from "next/link";
 import {
-  ArrowRight,
+  AlertTriangle,
   BadgeCheck,
   Boxes,
   CalendarClock,
+  ChevronRight,
   CircleAlert,
   ClipboardList,
   Download,
@@ -18,20 +19,18 @@ import {
   PackageCheck,
   RefreshCw,
   Send,
+  WandSparkles,
+  X,
 } from "lucide-react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { toast } from "sonner";
 
 import {
+  ContentMetricCard,
+  ContentMetrics,
   ContentRoot,
   ContentStatus,
-  ContentHeader,
-  ContentMetrics,
-  ContentMetricCard,
 } from "@/components/common/content-shell";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -41,15 +40,14 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { toast } from "sonner";
-import { ExtendedWarrantyReviewDecisionPanel } from "./review-decision-panel";
-import type { ExtendedWarrantyReviewDetail } from "../contracts/review.schema";
-import {
-  downloadExtendedWarrantyCertificateAction,
-  reconcileExtendedWarrantyPaymentAction,
-  syncExtendedWarrantyStockAction,
-} from "../actions/admin.actions";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Sheet,
   SheetContent,
@@ -65,6 +63,18 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
+  downloadExtendedWarrantyCertificateAction,
+  prepareExtendedWarrantyPurchaseLinkAction,
+  reconcileExtendedWarrantyPaymentAction,
+  sendExtendedWarrantyPurchaseLinkAction,
+  syncExtendedWarrantyStockAction,
+} from "@/features/extended-warranty/actions/admin.actions";
 import type {
   ExtendedWarrantyWorkspace,
   ExtendedWarrantyWorkspaceDetail,
@@ -72,9 +82,9 @@ import type {
   ExtendedWarrantyWorkspaceQuery,
   PaymentProviderAccount,
 } from "@/features/extended-warranty/contracts/admin.schema";
-import { sendExtendedWarrantyPurchaseLinkAction } from "@/features/extended-warranty/actions/admin.actions";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import type { ExtendedWarrantyReviewDetail } from "@/features/extended-warranty/contracts/review.schema";
 import { safeInternalHref } from "@/lib/security/navigation";
+import { ExtendedWarrantyReviewDecisionPanel } from "./review-decision-panel";
 
 type ExtendedWarrantyWorkspacePageProps = Readonly<{
   tenantId: string;
@@ -87,39 +97,45 @@ type ExtendedWarrantyWorkspacePageProps = Readonly<{
   canReconcile: boolean;
 }>;
 
-type MetricProps = Readonly<{
-  title: string;
-  value: string;
-  description: string;
-  icon: React.ReactNode;
-}>;
+type WorkspaceStatus = ExtendedWarrantyWorkspaceQuery["status"];
+type ReconciliationFilter = ExtendedWarrantyWorkspaceQuery["reconciliation"];
 
-function MetricCard({
-  title,
-  value,
-  description,
-  icon,
-}: MetricProps): React.ReactElement {
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <div
-          tabIndex={0}
-          className="h-full rounded-xl focus-visible:ring-2 focus-visible:ring-ring"
-          aria-label={`${title}: ${value}. ${description}`}
-        >
-          <ContentMetricCard
-            label={title}
-            value={value}
-            icon={icon}
-            presentation="dashboard"
-            className="[&_[data-slot=content-metric-card-value]]:text-[clamp(1.5rem,1.65vw,1.875rem)]"
-          />
-        </div>
-      </TooltipTrigger>
-      <TooltipContent className="max-w-xs">{description}</TooltipContent>
-    </Tooltip>
-  );
+const STATUS_OPTIONS: ReadonlyArray<
+  Readonly<{ value: WorkspaceStatus; label: string }>
+> = [
+  { value: "ALL", label: "All statuses" },
+  { value: "NOT_PURCHASED", label: "Not purchased" },
+  { value: "LINK_SENT", label: "Link sent" },
+  { value: "PAYMENT_PENDING", label: "Payment pending" },
+  { value: "PAYMENT_RECONCILING", label: "Payment reconciling" },
+  { value: "ORDERED", label: "Ordered" },
+  { value: "PROCESSING", label: "Processing" },
+  { value: "INVOICED", label: "Invoiced" },
+  { value: "PACKED", label: "Packed" },
+  { value: "SHIPPED", label: "Shipped" },
+  { value: "PENDING", label: "Pending" },
+  { value: "DELIVERED", label: "Delivered" },
+  { value: "INSTALLATION_PENDING", label: "Installation pending" },
+  { value: "REVIEW_PENDING", label: "Review pending" },
+  { value: "APPROVED", label: "Approved" },
+  { value: "ACTIVATION_PENDING", label: "Activation pending" },
+  { value: "CERTIFICATE_PENDING", label: "Certificate pending" },
+  { value: "INSTALLED", label: "Installed" },
+  { value: "REJECTED", label: "Rejected" },
+  { value: "CANCELLED", label: "Cancelled" },
+  { value: "EXPIRED", label: "Expired" },
+  { value: "REFUNDED", label: "Refunded" },
+  { value: "FAILED", label: "Failed" },
+] as const;
+
+const ROW_LIMIT_OPTIONS = [25, 50, 100] as const;
+
+function isWorkspaceStatus(value: string): value is WorkspaceStatus {
+  return STATUS_OPTIONS.some((option) => option.value === value);
+}
+
+function isReconciliationFilter(value: string): value is ReconciliationFilter {
+  return value === "ALL" || value === "ATTENTION" || value === "CLEAR";
 }
 
 function formatDateTime(value: string | null): string {
@@ -129,6 +145,15 @@ function formatDateTime(value: string | null): string {
     timeStyle: "short",
     timeZone: "Asia/Kolkata",
   }).format(new Date(value));
+}
+
+function formatDate(value: string | null): string {
+  if (value === null) return "—";
+  const parsed = new Date(`${value}T00:00:00+05:30`);
+  return new Intl.DateTimeFormat("en-IN", {
+    dateStyle: "medium",
+    timeZone: "Asia/Kolkata",
+  }).format(parsed);
 }
 
 function formatMinorAmount(
@@ -144,26 +169,49 @@ function formatMinorAmount(
   }).format(amount);
 }
 
+function statusLabel(status: ExtendedWarrantyWorkspaceItem["status"]): string {
+  return (
+    STATUS_OPTIONS.find((option) => option.value === status)?.label ??
+    status.toLowerCase().replaceAll("_", " ")
+  );
+}
+
 function statusBadge(
   status: ExtendedWarrantyWorkspaceItem["status"],
 ): React.ReactElement {
-  const mapping = {
-    NOT_PURCHASED: { label: "Not purchased", variant: "secondary" as const },
-    LINK_SENT: { label: "Link sent", variant: "outline" as const },
-    ORDERED: { label: "Ordered", variant: "outline" as const },
-    PENDING: { label: "Pending", variant: "default" as const },
-    INSTALLED: { label: "Installed", variant: "default" as const },
-    REJECTED: { label: "Rejected", variant: "destructive" as const },
-  } as const;
+  const neutral = new Set([
+    "NOT_PURCHASED",
+    "CANCELLED",
+    "EXPIRED",
+    "REFUNDED",
+  ]);
+  const failure = new Set(["REJECTED", "FAILED"]);
+  const positive = new Set(["DELIVERED", "APPROVED", "INSTALLED"]);
+  const waiting = new Set([
+    "PAYMENT_PENDING",
+    "PAYMENT_RECONCILING",
+    "PENDING",
+    "INSTALLATION_PENDING",
+    "REVIEW_PENDING",
+    "ACTIVATION_PENDING",
+    "CERTIFICATE_PENDING",
+  ]);
 
-  const entry =
-    status in mapping
-      ? mapping[status as keyof typeof mapping]
-      : {
-          label: status.toLowerCase().replaceAll("_", " "),
-          variant: "outline" as const,
-        };
-  return <Badge variant={entry.variant}>{entry.label}</Badge>;
+  const variant = failure.has(status)
+    ? "destructive"
+    : positive.has(status)
+      ? "default"
+      : neutral.has(status)
+        ? "secondary"
+        : waiting.has(status)
+          ? "outline"
+          : "outline";
+
+  return (
+    <Badge variant={variant} className="whitespace-nowrap capitalize">
+      {statusLabel(status)}
+    </Badge>
+  );
 }
 
 function preserveQuery(
@@ -171,15 +219,11 @@ function preserveQuery(
   next: Readonly<Record<string, string | null | undefined>>,
 ): string {
   const result = new URLSearchParams(searchParams.toString());
-
   for (const [key, value] of Object.entries(next)) {
-    if (value === null || value === undefined || value.length === 0) {
+    if (value === null || value === undefined || value.length === 0)
       result.delete(key);
-    } else {
-      result.set(key, value);
-    }
+    else result.set(key, value);
   }
-
   return result.toString();
 }
 
@@ -191,15 +235,11 @@ function workspaceRoute(
   const serialized = preserveQuery(searchParams, next);
   const candidate =
     serialized.length === 0 ? pathname : `${pathname}?${serialized}`;
-
   return safeInternalHref(candidate, "/extended-warranty");
 }
 
 function safeExternalHttpHref(value: string | null): string | null {
-  if (value === null) {
-    return null;
-  }
-
+  if (value === null) return null;
   try {
     const url = new URL(value);
     return url.protocol === "https:" || url.protocol === "http:"
@@ -210,56 +250,134 @@ function safeExternalHttpHref(value: string | null): string | null {
   }
 }
 
-function SendLinkButton({
-  tenantId,
-  unitId,
-  disabled,
-  reason,
-}: {
-  tenantId: string;
-  unitId: string;
-  disabled: boolean;
-  reason: string;
-}): React.ReactElement {
-  const [pending, startTransition] = React.useTransition();
+function DetailField({
+  label,
+  value,
+}: Readonly<{ label: string; value: React.ReactNode }>): React.ReactElement {
   return (
+    <div className="grid min-w-0 gap-1">
+      <span className="text-xs font-medium text-muted-foreground">{label}</span>
+      <div className="min-w-0 text-sm text-foreground">{value}</div>
+    </div>
+  );
+}
+
+function AttentionIndicator({
+  reasons,
+}: Readonly<{ reasons: readonly string[] }>) {
+  if (reasons.length === 0) return null;
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span
+          className="inline-flex size-5 items-center justify-center text-amber-500"
+          aria-label="Needs reconciliation"
+        >
+          <AlertTriangle className="size-4" aria-hidden="true" />
+        </span>
+      </TooltipTrigger>
+      <TooltipContent className="max-w-sm">{reasons.join(". ")}</TooltipContent>
+    </Tooltip>
+  );
+}
+
+function PurchaseLinkActionButton({
+  tenantId,
+  item,
+}: Readonly<{
+  tenantId: string;
+  item: Pick<
+    ExtendedWarrantyWorkspaceItem,
+    | "unitId"
+    | "purchaseLinkAction"
+    | "purchaseLinkActionEnabled"
+    | "purchaseLinkActionReason"
+    | "eligibilityBlockers"
+  >;
+}>): React.ReactElement | null {
+  const [pending, startTransition] = React.useTransition();
+  const router = useRouter();
+
+  if (item.purchaseLinkAction === "NONE") return null;
+
+  const prepare = item.purchaseLinkAction === "PREPARE";
+  const label = prepare ? "Prepare link" : "Send link";
+  const pendingLabel = prepare ? "Preparing…" : "Sending…";
+  const blockerText = item.eligibilityBlockers.join("; ");
+  const reason =
+    item.purchaseLinkActionReason ??
+    (blockerText.length > 0 ? blockerText : `${label} is unavailable.`);
+
+  const button = (
     <Button
       size="sm"
       variant="outline"
-      disabled={disabled || pending}
-      title={reason || "Send purchase link"}
+      className="min-w-[112px] whitespace-nowrap"
+      disabled={!item.purchaseLinkActionEnabled || pending}
+      aria-label={label}
       onClick={() => {
         startTransition(async () => {
-          const form = new FormData();
-          form.set("tenantId", tenantId);
-          form.set("unitId", unitId);
           try {
-            const result = await sendExtendedWarrantyPurchaseLinkAction(form);
-            if (result.outcome === "skipped") toast.info(result.detail);
-            else toast.success(result.detail);
-          } catch {
-            toast.error("Unable to send purchase link. Please retry.");
+            if (prepare) {
+              const result = await prepareExtendedWarrantyPurchaseLinkAction({
+                tenantId,
+                unitId: item.unitId,
+              });
+              if (result.outcome === "skipped") toast.warning(result.detail);
+              else if (result.outcome === "deduplicated")
+                toast.info(result.detail);
+              else toast.success(result.detail);
+            } else {
+              const form = new FormData();
+              form.set("tenantId", tenantId);
+              form.set("unitId", item.unitId);
+              const result = await sendExtendedWarrantyPurchaseLinkAction(form);
+              if (result.outcome === "skipped") toast.info(result.detail);
+              else toast.success(result.detail);
+            }
+            router.refresh();
+          } catch (error: unknown) {
+            toast.error(
+              error instanceof Error && error.message.trim().length > 0
+                ? error.message
+                : prepare
+                  ? "Unable to prepare the purchase link. Please retry."
+                  : "Unable to send the purchase link. Please retry.",
+            );
           }
         });
       }}
     >
-      <Send className="mr-2 size-4" aria-hidden="true" />
-      {pending ? "Sending…" : "Send link"}
+      {prepare ? (
+        <WandSparkles className="mr-2 size-4" aria-hidden="true" />
+      ) : (
+        <Send className="mr-2 size-4" aria-hidden="true" />
+      )}
+      {pending ? pendingLabel : label}
     </Button>
   );
+
+  if (item.purchaseLinkActionEnabled) return button;
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span className="inline-flex">{button}</span>
+      </TooltipTrigger>
+      <TooltipContent className="max-w-sm">{reason}</TooltipContent>
+    </Tooltip>
+  );
 }
+
 function CertificateButton({
   tenantId,
   unitId,
-}: {
-  tenantId: string;
-  unitId: string;
-}): React.ReactElement {
+}: Readonly<{ tenantId: string; unitId: string }>) {
   const [pending, startTransition] = React.useTransition();
   return (
     <Button
       size="sm"
       variant="outline"
+      className="min-w-[112px] whitespace-nowrap"
       disabled={pending}
       onClick={() => {
         startTransition(async () => {
@@ -269,8 +387,8 @@ function CertificateButton({
               unitId,
             });
             const href = safeExternalHttpHref(result.url);
-            if (href) window.location.assign(href);
-            else throw new Error("Invalid download");
+            if (href === null) throw new Error("Invalid certificate URL");
+            window.location.assign(href);
           } catch {
             toast.error("Certificate download is unavailable. Please retry.");
           }
@@ -283,16 +401,102 @@ function CertificateButton({
   );
 }
 
-function DetailField({
-  label,
+function StaticMetric({
+  title,
   value,
-}: Readonly<{ label: string; value: React.ReactNode }>): React.ReactElement {
+  icon,
+  unavailable = false,
+}: Readonly<{
+  title: string;
+  value: string;
+  icon: React.ReactNode;
+  unavailable?: boolean;
+}>) {
   return (
-    <div className="grid gap-1">
-      <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-        {label}
-      </span>
-      <div className="text-sm text-foreground">{value}</div>
+    <div className="h-full rounded-xl border border-border/70 bg-card">
+      <ContentMetricCard
+        label={title}
+        value={value}
+        icon={icon}
+        presentation="dashboard"
+        className={
+          unavailable
+            ? "[&_[data-slot=content-metric-card-value]]:text-amber-500"
+            : undefined
+        }
+      />
+    </div>
+  );
+}
+
+function FilterMetric({
+  title,
+  value,
+  icon,
+  active,
+  onClick,
+}: Readonly<{
+  title: string;
+  value: string;
+  icon: React.ReactNode;
+  active: boolean;
+  onClick: () => void;
+}>) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={`h-full rounded-xl border bg-card text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+        active
+          ? "border-primary/70 bg-primary/5"
+          : "border-border/70 hover:bg-muted/40"
+      }`}
+    >
+      <ContentMetricCard
+        label={title}
+        value={value}
+        icon={icon}
+        presentation="dashboard"
+      />
+    </button>
+  );
+}
+
+function VehicleActionCluster({
+  tenantId,
+  item,
+  canSend,
+  openVehicle,
+}: Readonly<{
+  tenantId: string;
+  item: ExtendedWarrantyWorkspaceItem;
+  canSend: boolean;
+  openVehicle: (unitId: string) => void;
+}>) {
+  return (
+    <div className="flex items-center justify-end gap-1 whitespace-nowrap">
+      {canSend && item.certificateFileId === null ? (
+        <PurchaseLinkActionButton tenantId={tenantId} item={item} />
+      ) : null}
+      {item.certificateFileId !== null ? (
+        <CertificateButton tenantId={tenantId} unitId={item.unitId} />
+      ) : null}
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            size="icon"
+            variant="ghost"
+            aria-label="View warranty details"
+            onClick={() => {
+              openVehicle(item.unitId);
+            }}
+          >
+            <ChevronRight className="size-4" aria-hidden="true" />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>View warranty details</TooltipContent>
+      </Tooltip>
     </div>
   );
 }
@@ -310,31 +514,41 @@ export function ExtendedWarrantyWorkspacePage({
   const [reconciling, startReconciliation] = React.useTransition();
   const [syncingStock, startStockSync] = React.useTransition();
   const [filtersOpen, setFiltersOpen] = React.useState(false);
-  const [reconciliationOpen, setReconciliationOpen] = React.useState(false);
+  const [draftStatus, setDraftStatus] = React.useState<WorkspaceStatus>(
+    query.status,
+  );
+  const [draftReconciliation, setDraftReconciliation] =
+    React.useState<ReconciliationFilter>(query.reconciliation);
+  const [draftLimit, setDraftLimit] = React.useState(String(query.limit));
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
-  const openVehicle = React.useCallback(
-    (unitId: string): void => {
-      const href = workspaceRoute(
-        pathname,
-        new URLSearchParams(searchParams.toString()),
-        { unitId },
+  const navigate = React.useCallback(
+    (next: Readonly<Record<string, string | null | undefined>>) => {
+      router.push(
+        workspaceRoute(
+          pathname,
+          new URLSearchParams(searchParams.toString()),
+          next,
+        ),
+        {
+          scroll: false,
+        },
       );
-      router.push(href, { scroll: false });
     },
     [pathname, router, searchParams],
   );
 
-  const closeDetail = React.useCallback((): void => {
-    const href = workspaceRoute(
-      pathname,
-      new URLSearchParams(searchParams.toString()),
-      { unitId: null },
-    );
-    router.push(href, { scroll: false });
-  }, [pathname, router, searchParams]);
+  const openVehicle = React.useCallback(
+    (unitId: string) => {
+      navigate({ unitId });
+    },
+    [navigate],
+  );
+  const closeDetail = React.useCallback(() => {
+    navigate({ unitId: null });
+  }, [navigate]);
 
   const nextHref: Route | null =
     data.pageInfo.nextCursor === null
@@ -344,448 +558,577 @@ export function ExtendedWarrantyWorkspacePage({
           unitId: null,
         });
 
+  const activeFilterCount =
+    (query.status === "ALL" ? 0 : 1) + (query.reconciliation === "ALL" ? 0 : 1);
+  const hasAnyFilter = activeFilterCount > 0 || query.q.length > 0;
+
+  const applyKpiFilter = (status: WorkspaceStatus): void => {
+    navigate({
+      status: query.status === status ? "ALL" : status,
+      cursor: null,
+      unitId: null,
+    });
+  };
+
+  const openFilters = (): void => {
+    setDraftStatus(query.status);
+    setDraftReconciliation(query.reconciliation);
+    setDraftLimit(String(query.limit));
+    setFiltersOpen(true);
+  };
+
   return (
-    <ContentRoot width="full" gutter="default">
+    <ContentRoot width="full" gutter="none">
       <div className="grid gap-6">
-        <ContentHeader
-          title="Extended Warranty"
-          description="Sold vehicles and their warranty journey"
-          variant="compact"
-          actions={
-            <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                disabled={syncingStock || !canSend}
-                onClick={() => {
-                  startStockSync(async () => {
-                    try {
-                      const result = await syncExtendedWarrantyStockAction({
-                        tenantId,
-                      });
-                      router.refresh();
-                      if (result.availableStock === null) {
-                        toast.warning(
-                          result.stockReason ??
-                            "Stock synchronization completed, but the kit stock is still unavailable.",
-                        );
-                      } else {
-                        toast.success(
-                          `Stock synchronized for ${result.synchronizedKitCount.toLocaleString("en-IN")} kit${result.synchronizedKitCount === 1 ? "" : "s"}. Available stock: ${result.availableStock.toLocaleString("en-IN")}.`,
-                        );
-                      }
-                    } catch (error: unknown) {
-                      toast.error(
-                        error instanceof Error &&
-                          error.message.trim().length > 0
-                          ? error.message
-                          : "Unable to synchronize Extended Warranty stock. Please retry.",
+        <header className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+          <div className="grid gap-1">
+            <h1 className="text-3xl font-semibold tracking-tight">
+              Extended Warranty
+            </h1>
+            <p className="text-sm text-muted-foreground">
+              Monitor sold vehicles and their warranty lifecycle.
+            </p>
+          </div>
+          {canSend ? (
+            <Button
+              variant="outline"
+              className="min-w-[128px]"
+              disabled={syncingStock}
+              onClick={() => {
+                startStockSync(async () => {
+                  try {
+                    const result = await syncExtendedWarrantyStockAction({
+                      tenantId,
+                    });
+                    router.refresh();
+                    if (result.availableStock === null) {
+                      toast.warning(
+                        result.stockReason ??
+                          "Stock synchronization completed, but stock remains unavailable.",
+                      );
+                    } else {
+                      toast.success(
+                        `Stock synchronized. ${result.availableStock.toLocaleString("en-IN")} kits available.`,
                       );
                     }
-                  });
-                }}
-              >
-                <RefreshCw
-                  className={`mr-2 size-4 ${syncingStock ? "animate-spin" : ""}`}
-                  aria-hidden="true"
-                />
-                {syncingStock ? "Syncing…" : "Sync Now"}
-              </Button>
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setReconciliationOpen(true);
-                }}
-              >
-                <RefreshCw className="mr-2 size-4" />
-                Reconciliation
-              </Button>
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setFiltersOpen(true);
-                }}
-              >
-                <Filter className="mr-2 size-4" />
-                Filters
-              </Button>
-            </div>
-          }
-        />
-        {query.q ? (
-          <div className="text-sm text-muted-foreground">
-            Search: {query.q}{" "}
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => {
-                router.push(
-                  workspaceRoute(
-                    pathname,
-                    new URLSearchParams(searchParams.toString()),
-                    { q: null, cursor: null, unitId: null },
-                  ),
-                );
+                  } catch (error: unknown) {
+                    toast.error(
+                      error instanceof Error && error.message.trim().length > 0
+                        ? error.message
+                        : "Unable to synchronize Extended Warranty stock. Please retry.",
+                    );
+                  }
+                });
               }}
             >
-              Clear
+              <RefreshCw
+                className={`mr-2 size-4 ${syncingStock ? "animate-spin motion-reduce:animate-none" : ""}`}
+                aria-hidden="true"
+              />
+              {syncingStock ? "Syncing…" : "Sync stock"}
             </Button>
-          </div>
-        ) : null}
-        <Sheet open={filtersOpen} onOpenChange={setFiltersOpen}>
-          <SheetContent>
-            <SheetHeader>
-              <SheetTitle>Filter extended warranty</SheetTitle>
-              <SheetDescription>
-                Filter sold vehicles by warranty status and reconciliation
-                needs.
-              </SheetDescription>
-            </SheetHeader>
-            <form method="get" className="grid gap-4 p-6">
-              <input type="hidden" name="q" value={query.q} />
-              <input type="hidden" name="limit" value={query.limit} />
-              <Label htmlFor="ew-status">Status</Label>
-              <select
-                id="ew-status"
-                name="status"
-                defaultValue={query.status}
-                className="h-10 rounded-md border bg-background px-3"
-              >
-                <option value="ALL">All statuses</option>
-                {[
-                  "NOT_PURCHASED",
-                  "LINK_SENT",
-                  "PAYMENT_PENDING",
-                  "PAYMENT_RECONCILING",
-                  "ORDERED",
-                  "PROCESSING",
-                  "INVOICED",
-                  "PACKED",
-                  "SHIPPED",
-                  "PENDING",
-                  "DELIVERED",
-                  "INSTALLATION_PENDING",
-                  "REVIEW_PENDING",
-                  "APPROVED",
-                  "ACTIVATION_PENDING",
-                  "CERTIFICATE_PENDING",
-                  "INSTALLED",
-                  "REJECTED",
-                  "CANCELLED",
-                  "EXPIRED",
-                  "REFUNDED",
-                  "FAILED",
-                ].map((value) => (
-                  <option key={value} value={value}>
-                    {value.toLowerCase().replaceAll("_", " ")}
-                  </option>
-                ))}
-              </select>
-              <Label htmlFor="ew-reconciliation">Reconciliation</Label>
-              <select
-                id="ew-reconciliation"
-                name="reconciliation"
-                defaultValue={query.reconciliation}
-                className="h-10 rounded-md border bg-background px-3"
-              >
-                <option value="ALL">All vehicles</option>
-                <option value="ATTENTION">Needs attention</option>
-                <option value="CLEAR">Clear</option>
-              </select>
-              <Button type="submit">Apply filters</Button>
-              <Button variant="ghost" asChild>
-                <Link href="/extended-warranty">Reset filters</Link>
-              </Button>
-            </form>
-          </SheetContent>
-        </Sheet>
-        <Sheet open={reconciliationOpen} onOpenChange={setReconciliationOpen}>
-          <SheetContent className="overflow-y-auto">
-            <SheetHeader>
-              <SheetTitle>Reconciliation</SheetTitle>
-              <SheetDescription>
-                Inspect data and workflow issues before taking action.
-              </SheetDescription>
-            </SheetHeader>
-            <div className="grid gap-4 p-6">
-              {data.overview.stockReason ? (
-                <ContentStatus
-                  variant="warning"
-                  title="Stock unavailable"
-                  description={data.overview.stockReason}
-                />
-              ) : null}
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setReconciliationOpen(false);
-                  router.push(
-                    workspaceRoute(
-                      pathname,
-                      new URLSearchParams(searchParams.toString()),
-                      {
-                        reconciliation: "ATTENTION",
-                        cursor: null,
-                        unitId: null,
-                      },
-                    ),
-                  );
-                }}
-              >
-                Show all vehicles needing attention
-              </Button>
-              <p className="text-sm text-muted-foreground">
-                Issues on this page. Open a vehicle to inspect its history and
-                available actions.
-              </p>
-              {data.items
-                .filter((item) => item.isReconciliationAttention)
-                .map((item) => (
-                  <button
-                    key={item.unitId}
-                    className="rounded-md border p-3 text-left"
-                    onClick={() => {
-                      setReconciliationOpen(false);
-                      openVehicle(item.unitId);
-                    }}
-                  >
-                    <span className="font-medium">
-                      {item.vin ?? "VIN unavailable"}
-                    </span>
-                    <ul className="mt-2 text-sm text-muted-foreground">
-                      {item.reconciliationReasons.map((reason) => (
-                        <li key={reason}>{reason}</li>
-                      ))}
-                    </ul>
-                  </button>
-                ))}
-            </div>
-          </SheetContent>
-        </Sheet>
+          ) : null}
+        </header>
 
         <ContentMetrics
           aria-label="Warranty summary"
           className="!grid-cols-[repeat(5,minmax(10rem,1fr))] gap-3 overflow-x-auto pb-1"
         >
-          <MetricCard
+          <StaticMetric
             title="Available stock"
             value={
               data.overview.availableStock === null
                 ? "Unavailable"
                 : data.overview.availableStock.toLocaleString("en-IN")
             }
-            description={
-              data.overview.stockReason ?? "Latest synchronized kit stock."
-            }
+            unavailable={data.overview.availableStock === null}
             icon={<Boxes className="size-5" aria-hidden="true" />}
           />
-          <MetricCard
+          <FilterMetric
             title="Orders"
             value={String(data.overview.orders)}
-            description="Active orders still progressing until customer receipt."
             icon={<ClipboardList className="size-5" aria-hidden="true" />}
+            active={query.status === "ORDERED"}
+            onClick={() => {
+              applyKpiFilter("ORDERED");
+            }}
           />
-          <MetricCard
+          <FilterMetric
             title="Pending"
             value={String(data.overview.pending)}
-            description="Awaiting approval, activation, or certificate issuance."
             icon={<CalendarClock className="size-5" aria-hidden="true" />}
+            active={query.status === "PENDING"}
+            onClick={() => {
+              applyKpiFilter("PENDING");
+            }}
           />
-          <MetricCard
+          <FilterMetric
             title="Installed"
             value={String(data.overview.installed)}
-            description="Extended Warranty certificates already issued."
             icon={<BadgeCheck className="size-5" aria-hidden="true" />}
+            active={query.status === "INSTALLED"}
+            onClick={() => {
+              applyKpiFilter("INSTALLED");
+            }}
           />
-          <MetricCard
+          <FilterMetric
             title="Rejected"
             value={String(data.overview.rejected)}
-            description="Currently rejected warranty purchases."
             icon={<CircleAlert className="size-5" aria-hidden="true" />}
+            active={query.status === "REJECTED"}
+            onClick={() => {
+              applyKpiFilter("REJECTED");
+            }}
           />
         </ContentMetrics>
 
-        <Card className="border-border/70">
-          <CardHeader className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-            <div>
-              <CardTitle>Sold vehicles</CardTitle>
-              <CardDescription>
-                Showing only sold vehicles, ordered by latest invoice creation
-                time.
-              </CardDescription>
-            </div>
-            <div className="text-sm text-muted-foreground">
-              {data.pageInfo.totalCount.toLocaleString("en-IN")} records
-            </div>
-          </CardHeader>
-          <CardContent className="pt-0">
-            {data.items.length === 0 ? (
-              <ContentStatus
-                title="No sold vehicles matched this filter."
-                description="Try adjusting the search, status, or reconciliation filters."
-                icon={<PackageCheck className="size-5" aria-hidden="true" />}
-              />
-            ) : (
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Invoice</TableHead>
-                      <TableHead>Vehicle</TableHead>
-                      <TableHead>Variant</TableHead>
-                      <TableHead>Seller</TableHead>
-                      <TableHead>Buyer</TableHead>
-                      <TableHead>Contact</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead className="w-[220px]">Action</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {data.items.map((item) => (
-                      <TableRow
-                        key={item.unitId}
-                        className="cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                        tabIndex={0}
-                        aria-label={`View warranty for ${item.vin ?? "vehicle"}`}
-                        onKeyDown={(event) => {
-                          if (
-                            event.target === event.currentTarget &&
-                            (event.key === "Enter" || event.key === " ")
-                          ) {
-                            event.preventDefault();
-                            openVehicle(item.unitId);
-                          }
-                        }}
-                        onClick={() => {
-                          openVehicle(item.unitId);
-                        }}
-                      >
-                        <TableCell className="align-top">
-                          <div className="font-medium">
-                            {item.invoiceNumber ?? "Invoice missing"}
-                          </div>
-                          <div className="text-xs text-muted-foreground">
-                            {formatDateTime(item.invoiceAt)}
-                          </div>
-                        </TableCell>
-
-                        <TableCell className="align-top">
-                          <div className="font-medium">{item.vin ?? "—"}</div>
-                          <div className="text-xs text-muted-foreground">
-                            {[item.modelName, item.colorName]
-                              .filter(Boolean)
-                              .join(" • ") || "—"}
-                          </div>
-                        </TableCell>
-
-                        <TableCell className="align-top">
-                          <div className="font-medium">
-                            {item.variantName ?? "—"}
-                          </div>
-                          <div className="text-xs text-muted-foreground">
-                            {[item.batteryType, item.batteryPowerKw]
-                              .filter(Boolean)
-                              .join(" • ") || "—"}
-                          </div>
-                        </TableCell>
-
-                        <TableCell className="align-top">
-                          <div className="font-medium">
-                            {item.sellerName ?? "—"}
-                          </div>
-                          <div className="text-xs text-muted-foreground">
-                            {[item.sellerDistrict, item.sellerState]
-                              .filter(Boolean)
-                              .join(", ") || "—"}
-                          </div>
-                        </TableCell>
-
-                        <TableCell className="align-top">
-                          <div className="font-medium">
-                            {item.buyerName ?? "—"}
-                          </div>
-                          <div className="text-xs text-muted-foreground">
-                            {[item.buyerDistrict, item.buyerState]
-                              .filter(Boolean)
-                              .join(", ") || "—"}
-                          </div>
-                        </TableCell>
-
-                        <TableCell className="align-top">
-                          <div className="font-medium">
-                            {item.maskedMobile ?? "—"}
-                          </div>
-                          <div className="text-xs text-muted-foreground">
-                            {item.preferredMsgChannel ?? "—"}
-                          </div>
-                        </TableCell>
-
-                        <TableCell className="align-top">
-                          <div className="flex flex-col gap-2">
-                            {statusBadge(item.status)}
-                            {item.isReconciliationAttention ? (
-                              <Badge variant="destructive">Attention</Badge>
-                            ) : null}
-                          </div>
-                        </TableCell>
-
-                        <TableCell
-                          className="align-top"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                          }}
-                        >
-                          <div className="flex flex-wrap gap-2">
-                            {canSend && item.certificateFileId === null ? (
-                              <SendLinkButton
-                                tenantId={tenantId}
-                                unitId={item.unitId}
-                                disabled={!item.canSendPurchaseLink}
-                                reason={item.eligibilityBlockers.join("; ")}
-                              />
-                            ) : null}
-
-                            {item.certificateFileId !== null ? (
-                              <CertificateButton
-                                tenantId={tenantId}
-                                unitId={item.unitId}
-                              />
-                            ) : null}
-
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={() => {
-                                openVehicle(item.unitId);
-                              }}
-                            >
-                              View
-                              <ArrowRight
-                                className="ml-2 size-4"
-                                aria-hidden="true"
-                              />
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+        <Card className="overflow-hidden border-border/70">
+          <CardHeader className="gap-4 border-b pb-4">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+              <div className="min-w-0">
+                <CardTitle>Sold vehicles</CardTitle>
+                <CardDescription>
+                  Latest sold vehicles by invoice date.
+                </CardDescription>
               </div>
-            )}
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between lg:justify-end">
+                <div className="whitespace-nowrap text-sm tabular-nums text-muted-foreground">
+                  {data.pageInfo.totalCount.toLocaleString("en-IN")} sold
+                  vehicles
+                </div>
+                <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+                  <Button
+                    variant={
+                      query.reconciliation === "ATTENTION"
+                        ? "secondary"
+                        : "outline"
+                    }
+                    aria-pressed={query.reconciliation === "ATTENTION"}
+                    onClick={() => {
+                      navigate({
+                        reconciliation:
+                          query.reconciliation === "ATTENTION"
+                            ? "ALL"
+                            : "ATTENTION",
+                        cursor: null,
+                        unitId: null,
+                      });
+                    }}
+                  >
+                    <AlertTriangle className="mr-2 size-4" aria-hidden="true" />
+                    Needs attention
+                  </Button>
+                  <Button variant="outline" onClick={openFilters}>
+                    <Filter className="mr-2 size-4" aria-hidden="true" />
+                    {activeFilterCount > 0
+                      ? `Filters · ${String(activeFilterCount)}`
+                      : "Filters"}
+                  </Button>
+                </div>
+              </div>
+            </div>
 
-            {nextHref === null ? null : (
-              <div className="mt-4 flex justify-end">
-                <Button variant="outline" asChild>
-                  <Link href={nextHref}>
-                    Next page
-                    <ArrowRight className="ml-2 size-4" aria-hidden="true" />
-                  </Link>
+            {hasAnyFilter ? (
+              <div
+                className="flex flex-wrap items-center gap-2 border-t border-border/60 pt-3"
+                aria-label="Active filters"
+              >
+                {query.q.length > 0 ? (
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => {
+                      navigate({ q: null, cursor: null, unitId: null });
+                    }}
+                  >
+                    Global search: {query.q}
+                    <X className="ml-2 size-3.5" aria-hidden="true" />
+                  </Button>
+                ) : null}
+                {query.status !== "ALL" ? (
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => {
+                      navigate({ status: "ALL", cursor: null, unitId: null });
+                    }}
+                  >
+                    {STATUS_OPTIONS.find(
+                      (option) => option.value === query.status,
+                    )?.label ?? query.status}
+                    <X className="ml-2 size-3.5" aria-hidden="true" />
+                  </Button>
+                ) : null}
+                {query.reconciliation !== "ALL" ? (
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => {
+                      navigate({
+                        reconciliation: "ALL",
+                        cursor: null,
+                        unitId: null,
+                      });
+                    }}
+                  >
+                    {query.reconciliation === "ATTENTION"
+                      ? "Needs attention"
+                      : "Clear"}
+                    <X className="ml-2 size-3.5" aria-hidden="true" />
+                  </Button>
+                ) : null}
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => {
+                    navigate({
+                      q: null,
+                      status: "ALL",
+                      reconciliation: "ALL",
+                      cursor: null,
+                      unitId: null,
+                    });
+                  }}
+                >
+                  Clear all
                 </Button>
               </div>
+            ) : null}
+          </CardHeader>
+
+          <CardContent className="p-0">
+            {data.items.length === 0 ? (
+              <div className="p-6">
+                <ContentStatus
+                  title="No sold vehicles match these filters."
+                  description="Adjust the filters or use global search to broaden the result set."
+                  icon={<PackageCheck className="size-5" aria-hidden="true" />}
+                />
+                {hasAnyFilter ? (
+                  <div className="mt-4 flex justify-center">
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        navigate({
+                          q: null,
+                          status: "ALL",
+                          reconciliation: "ALL",
+                          cursor: null,
+                          unitId: null,
+                        });
+                      }}
+                    >
+                      Clear filters
+                    </Button>
+                  </div>
+                ) : null}
+              </div>
+            ) : (
+              <>
+                <div className="hidden overflow-x-auto md:block">
+                  <Table className="min-w-[1280px]">
+                    <TableHeader className="sticky top-0 z-10 bg-background">
+                      <TableRow>
+                        <TableHead className="w-[150px]">Invoice</TableHead>
+                        <TableHead className="w-[180px]">Vehicle</TableHead>
+                        <TableHead className="w-[145px]">Variant</TableHead>
+                        <TableHead className="w-[180px]">Seller</TableHead>
+                        <TableHead className="w-[200px]">Buyer</TableHead>
+                        <TableHead className="w-[125px]">Contact</TableHead>
+                        <TableHead className="w-[130px]">Status</TableHead>
+                        <TableHead className="w-[180px] text-right">
+                          Action
+                        </TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {data.items.map((item) => (
+                        <TableRow
+                          key={item.unitId}
+                          data-state={
+                            detail?.unitId === item.unitId
+                              ? "selected"
+                              : undefined
+                          }
+                          className="cursor-pointer"
+                          onClick={() => {
+                            openVehicle(item.unitId);
+                          }}
+                        >
+                          <TableCell className="align-middle py-3">
+                            <div className="flex items-center gap-1.5 whitespace-nowrap font-medium">
+                              <AttentionIndicator
+                                reasons={item.reconciliationReasons}
+                              />
+                              <span>
+                                {item.invoiceNumber ?? "Invoice missing"}
+                              </span>
+                            </div>
+                            <div className="mt-1 whitespace-nowrap text-xs text-muted-foreground">
+                              {formatDateTime(item.invoiceAt)}
+                            </div>
+                          </TableCell>
+                          <TableCell className="align-middle py-3">
+                            <div className="truncate font-mono text-sm font-medium">
+                              {item.vin ?? "—"}
+                            </div>
+                            <div className="mt-1 truncate text-xs text-muted-foreground">
+                              {[item.modelName, item.colorName]
+                                .filter(Boolean)
+                                .join(" · ") || "—"}
+                            </div>
+                          </TableCell>
+                          <TableCell className="align-middle py-3">
+                            <div className="truncate font-medium">
+                              {item.variantName ?? "—"}
+                            </div>
+                            <div className="mt-1 truncate text-xs text-muted-foreground">
+                              {[item.batteryType, item.batteryPowerKw]
+                                .filter(Boolean)
+                                .join(" · ") || "—"}
+                            </div>
+                          </TableCell>
+                          <TableCell className="align-middle py-3">
+                            <div
+                              className="truncate font-medium"
+                              title={item.sellerName ?? undefined}
+                            >
+                              {item.sellerName ?? "—"}
+                            </div>
+                            <div className="mt-1 truncate text-xs text-muted-foreground">
+                              {[item.sellerDistrict, item.sellerState]
+                                .filter(Boolean)
+                                .join(", ") || "—"}
+                            </div>
+                          </TableCell>
+                          <TableCell className="align-middle py-3">
+                            <div
+                              className="truncate font-medium"
+                              title={item.buyerName ?? undefined}
+                            >
+                              {item.buyerName ?? "—"}
+                            </div>
+                            <div className="mt-1 truncate text-xs text-muted-foreground">
+                              {[item.buyerDistrict, item.buyerState]
+                                .filter(Boolean)
+                                .join(", ") || "—"}
+                            </div>
+                          </TableCell>
+                          <TableCell className="align-middle py-3">
+                            <div className="whitespace-nowrap font-medium tabular-nums">
+                              {item.maskedMobile ?? "—"}
+                            </div>
+                            <div className="mt-1 whitespace-nowrap text-xs text-muted-foreground">
+                              {item.preferredMsgChannel ?? "—"}
+                            </div>
+                          </TableCell>
+                          <TableCell className="align-middle py-3 whitespace-nowrap">
+                            {statusBadge(item.status)}
+                          </TableCell>
+                          <TableCell
+                            className="align-middle py-3 text-right"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                            }}
+                          >
+                            <VehicleActionCluster
+                              tenantId={tenantId}
+                              item={item}
+                              canSend={canSend}
+                              openVehicle={openVehicle}
+                            />
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+
+                <div className="grid gap-3 p-4 md:hidden">
+                  {data.items.map((item) => (
+                    <div
+                      key={item.unitId}
+                      className="grid gap-3 rounded-xl border p-4"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1.5 font-medium">
+                            <AttentionIndicator
+                              reasons={item.reconciliationReasons}
+                            />
+                            <span className="truncate">
+                              {item.invoiceNumber ?? "Invoice missing"}
+                            </span>
+                          </div>
+                          <div className="mt-1 text-xs text-muted-foreground">
+                            {formatDateTime(item.invoiceAt)}
+                          </div>
+                        </div>
+                        {statusBadge(item.status)}
+                      </div>
+                      <div className="grid gap-1 text-sm">
+                        <span className="font-mono font-medium">
+                          {item.vin ?? "VIN unavailable"}
+                        </span>
+                        <span className="text-muted-foreground">
+                          {[item.modelName, item.variantName, item.colorName]
+                            .filter(Boolean)
+                            .join(" · ") || "—"}
+                        </span>
+                        <span>{item.buyerName ?? "Buyer unavailable"}</span>
+                      </div>
+                      <VehicleActionCluster
+                        tenantId={tenantId}
+                        item={item}
+                        canSend={canSend}
+                        openVehicle={openVehicle}
+                      />
+                    </div>
+                  ))}
+                </div>
+              </>
             )}
+
+            <div className="flex flex-col gap-3 border-t px-4 py-3 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between md:px-6">
+              <span className="tabular-nums">
+                Showing up to {Math.min(query.limit, data.items.length)} of{" "}
+                {data.pageInfo.totalCount.toLocaleString("en-IN")}
+              </span>
+              <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2">
+                  <span>Rows</span>
+                  <Select
+                    value={String(query.limit)}
+                    onValueChange={(value) => {
+                      navigate({ limit: value, cursor: null, unitId: null });
+                    }}
+                  >
+                    <SelectTrigger
+                      className="h-8 w-[76px]"
+                      aria-label="Rows per page"
+                    >
+                      <SelectValue placeholder="25" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {ROW_LIMIT_OPTIONS.map((value) => (
+                        <SelectItem key={value} value={String(value)}>
+                          {value}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                {nextHref === null ? null : (
+                  <Button variant="outline" size="sm" asChild>
+                    <Link href={nextHref}>
+                      Next{" "}
+                      <ChevronRight
+                        className="ml-1 size-4"
+                        aria-hidden="true"
+                      />
+                    </Link>
+                  </Button>
+                )}
+              </div>
+            </div>
           </CardContent>
         </Card>
       </div>
+
+      <Sheet open={filtersOpen} onOpenChange={setFiltersOpen}>
+        <SheetContent className="flex w-full flex-col sm:max-w-[420px]">
+          <SheetHeader>
+            <SheetTitle>Filters</SheetTitle>
+            <SheetDescription>
+              Refine the sold-vehicle operational dataset.
+            </SheetDescription>
+          </SheetHeader>
+          <div className="grid flex-1 content-start gap-5 p-6">
+            <div className="grid gap-2">
+              <Label htmlFor="ew-status-filter">Status</Label>
+              <Select
+                value={draftStatus}
+                onValueChange={(value) => {
+                  if (isWorkspaceStatus(value)) setDraftStatus(value);
+                }}
+              >
+                <SelectTrigger id="ew-status-filter">
+                  <SelectValue placeholder="All statuses" />
+                </SelectTrigger>
+                <SelectContent>
+                  {STATUS_OPTIONS.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="ew-reconciliation-filter">Reconciliation</Label>
+              <Select
+                value={draftReconciliation}
+                onValueChange={(value) => {
+                  if (isReconciliationFilter(value))
+                    setDraftReconciliation(value);
+                }}
+              >
+                <SelectTrigger id="ew-reconciliation-filter">
+                  <SelectValue placeholder="All vehicles" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ALL">All vehicles</SelectItem>
+                  <SelectItem value="ATTENTION">Needs attention</SelectItem>
+                  <SelectItem value="CLEAR">Clear</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="ew-limit-filter">Rows per page</Label>
+              <Select value={draftLimit} onValueChange={setDraftLimit}>
+                <SelectTrigger id="ew-limit-filter">
+                  <SelectValue placeholder="25" />
+                </SelectTrigger>
+                <SelectContent>
+                  {ROW_LIMIT_OPTIONS.map((value) => (
+                    <SelectItem key={value} value={String(value)}>
+                      {value}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <div className="sticky bottom-0 flex gap-2 border-t bg-background p-4">
+            <Button
+              variant="outline"
+              className="flex-1"
+              onClick={() => {
+                setDraftStatus("ALL");
+                setDraftReconciliation("ALL");
+                setDraftLimit("25");
+              }}
+            >
+              Reset
+            </Button>
+            <Button
+              className="flex-1"
+              onClick={() => {
+                setFiltersOpen(false);
+                navigate({
+                  status: draftStatus,
+                  reconciliation: draftReconciliation,
+                  limit: draftLimit,
+                  cursor: null,
+                  unitId: null,
+                });
+              }}
+            >
+              Apply filters
+            </Button>
+          </div>
+        </SheetContent>
+      </Sheet>
 
       <Sheet
         open={detail !== null}
@@ -795,72 +1138,67 @@ export function ExtendedWarrantyWorkspacePage({
       >
         <SheetContent
           side="right"
-          className="w-full overflow-y-auto p-6 sm:max-w-3xl"
+          className="w-full overflow-y-auto p-0 sm:max-w-[820px]"
         >
           {detail === null ? null : (
-            <div className="grid gap-6 px-1 pb-6">
-              <SheetHeader className="text-left">
-                <SheetTitle className="flex items-center gap-3">
-                  <span className="truncate">
-                    {detail.vin ?? detail.invoiceNumber}
-                  </span>
-                  {statusBadge(detail.status)}
-                </SheetTitle>
-                <SheetDescription>
-                  Invoice {detail.invoiceNumber} ·{" "}
-                  {formatDateTime(detail.invoiceAt)}
-                </SheetDescription>
-              </SheetHeader>
+            <div className="min-h-full bg-background">
+              <div className="sticky top-0 z-20 border-b bg-background/95 px-6 py-5 backdrop-blur supports-[backdrop-filter]:bg-background/85">
+                <SheetHeader className="text-left">
+                  <div className="flex items-start justify-between gap-4 pr-8">
+                    <div className="min-w-0">
+                      <SheetTitle className="flex flex-wrap items-center gap-3 text-xl">
+                        <span className="truncate font-mono">
+                          {detail.vin ?? detail.invoiceNumber ?? "Vehicle"}
+                        </span>
+                        {statusBadge(detail.status)}
+                      </SheetTitle>
+                      <SheetDescription className="mt-1">
+                        {detail.invoiceNumber ?? "Invoice unavailable"} ·{" "}
+                        {formatDateTime(detail.invoiceAt)}
+                      </SheetDescription>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-2">
+                      {canSend && detail.certificateFileId === null ? (
+                        <PurchaseLinkActionButton
+                          tenantId={tenantId}
+                          item={detail}
+                        />
+                      ) : null}
+                      {detail.certificateFileId !== null ? (
+                        <CertificateButton
+                          tenantId={tenantId}
+                          unitId={detail.unitId}
+                        />
+                      ) : null}
+                    </div>
+                  </div>
+                </SheetHeader>
+              </div>
 
-              {detail.eligibilityBlockers.length > 0 ? (
-                <ContentStatus
-                  variant="warning"
-                  title="Purchase link unavailable"
-                  description={detail.eligibilityBlockers.join(". ")}
-                />
-              ) : null}
-              {detail.reconciliationReasons.length > 0 ? (
-                <ContentStatus
-                  variant="warning"
-                  title="Needs attention"
-                  description={detail.reconciliationReasons.join(". ")}
-                />
-              ) : null}
-              <div className="grid gap-4 md:grid-cols-2">
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-base">Vehicle</CardTitle>
-                  </CardHeader>
-                  <CardContent className="grid gap-4">
-                    <DetailField label="VIN" value={detail.vin ?? "—"} />
-                    <DetailField
-                      label="Model"
-                      value={
-                        [detail.modelName, detail.colorName]
-                          .filter(Boolean)
-                          .join(" • ") || "—"
-                      }
-                    />
-                    <DetailField
-                      label="Variant"
-                      value={
-                        [
-                          detail.variantName,
-                          detail.batteryType,
-                          detail.batteryPowerKw,
-                        ]
-                          .filter(Boolean)
-                          .join(" • ") || "—"
-                      }
-                    />
-                  </CardContent>
-                </Card>
+              <div className="grid gap-6 px-6 py-6 pb-10">
+                {detail.eligibilityBlockers.length > 0 ||
+                detail.reconciliationReasons.length > 0 ? (
+                  <ContentStatus
+                    variant="warning"
+                    title="Attention required"
+                    description={Array.from(
+                      new Set([
+                        ...detail.eligibilityBlockers,
+                        ...detail.reconciliationReasons,
+                      ]),
+                    ).join(". ")}
+                  />
+                ) : null}
 
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-base">Commercial</CardTitle>
-                  </CardHeader>
-                  <CardContent className="grid gap-4">
+                <section className="grid gap-4 border-b pb-6">
+                  <div>
+                    <h2 className="font-semibold">Purchase & workflow</h2>
+                    <p className="text-sm text-muted-foreground">
+                      Current purchase, payment, fulfillment, and certificate
+                      state.
+                    </p>
+                  </div>
+                  <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
                     <DetailField
                       label="Order"
                       value={detail.orderNumber ?? "—"}
@@ -880,37 +1218,100 @@ export function ExtendedWarrantyWorkspacePage({
                       label="Payment confirmed"
                       value={formatDateTime(detail.paymentConfirmedAt)}
                     />
-                  </CardContent>
-                </Card>
-
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-base">Seller</CardTitle>
-                  </CardHeader>
-                  <CardContent className="grid gap-4">
                     <DetailField
-                      label="Name"
-                      value={detail.sellerName ?? "—"}
+                      label="Fulfillment"
+                      value={detail.fulfillmentStatus ?? "—"}
                     />
                     <DetailField
-                      label="Location"
+                      label="Delivered at"
+                      value={formatDateTime(detail.deliveredAt)}
+                    />
+                    <DetailField
+                      label="Installation submitted"
+                      value={formatDateTime(detail.installationSubmittedAt)}
+                    />
+                    <DetailField
+                      label="Review"
+                      value={detail.reviewDecision ?? "—"}
+                    />
+                    <DetailField
+                      label="Certificate"
+                      value={detail.certificateNumber ?? "—"}
+                    />
+                    <DetailField
+                      label="Certificate issued"
+                      value={formatDateTime(detail.certificateIssuedAt)}
+                    />
+                    <DetailField
+                      label="Carrier"
+                      value={detail.carrierName ?? "—"}
+                    />
+                    <DetailField
+                      label="Tracking"
                       value={
-                        [detail.sellerDistrict, detail.sellerState]
-                          .filter(Boolean)
-                          .join(", ") || "—"
+                        detail.trackingUrl === null
+                          ? (detail.trackingNumber ?? "—")
+                          : (() => {
+                              const href = safeExternalHttpHref(
+                                detail.trackingUrl,
+                              );
+                              return href === null ? (
+                                (detail.trackingNumber ?? "—")
+                              ) : (
+                                <a
+                                  href={href}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-1 text-primary hover:underline"
+                                >
+                                  {detail.trackingNumber ?? "Open tracking"}
+                                  <ExternalLink
+                                    className="size-3.5"
+                                    aria-hidden="true"
+                                  />
+                                </a>
+                              );
+                            })()
                       }
                     />
-                  </CardContent>
-                </Card>
+                  </div>
+                </section>
 
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-base">Buyer</CardTitle>
-                  </CardHeader>
-                  <CardContent className="grid gap-4">
-                    <DetailField label="Name" value={detail.buyerName ?? "—"} />
+                <section className="grid gap-4 border-b pb-6">
+                  <h2 className="font-semibold">Vehicle, customer & seller</h2>
+                  <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
                     <DetailField
-                      label="Location"
+                      label="VIN"
+                      value={
+                        <span className="font-mono">{detail.vin ?? "—"}</span>
+                      }
+                    />
+                    <DetailField
+                      label="Model"
+                      value={
+                        [detail.modelName, detail.colorName]
+                          .filter(Boolean)
+                          .join(" · ") || "—"
+                      }
+                    />
+                    <DetailField
+                      label="Variant"
+                      value={
+                        [
+                          detail.variantName,
+                          detail.batteryType,
+                          detail.batteryPowerKw,
+                        ]
+                          .filter(Boolean)
+                          .join(" · ") || "—"
+                      }
+                    />
+                    <DetailField
+                      label="Buyer"
+                      value={detail.buyerName ?? "—"}
+                    />
+                    <DetailField
+                      label="Buyer location"
                       value={
                         [detail.buyerDistrict, detail.buyerState]
                           .filter(Boolean)
@@ -922,263 +1323,182 @@ export function ExtendedWarrantyWorkspacePage({
                       value={
                         [detail.maskedMobile, detail.preferredMsgChannel]
                           .filter(Boolean)
-                          .join(" • ") || "—"
+                          .join(" · ") || "—"
                       }
                     />
-                  </CardContent>
-                </Card>
-              </div>
-
-              <Card>
-                <CardHeader className="flex flex-row items-start justify-between gap-4">
-                  <div>
-                    <CardTitle className="text-base">Workflow</CardTitle>
-                    <CardDescription>
-                      Fulfillment, review, and certificate issuance summary.
-                    </CardDescription>
+                    <DetailField
+                      label="Seller"
+                      value={detail.sellerName ?? "—"}
+                    />
+                    <DetailField
+                      label="Seller location"
+                      value={
+                        [detail.sellerDistrict, detail.sellerState]
+                          .filter(Boolean)
+                          .join(", ") || "—"
+                      }
+                    />
+                    <DetailField
+                      label="Invoice date"
+                      value={formatDate(detail.saleDate)}
+                    />
                   </div>
-                  <div className="flex flex-wrap gap-2">
-                    {canSend && detail.certificateFileId === null ? (
-                      <SendLinkButton
-                        tenantId={tenantId}
-                        unitId={detail.unitId}
-                        disabled={!detail.canSendPurchaseLink}
-                        reason={detail.eligibilityBlockers.join("; ")}
-                      />
-                    ) : null}
+                </section>
 
-                    {detail.certificateFileId !== null ? (
-                      <CertificateButton
-                        tenantId={tenantId}
-                        unitId={detail.unitId}
-                      />
-                    ) : null}
-                  </div>
-                </CardHeader>
-                <CardContent className="grid gap-4 md:grid-cols-2">
-                  <DetailField
-                    label="Fulfillment"
-                    value={detail.fulfillmentStatus ?? "—"}
-                  />
-                  <DetailField
-                    label="Delivered at"
-                    value={formatDateTime(detail.deliveredAt)}
-                  />
-                  <DetailField
-                    label="Installation submitted"
-                    value={formatDateTime(detail.installationSubmittedAt)}
-                  />
-                  <DetailField
-                    label="Review"
-                    value={detail.reviewDecision ?? "—"}
-                  />
-                  <DetailField
-                    label="Reviewed at"
-                    value={formatDateTime(detail.reviewedAt)}
-                  />
-                  <DetailField
-                    label="Certificate"
-                    value={
-                      detail.certificateNumber === null
-                        ? "—"
-                        : `${detail.certificateNumber} · ${formatDateTime(
-                            detail.certificateIssuedAt,
-                          )}`
-                    }
-                  />
-                  <DetailField
-                    label="Tracking"
-                    value={
-                      detail.trackingUrl === null
-                        ? (detail.trackingNumber ?? "—")
-                        : (() => {
-                            const trackingHref = safeExternalHttpHref(
-                              detail.trackingUrl,
-                            );
-
-                            return trackingHref === null ? (
-                              (detail.trackingNumber ?? "—")
-                            ) : (
-                              <a
-                                href={trackingHref}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="inline-flex items-center gap-1 text-primary hover:underline"
-                              >
-                                {detail.trackingNumber ?? "Open tracking"}
-                                <ExternalLink
-                                  className="size-3.5"
-                                  aria-hidden="true"
-                                />
-                              </a>
-                            );
-                          })()
-                    }
-                  />
-                  <DetailField
-                    label="Carrier"
-                    value={detail.carrierName ?? "—"}
-                  />
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-base">
-                    Purchase attempts & payments
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="grid gap-3">
-                  {detail.attempts.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">
-                      No purchases yet.
-                    </p>
-                  ) : (
-                    detail.attempts.map((attempt) => (
-                      <div
-                        key={attempt.orderId}
-                        className="rounded-md border p-3"
-                      >
-                        <div className="flex justify-between gap-2">
-                          <span>{attempt.orderNumber}</span>
-                          <Badge variant="outline">
-                            {attempt.status.toLowerCase().replaceAll("_", " ")}
-                          </Badge>
-                        </div>
-                        <p className="text-sm text-muted-foreground">
-                          {formatMinorAmount(
-                            attempt.currency,
-                            attempt.totalAmountMinor,
-                          )}{" "}
-                          · {formatDateTime(attempt.createdAt)}
-                        </p>
-                        <p className="text-sm">
-                          Payment confirmed:{" "}
-                          {formatDateTime(attempt.paymentConfirmedAt)}
-                        </p>
-                      </div>
-                    ))
-                  )}
-                </CardContent>
-              </Card>
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-base">
-                    Payment reconciliation
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="grid gap-3">
-                  {detail.payments.map((payment) => (
-                    <div
-                      key={payment.chargeId}
-                      className="rounded-md border p-3 text-sm"
-                    >
-                      <Badge variant="outline">{payment.status}</Badge>
-                      <p>
-                        {formatMinorAmount(
-                          payment.currency,
-                          payment.amountMinor,
-                        )}{" "}
-                        · Refunded:{" "}
-                        {formatMinorAmount(
-                          payment.currency,
-                          payment.refundedAmountMinor,
-                        )}
-                      </p>
-                      <p className="text-muted-foreground">
-                        {formatDateTime(payment.createdAt)}
+                <section className="grid gap-4 border-b pb-6">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <h2 className="font-semibold">
+                        Purchase attempts & payments
+                      </h2>
+                      <p className="text-sm text-muted-foreground">
+                        Compact history of order attempts and payment
+                        reconciliation.
                       </p>
                     </div>
-                  ))}
-                  {detail.reconciliationJobs.length === 0 ? (
+                    {canReconcile && detail.paymentIntentId ? (
+                      <Button
+                        variant="outline"
+                        disabled={reconciling}
+                        onClick={() => {
+                          startReconciliation(async () => {
+                            try {
+                              await reconcileExtendedWarrantyPaymentAction({
+                                tenantId,
+                                unitId: detail.unitId,
+                              });
+                              toast.success("Payment reconciliation queued.");
+                              router.refresh();
+                            } catch {
+                              toast.error(
+                                "Unable to queue reconciliation. Please retry.",
+                              );
+                            }
+                          });
+                        }}
+                      >
+                        {reconciling ? "Queuing…" : "Reconcile payment"}
+                      </Button>
+                    ) : null}
+                  </div>
+                  {detail.attempts.length === 0 &&
+                  detail.payments.length === 0 &&
+                  detail.reconciliationJobs.length === 0 ? (
                     <p className="text-sm text-muted-foreground">
-                      No reconciliation jobs.
+                      No purchase or payment activity yet.
                     </p>
                   ) : (
-                    detail.reconciliationJobs.map((job) => (
-                      <div
-                        key={job.id}
-                        className="rounded-md border p-3 text-sm"
-                      >
-                        <Badge variant="outline">{job.status}</Badge>
-                        <p>
-                          {job.reason} · Attempts: {job.attemptCount}
-                        </p>
-                        <p className="text-muted-foreground">
-                          Next attempt: {formatDateTime(job.nextAttemptAt)}
-                        </p>
-                      </div>
-                    ))
+                    <div className="divide-y rounded-lg border">
+                      {detail.attempts.map((attempt) => (
+                        <div
+                          key={attempt.orderId}
+                          className="flex flex-col gap-1 p-3 sm:flex-row sm:items-center sm:justify-between"
+                        >
+                          <div>
+                            <div className="font-medium">
+                              {attempt.orderNumber}
+                            </div>
+                            <div className="text-xs text-muted-foreground">
+                              {formatDateTime(attempt.createdAt)}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-3 text-sm">
+                            <span>
+                              {formatMinorAmount(
+                                attempt.currency,
+                                attempt.totalAmountMinor,
+                              )}
+                            </span>
+                            <Badge variant="outline">
+                              {attempt.status
+                                .toLowerCase()
+                                .replaceAll("_", " ")}
+                            </Badge>
+                          </div>
+                        </div>
+                      ))}
+                      {detail.payments.map((payment) => (
+                        <div
+                          key={payment.chargeId}
+                          className="flex flex-col gap-1 p-3 sm:flex-row sm:items-center sm:justify-between"
+                        >
+                          <div>
+                            <div className="font-medium">
+                              Payment{" "}
+                              {payment.status
+                                .toLowerCase()
+                                .replaceAll("_", " ")}
+                            </div>
+                            <div className="text-xs text-muted-foreground">
+                              {formatDateTime(payment.createdAt)}
+                            </div>
+                          </div>
+                          <div className="text-sm">
+                            {formatMinorAmount(
+                              payment.currency,
+                              payment.amountMinor,
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                      {detail.reconciliationJobs.map((job) => (
+                        <div
+                          key={job.id}
+                          className="flex flex-col gap-1 p-3 sm:flex-row sm:items-center sm:justify-between"
+                        >
+                          <div>
+                            <div className="font-medium">{job.reason}</div>
+                            <div className="text-xs text-muted-foreground">
+                              Next attempt {formatDateTime(job.nextAttemptAt)}
+                            </div>
+                          </div>
+                          <Badge variant="outline">{job.status}</Badge>
+                        </div>
+                      ))}
+                    </div>
                   )}
-                  {canReconcile && detail.paymentIntentId ? (
-                    <Button
-                      variant="outline"
-                      disabled={reconciling}
-                      onClick={() => {
-                        startReconciliation(async () => {
-                          try {
-                            await reconcileExtendedWarrantyPaymentAction({
-                              tenantId,
-                              unitId: detail.unitId,
-                            });
-                            toast.success("Payment reconciliation queued.");
-                          } catch {
-                            toast.error(
-                              "Unable to queue reconciliation. Please retry.",
-                            );
-                          }
-                        });
-                      }}
-                    >
-                      {reconciling ? "Queuing…" : "Reconcile payment"}
-                    </Button>
-                  ) : null}
-                </CardContent>
-              </Card>
-              {reviewUnavailable ? (
-                <ContentStatus
-                  title="Installation review"
-                  description={reviewUnavailable}
-                />
-              ) : null}
-              {review === null ? null : (
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-base">
-                      Installation & review
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="grid gap-4">
+                </section>
+
+                {reviewUnavailable ? (
+                  <ContentStatus
+                    title="Installation review"
+                    description={reviewUnavailable}
+                  />
+                ) : null}
+                {review === null ? null : (
+                  <section className="grid gap-4 border-b pb-6">
+                    <h2 className="font-semibold">Installation & review</h2>
                     <video
                       controls
                       preload="metadata"
                       src={review.videoUrl}
-                      className="w-full rounded-md"
+                      className="w-full rounded-lg border"
                     />
-                    <p className="text-sm text-muted-foreground">
-                      {review.fileName} · {formatDateTime(review.submittedAt)}
-                    </p>
-                    <p className="text-sm">
-                      Location: {review.latitude}, {review.longitude} ·
-                      Accuracy: {review.accuracyMeters ?? "Unknown"} m
-                    </p>
+                    <div className="grid gap-2 text-sm text-muted-foreground sm:grid-cols-2">
+                      <span>
+                        {review.fileName} · {formatDateTime(review.submittedAt)}
+                      </span>
+                      <span>
+                        Location {review.latitude}, {review.longitude} ·
+                        Accuracy {review.accuracyMeters ?? "Unknown"} m
+                      </span>
+                    </div>
                     <ExtendedWarrantyReviewDecisionPanel
                       orderId={review.orderId}
                       orderRowVersion={review.orderRowVersion}
                       evidenceRowVersion={review.evidenceRowVersion}
                       disabled={!review.pending || review.reviewId !== null}
                     />
-                  </CardContent>
-                </Card>
-              )}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-base">Activity timeline</CardTitle>
-                  <CardDescription>
-                    Latest 100 recorded warranty events, newest first.
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
+                  </section>
+                )}
+
+                <section className="grid gap-4">
+                  <div>
+                    <h2 className="font-semibold">Activity timeline</h2>
+                    <p className="text-sm text-muted-foreground">
+                      Latest 100 recorded warranty events, newest first.
+                    </p>
+                  </div>
                   {detail.events.length === 0 ? (
                     <ContentStatus
                       title="No events recorded yet."
@@ -1188,25 +1508,26 @@ export function ExtendedWarrantyWorkspacePage({
                       }
                     />
                   ) : (
-                    <ol className="grid gap-3">
+                    <ol className="ml-2 border-l pl-5">
                       {detail.events.map((event) => (
-                        <li
-                          key={event.id}
-                          className="rounded-2xl border border-border/60 bg-muted/20 p-4"
-                        >
-                          <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
-                            <div className="grid gap-1">
-                              <div className="font-medium">
+                        <li key={event.id} className="relative pb-5 last:pb-0">
+                          <span
+                            className="absolute -left-[1.45rem] top-1.5 size-2 rounded-full bg-muted-foreground"
+                            aria-hidden="true"
+                          />
+                          <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
+                            <div>
+                              <div className="text-sm font-medium">
                                 {event.eventType}
                               </div>
                               <div className="text-xs text-muted-foreground">
                                 {event.actorKind}
                                 {event.reasonCode === null
-                                  ? null
-                                  : ` • ${event.reasonCode}`}
+                                  ? ""
+                                  : ` · ${event.reasonCode}`}
                               </div>
                             </div>
-                            <div className="text-xs text-muted-foreground">
+                            <div className="text-xs tabular-nums text-muted-foreground">
                               {formatDateTime(event.occurredAt)}
                             </div>
                           </div>
@@ -1214,8 +1535,8 @@ export function ExtendedWarrantyWorkspacePage({
                       ))}
                     </ol>
                   )}
-                </CardContent>
-              </Card>
+                </section>
+              </div>
             </div>
           )}
         </SheetContent>

@@ -12,6 +12,13 @@ export async function syncExtendedWarrantyStockAction(
   return await admin.syncExtendedWarrantyStockAction(input);
 }
 
+export async function prepareExtendedWarrantyPurchaseLinkAction(
+  input: Readonly<{ tenantId: string; unitId: string }>,
+) {
+  await assertSameOriginMutation(API_CONFIG.appOrigin);
+  return await admin.prepareExtendedWarrantyPurchaseLinkAction(input);
+}
+
 export async function sendExtendedWarrantyPurchaseLinkAction(form: FormData) {
   await assertSameOriginMutation(API_CONFIG.appOrigin);
   return await admin.sendExtendedWarrantyPurchaseLinkAction(form);
