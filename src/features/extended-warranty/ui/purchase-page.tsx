@@ -242,9 +242,9 @@ export function ExtendedWarrantyPurchasePage({
     <ContentRoot
       width="default"
       density="comfortable"
-      className="py-6 sm:py-10"
+      className="min-h-dvh px-3 py-4 sm:px-6 sm:py-10"
     >
-      <div className="mx-auto flex w-full max-w-4xl flex-col gap-6">
+      <div className="mx-auto flex w-full max-w-4xl flex-col gap-4 sm:gap-6">
         <Card>
           <CardHeader>
             <div className="flex flex-wrap items-center gap-2">
@@ -253,7 +253,7 @@ export function ExtendedWarrantyPurchasePage({
                 <ShieldCheck aria-hidden="true" /> Secure purchase
               </Badge>
             </div>
-            <CardTitle className="text-2xl sm:text-3xl">
+            <CardTitle className="text-balance text-xl sm:text-3xl">
               Protect {purchase.vehicleLabel}
             </CardTitle>
             <CardDescription>
@@ -327,7 +327,7 @@ export function ExtendedWarrantyPurchasePage({
           </RadioGroup>
         </ContentSection>
 
-        <ContentFormActions>
+        <ContentFormActions sticky>
           <div className="mr-auto text-sm text-muted-foreground">
             {selectedOption === null
               ? "Select one kit to continue."
@@ -371,7 +371,7 @@ function OptionCard({
     <Label
       htmlFor={inputId}
       className={cn(
-        "flex cursor-pointer items-start gap-3 rounded-xl border p-4 transition-colors",
+        "flex cursor-pointer items-start gap-3 rounded-xl border p-3 transition-colors sm:p-4",
         selected && "border-primary bg-primary/5",
         disabled && "cursor-not-allowed opacity-60",
       )}

@@ -6,6 +6,7 @@ import {
   evaluateUserAgentSupport,
   SUPPORTED_BROWSER_FALLBACK_PATH,
 } from "./src/lib/runtime/browser-support";
+import { EXTENDED_WARRANTY_PUBLIC_ROUTE_BASES } from "./src/features/extended-warranty/contracts/extended-warranty-route-map";
 import { buildForwardedRequestHeaders } from "./src/lib/security/forwarded-request-headers";
 
 const HDR = {
@@ -128,14 +129,14 @@ const PUBLIC_TOKEN_ROUTES = [
     varyCookie: false,
   },
   {
-    exactPath: "/extended-warranty/purchase",
-    prefix: "/extended-warranty/purchase/",
+    exactPath: EXTENDED_WARRANTY_PUBLIC_ROUTE_BASES.purchase,
+    prefix: `${EXTENDED_WARRANTY_PUBLIC_ROUTE_BASES.purchase}/`,
     privateCache: true,
     varyCookie: false,
   },
   {
-    exactPath: "/extended-warranty/order",
-    prefix: "/extended-warranty/order/",
+    exactPath: EXTENDED_WARRANTY_PUBLIC_ROUTE_BASES.orderStatus,
+    prefix: `${EXTENDED_WARRANTY_PUBLIC_ROUTE_BASES.orderStatus}/`,
     privateCache: true,
     varyCookie: false,
   },

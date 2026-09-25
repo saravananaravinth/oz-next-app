@@ -6,6 +6,11 @@ export const EXTENDED_WARRANTY_API_NAMESPACES = {
   paymentWebhookTemplate: "/erp/webhooks/payments/:provider/:endpointKey",
 } as const;
 
+export const EXTENDED_WARRANTY_PUBLIC_ROUTE_BASES = {
+  purchase: "/public/extended-warranty/purchase",
+  orderStatus: "/public/extended-warranty/order",
+} as const;
+
 export const EXTENDED_WARRANTY_ROUTE_TEMPLATES = {
   home: "/extended-warranty",
   orders: "/extended-warranty/orders",
@@ -13,8 +18,8 @@ export const EXTENDED_WARRANTY_ROUTE_TEMPLATES = {
   reviews: "/extended-warranty/reviews",
   payments: "/extended-warranty/payments",
   reconciliation: "/extended-warranty/reconciliation",
-  purchase: "/extended-warranty/purchase/[token]",
-  orderStatus: "/extended-warranty/order/[token]",
+  purchase: "/public/extended-warranty/purchase/[token]",
+  orderStatus: "/public/extended-warranty/order/[token]",
 } as const;
 
 function routeSegment(value: string): string {
@@ -34,7 +39,7 @@ export const EXTENDED_WARRANTY_ROUTES = {
   orderDetail: (orderId: string): string =>
     `/extended-warranty/orders/${routeSegment(orderId)}`,
   purchase: (token: string): string =>
-    `/extended-warranty/purchase/${routeSegment(token)}`,
+    `${EXTENDED_WARRANTY_PUBLIC_ROUTE_BASES.purchase}/${routeSegment(token)}`,
   orderStatus: (token: string): string =>
-    `/extended-warranty/order/${routeSegment(token)}`,
+    `${EXTENDED_WARRANTY_PUBLIC_ROUTE_BASES.orderStatus}/${routeSegment(token)}`,
 } as const;

@@ -337,9 +337,9 @@ export function ExtendedWarrantyOrderStatusPage({
     <ContentRoot
       width="default"
       density="comfortable"
-      className="py-6 sm:py-10"
+      className="min-h-dvh px-3 py-4 sm:px-6 sm:py-10"
     >
-      <div className="mx-auto flex w-full max-w-5xl flex-col gap-6">
+      <div className="mx-auto flex w-full max-w-5xl flex-col gap-4 sm:gap-6">
         <Card>
           <CardHeader>
             <div className="flex flex-wrap items-center gap-2">
@@ -348,7 +348,7 @@ export function ExtendedWarrantyOrderStatusPage({
                 <ShieldCheck aria-hidden="true" /> Secure order status
               </Badge>
             </div>
-            <CardTitle className="text-2xl sm:text-3xl">
+            <CardTitle className="text-balance text-xl sm:text-3xl">
               Order {status.orderNumber}
             </CardTitle>
             <CardDescription>
@@ -366,7 +366,7 @@ export function ExtendedWarrantyOrderStatusPage({
           </CardContent>
         </Card>
 
-        <div className="grid gap-6 lg:grid-cols-2">
+        <div className="grid gap-4 sm:gap-6 lg:grid-cols-2">
           <ContentSection
             title="Payment & Zoho order"
             description="Only provider-confirmed payment and customer-safe ERP references are shown here."
