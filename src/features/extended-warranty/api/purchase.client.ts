@@ -5,7 +5,7 @@ import { apiClient } from "@/lib/api/browser-client";
 import {
   buildExtendedWarrantyCheckoutPath,
   buildExtendedWarrantyPaymentStatusPath,
-  buildExtendedWarrantyPurchasePath,
+  buildExtendedWarrantyPurchaseDetailsPath,
   extendedWarrantyCheckoutSchema,
   extendedWarrantyPaymentStatusSchema,
   extendedWarrantyPurchaseSchema,
@@ -19,7 +19,7 @@ export async function getExtendedWarrantyPurchase(
   signal?: AbortSignal,
 ): Promise<ExtendedWarrantyPurchase> {
   return await apiClient.get(
-    buildExtendedWarrantyPurchasePath(token),
+    buildExtendedWarrantyPurchaseDetailsPath(token),
     extendedWarrantyPurchaseSchema,
     {
       auth: false,

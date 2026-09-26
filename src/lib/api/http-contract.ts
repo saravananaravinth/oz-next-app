@@ -93,6 +93,7 @@ export const CT = {
   TEXT: "text/plain; charset=utf-8",
   CSV: "text/csv",
   PDF: "application/pdf",
+  IMAGE_ANY: "image/avif,image/webp,image/png,image/jpeg",
 } as const;
 
 export const CACHE_CONTROL = {

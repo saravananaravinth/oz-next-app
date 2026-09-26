@@ -101,7 +101,7 @@ type ServerRequestOptions = Omit<ServerApiOptions<unknown>, "schema">;
 
 export type ServerRawApiOptions = ServerRequestOptions &
   Readonly<{
-    accept?: typeof CT.CSV | typeof CT.PDF | undefined;
+    accept?: typeof CT.CSV | typeof CT.PDF | typeof CT.IMAGE_ANY | undefined;
   }>;
 
 export type ServerApiEnvelopeOptions<TData, TMeta> = ServerApiOptions<TData> &
