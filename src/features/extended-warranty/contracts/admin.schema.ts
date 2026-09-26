@@ -131,7 +131,7 @@ export const extendedWarrantyWorkspaceSchema = z
 
 export const extendedWarrantyWorkspaceDetailEventSchema = z
   .object({
-    id: z.number().int().positive(),
+    id: z.string().regex(/^[1-9]\d*$/u),
     occurredAt: z.iso.datetime({ offset: true }),
     eventType: z.string(),
     actorKind: z.string(),

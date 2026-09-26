@@ -625,7 +625,7 @@ function toSafeMessage(error: unknown): string {
     if (error.status === 429)
       return "Too many purchase attempts were received. Wait briefly and try again.";
     if (error.status >= 500)
-      return "The payment service is temporarily unavailable. Your payment status remains protected; please try again.";
+      return "The purchase service is temporarily unavailable. Your payment status remains protected; please try again.";
   }
   return "The secure purchase could not be completed. Please try again.";
 }

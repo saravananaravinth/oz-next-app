@@ -299,6 +299,7 @@ function PurchaseLinkActionButton({
   item: Pick<
     ExtendedWarrantyWorkspaceItem,
     | "unitId"
+    | "status"
     | "purchaseLinkAction"
     | "purchaseLinkActionEnabled"
     | "purchaseLinkActionReason"
@@ -311,8 +312,13 @@ function PurchaseLinkActionButton({
   if (item.purchaseLinkAction === "NONE") return null;
 
   const prepare = item.purchaseLinkAction === "PREPARE";
-  const label = prepare ? "Prepare Link" : "Send Link";
-  const pendingLabel = prepare ? "Preparing…" : "Sending…";
+  const resend = !prepare && item.status === "LINK_SENT";
+  const label = prepare ? "Prepare Link" : resend ? "Resend Link" : "Send Link";
+  const pendingLabel = prepare
+    ? "Preparing…"
+    : resend
+      ? "Resending…"
+      : "Sending…";
   const blockerText = item.eligibilityBlockers.join("; ");
   const reason =
     item.purchaseLinkActionReason ??
@@ -352,7 +358,9 @@ function PurchaseLinkActionButton({
                 ? error.message
                 : prepare
                   ? "Unable to prepare the purchase link. Please retry."
-                  : "Unable to send the purchase link. Please retry.",
+                  : resend
+                    ? "Unable to resend the purchase link. Please retry."
+                    : "Unable to send the purchase link. Please retry.",
             );
           }
         });
