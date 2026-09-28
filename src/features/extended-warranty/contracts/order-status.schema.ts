@@ -6,6 +6,7 @@ export const EXTENDED_WARRANTY_INSTALLATION_VIDEO_MIME_TYPES = [
   "video/webm",
 ] as const;
 export const EXTENDED_WARRANTY_INSTALLATION_VIDEO_MAX_BYTES = 20 * 1024 * 1024;
+export const EXTENDED_WARRANTY_INSTALLATION_VIDEO_MAX_DURATION_MS = 60_000;
 
 const publicOrderTokenSchema = z
   .string()
@@ -15,26 +16,67 @@ const publicOrderTokenSchema = z
   .regex(/^[A-Za-z0-9_-]+$/u);
 const nullableBoundedText = z.string().trim().min(1).max(256).nullable();
 const nullableDateTime = z.iso.datetime({ offset: true }).nullable();
+const evidenceStatusSchema = z.enum([
+  "UPLOADED",
+  "SCANNING",
+  "READY_FOR_REVIEW",
+  "APPROVED",
+  "REJECTED",
+  "SUPERSEDED",
+  "QUARANTINED",
+]);
+
+const providerResourceSchema = z
+  .object({
+    number: nullableBoundedText,
+    status: nullableBoundedText,
+    updatedAt: nullableDateTime,
+  })
+  .strict();
+
+const installationHistoryItemSchema = z
+  .object({
+    evidenceId: z.uuid(),
+    revisionNo: z.number().int().min(1),
+    status: evidenceStatusSchema,
+    submittedAt: z.iso.datetime({ offset: true }),
+    review: z
+      .object({
+        decision: z.enum(["APPROVED", "REJECTED"]),
+        reviewedAt: z.iso.datetime({ offset: true }),
+      })
+      .strict()
+      .nullable(),
+  })
+  .strict();
+
+const timelineItemSchema = z
+  .object({
+    id: z.string().trim().min(1).max(64),
+    occurredAt: z.iso.datetime({ offset: true }),
+    eventType: z.string().trim().min(1).max(128),
+  })
+  .strict();
 
 export const extendedWarrantyOrderStatusSchema = z
   .object({
     orderId: z.uuid(),
     orderNumber: z.string().trim().min(1).max(128),
     orderStatus: z.string().trim().min(1).max(64),
+    orderCreatedAt: z.iso.datetime({ offset: true }),
     vehicleLabel: z.string().trim().min(1).max(256),
     kitName: z.string().trim().min(1).max(256),
     payment: z
       .object({
         confirmed: z.boolean(),
         confirmedAt: nullableDateTime,
+        currency: z.string().trim().length(3),
+        totalAmountMinor: z.string().regex(/^\d+$/u),
       })
       .strict(),
-    zoho: z
-      .object({
-        salesOrderNumber: nullableBoundedText,
-        invoiceNumber: nullableBoundedText,
-      })
-      .strict(),
+    salesOrder: providerResourceSchema,
+    invoice: providerResourceSchema,
+    packages: z.array(providerResourceSchema).max(50),
     shipment: z
       .object({
         status: nullableBoundedText,
@@ -51,21 +93,13 @@ export const extendedWarrantyOrderStatusSchema = z
       .strict(),
     installation: z
       .object({
-        status: z
-          .enum([
-            "UPLOADED",
-            "SCANNING",
-            "READY_FOR_REVIEW",
-            "APPROVED",
-            "REJECTED",
-            "SUPERSEDED",
-            "QUARANTINED",
-          ])
-          .nullable(),
+        status: evidenceStatusSchema.nullable(),
         submittedAt: nullableDateTime,
+        revisionNo: z.number().int().min(1).nullable(),
         canUpload: z.boolean(),
       })
       .strict(),
+    installationHistory: z.array(installationHistoryItemSchema).max(20),
     approval: z
       .object({
         status: z.enum(["NOT_SUBMITTED", "PENDING", "APPROVED", "REJECTED"]),
@@ -75,6 +109,7 @@ export const extendedWarrantyOrderStatusSchema = z
     certificate: z
       .object({
         available: z.boolean(),
+        certificateNumber: nullableBoundedText,
         downloadUrl: z
           .url()
           .refine((value: string) => value.startsWith("https://"))
@@ -82,6 +117,7 @@ export const extendedWarrantyOrderStatusSchema = z
         downloadUrlExpiresAt: nullableDateTime,
       })
       .strict(),
+    timeline: z.array(timelineItemSchema).max(100),
   })
   .strict();
 

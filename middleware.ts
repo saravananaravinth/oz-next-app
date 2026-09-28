@@ -340,8 +340,16 @@ function publicTokenRouteForPath(
   );
 }
 
+function isLiveInstallationCaptureAllowedPath(pathname: string): boolean {
+  return (
+    pathname === EXTENDED_WARRANTY_PUBLIC_ROUTE_BASES.orderStatus ||
+    pathname.startsWith(`${EXTENDED_WARRANTY_PUBLIC_ROUTE_BASES.orderStatus}/`)
+  );
+}
+
 function isGeolocationAllowedRequestPath(pathname: string): boolean {
   return (
+    isLiveInstallationCaptureAllowedPath(pathname) ||
     pathname === "/public/location" ||
     pathname.startsWith("/public/location/") ||
     pathname === "/erp/public/location" ||
@@ -583,7 +591,9 @@ function buildPermissionsPolicy(pathname: string): string {
     "autoplay=()",
     "bluetooth=()",
     "browsing-topics=()",
-    "camera=()",
+    isLiveInstallationCaptureAllowedPath(pathname)
+      ? "camera=(self)"
+      : "camera=()",
     "display-capture=()",
     "encrypted-media=()",
     "fullscreen=(self)",
@@ -592,7 +602,9 @@ function buildPermissionsPolicy(pathname: string): string {
       : "geolocation=()",
     "gyroscope=()",
     "magnetometer=()",
-    "microphone=()",
+    isLiveInstallationCaptureAllowedPath(pathname)
+      ? "microphone=(self)"
+      : "microphone=()",
     "midi=()",
     "payment=()",
     "picture-in-picture=()",

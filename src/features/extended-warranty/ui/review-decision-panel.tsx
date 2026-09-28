@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import { useRef, useState, useTransition, type ReactElement } from "react";
 
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { submitExtendedWarrantyReviewDecision } from "@/features/extended-warranty/actions/review.actions";
 
@@ -23,7 +22,6 @@ export function ExtendedWarrantyReviewDecisionPanel({
   disabled,
 }: ExtendedWarrantyReviewDecisionPanelProps): ReactElement {
   const router = useRouter();
-  const [reasonCode, setReasonCode] = useState("INSTALLATION_VERIFIED");
   const [notes, setNotes] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
@@ -34,12 +32,13 @@ export function ExtendedWarrantyReviewDecisionPanel({
 
   const submit = (decision: "APPROVED" | "REJECTED"): void => {
     setError(null);
-    const normalizedReason = reasonCode.trim();
+    const reasonCode =
+      decision === "APPROVED" ? "INSTALLATION_VERIFIED" : "REUPLOAD_REQUIRED";
     const normalizedNotes = notes.trim().length === 0 ? null : notes.trim();
     const fingerprint = JSON.stringify({
       orderId,
       decision,
-      reasonCode: normalizedReason,
+      reasonCode,
       notes: normalizedNotes,
       orderRowVersion,
       evidenceRowVersion,
@@ -55,7 +54,7 @@ export function ExtendedWarrantyReviewDecisionPanel({
       void submitExtendedWarrantyReviewDecision({
         orderId,
         decision,
-        reasonCode: normalizedReason,
+        reasonCode,
         notes: normalizedNotes,
         orderRowVersion,
         evidenceRowVersion,
@@ -76,23 +75,9 @@ export function ExtendedWarrantyReviewDecisionPanel({
   return (
     <div className="space-y-4">
       <div className="space-y-2">
-        <label htmlFor="ew-review-reason" className="text-sm font-medium">
-          Reason code
-        </label>
-        <Input
-          id="ew-review-reason"
-          value={reasonCode}
-          onChange={(event) => {
-            setReasonCode(event.target.value.toUpperCase());
-          }}
-          disabled={disabled || isPending}
-          maxLength={64}
-          autoComplete="off"
-        />
-      </div>
-      <div className="space-y-2">
         <label htmlFor="ew-review-notes" className="text-sm font-medium">
-          Review notes
+          Review notes{" "}
+          <span className="font-normal text-muted-foreground">(optional)</span>
         </label>
         <Textarea
           id="ew-review-notes"
@@ -103,35 +88,40 @@ export function ExtendedWarrantyReviewDecisionPanel({
           disabled={disabled || isPending}
           maxLength={2000}
           rows={4}
-          placeholder="Add concise evidence observations. Do not copy customer-sensitive data unnecessarily."
+          placeholder="Record concise evidence observations for the approval history."
         />
       </div>
       {error === null ? null : (
-        <p className="text-destructive text-sm" role="alert">
+        <p className="text-sm text-destructive" role="alert">
           {error}
         </p>
       )}
-      <div className="flex flex-wrap justify-end gap-2">
+      <div className="grid gap-2 sm:grid-cols-2">
         <Button
           type="button"
           variant="outline"
-          disabled={disabled || isPending || reasonCode.trim().length < 2}
+          disabled={disabled || isPending}
           onClick={() => {
             submit("REJECTED");
           }}
         >
-          Reject evidence
+          Request new video
         </Button>
         <Button
           type="button"
-          disabled={disabled || isPending || reasonCode.trim().length < 2}
+          disabled={disabled || isPending}
           onClick={() => {
             submit("APPROVED");
           }}
         >
-          Approve & activate
+          Approve installation
         </Button>
       </div>
+      <p className="text-xs leading-5 text-muted-foreground">
+        “Request new video” rejects only the current evidence revision. The
+        customer can record a replacement and every prior decision remains in
+        history.
+      </p>
     </div>
   );
 }

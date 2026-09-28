@@ -99,6 +99,46 @@ export function ExtendedWarrantyReviewOrderPage({
       </ContentSection>
 
       <ContentSection
+        title="Approval history"
+        description="Every installation evidence revision and review outcome is retained for audit and repeat-submission traceability."
+      >
+        <div className="grid gap-3">
+          {detail.history.map((item) => (
+            <Card key={item.evidenceId}>
+              <CardContent className="flex flex-col gap-2 pt-6 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <div className="font-medium">Attempt {item.revisionNo}</div>
+                  <div className="text-sm text-muted-foreground">
+                    {humanize(item.evidenceStatus)} ·{" "}
+                    {formatDate(item.submittedAt)}
+                  </div>
+                </div>
+                <div className="text-sm sm:text-right">
+                  <Badge
+                    variant={
+                      item.decision === "REJECTED" ? "destructive" : "outline"
+                    }
+                  >
+                    {item.decision === null
+                      ? "Awaiting review"
+                      : humanize(item.decision)}
+                  </Badge>
+                  {item.reviewedAt === null ? null : (
+                    <div className="mt-1 text-xs text-muted-foreground">
+                      {formatDate(item.reviewedAt)}
+                      {item.reasonCode === null
+                        ? ""
+                        : ` · ${humanize(item.reasonCode)}`}
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      </ContentSection>
+
+      <ContentSection
         title="Activation & certificate"
         description="Coverage is authoritative in warranty_core. PDF generation runs asynchronously after activation commits."
       >

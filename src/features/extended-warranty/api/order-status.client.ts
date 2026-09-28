@@ -22,6 +22,13 @@ export type InstallationLocationEvidence = Readonly<{
   source: "BROWSER_GEOLOCATION";
 }>;
 
+export type LiveInstallationRecordingMetadata = Readonly<{
+  recordedAt: string;
+  recordingStartedAt: string;
+  recordingStoppedAt: string;
+  durationMs: number;
+}>;
+
 export async function getExtendedWarrantyOrderStatus(
   token: string,
   signal?: AbortSignal,
@@ -67,7 +74,7 @@ export async function finalizeExtendedWarrantyInstallationUpload(
     uploadId: string;
     checksumSha256: string;
     sizeBytes: number;
-    recordedAt: string;
+    recording: LiveInstallationRecordingMetadata;
     location: InstallationLocationEvidence;
     signal?: AbortSignal;
   }>,
@@ -77,7 +84,10 @@ export async function finalizeExtendedWarrantyInstallationUpload(
     {
       checksumSha256: input.checksumSha256,
       sizeBytes: input.sizeBytes,
-      recordedAt: input.recordedAt,
+      recordedAt: input.recording.recordedAt,
+      recordingStartedAt: input.recording.recordingStartedAt,
+      recordingStoppedAt: input.recording.recordingStoppedAt,
+      durationMs: input.recording.durationMs,
       location: input.location,
     },
     extendedWarrantyInstallationFinalizeSchema,
@@ -88,8 +98,8 @@ export async function finalizeExtendedWarrantyInstallationUpload(
   );
 }
 
-export async function sha256File(file: File): Promise<string> {
-  const bytes = await file.arrayBuffer();
+export async function sha256Blob(blob: Blob): Promise<string> {
+  const bytes = await blob.arrayBuffer();
   const digest = await crypto.subtle.digest("SHA-256", bytes);
   return Array.from(new Uint8Array(digest), (byte) =>
     byte.toString(16).padStart(2, "0"),
@@ -99,7 +109,7 @@ export async function sha256File(file: File): Promise<string> {
 export async function uploadInstallationVideoToSignedUrl(
   input: Readonly<{
     uploadUrl: string;
-    file: File;
+    video: Blob;
     requiredHeaders: Readonly<Record<string, string>>;
     onProgress: (percent: number) => void;
     signal?: AbortSignal;
@@ -175,6 +185,6 @@ export async function uploadInstallationVideoToSignedUrl(
       return;
     }
 
-    request.send(input.file);
+    request.send(input.video);
   });
 }

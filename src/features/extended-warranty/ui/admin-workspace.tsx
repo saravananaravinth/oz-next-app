@@ -1541,6 +1541,40 @@ export function ExtendedWarrantyWorkspacePage({
                         Accuracy {review.accuracyMeters ?? "Unknown"} m
                       </span>
                     </div>
+                    <div className="rounded-lg border">
+                      <div className="border-b px-3 py-2 text-sm font-medium">
+                        Approval history
+                      </div>
+                      <div className="divide-y">
+                        {review.history.map((item) => (
+                          <div
+                            key={item.evidenceId}
+                            className="flex flex-col gap-1 px-3 py-2 text-sm sm:flex-row sm:items-center sm:justify-between"
+                          >
+                            <div>
+                              <div className="font-medium">
+                                Attempt {item.revisionNo}
+                              </div>
+                              <div className="text-xs text-muted-foreground">
+                                {formatDisplayLabel(
+                                  item.evidenceStatus,
+                                  "Unknown Status",
+                                )}{" "}
+                                · {formatDateTime(item.submittedAt)}
+                              </div>
+                            </div>
+                            <div className="text-xs text-muted-foreground sm:text-right">
+                              {item.decision === null
+                                ? "Awaiting review"
+                                : `${formatDisplayLabel(item.decision, "Reviewed")} · ${formatDateTime(item.reviewedAt)}`}
+                              {item.reasonCode === null
+                                ? ""
+                                : ` · ${formatDisplayLabel(item.reasonCode, item.reasonCode)}`}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
                     <ExtendedWarrantyReviewDecisionPanel
                       orderId={review.orderId}
                       orderRowVersion={review.orderRowVersion}

@@ -39,6 +39,18 @@ export const extendedWarrantyReviewQueueSchema = z
   })
   .strict();
 
+const extendedWarrantyReviewHistoryItemSchema = z
+  .object({
+    evidenceId: z.uuid(),
+    revisionNo: z.number().int().min(1),
+    evidenceStatus: z.string().trim().min(1).max(64),
+    submittedAt: z.iso.datetime({ offset: true }),
+    decision: z.enum(["APPROVED", "REJECTED"]).nullable(),
+    reasonCode: nullableText,
+    reviewedAt: nullableDate,
+  })
+  .strict();
+
 export const extendedWarrantyReviewDetailSchema =
   extendedWarrantyReviewQueueItemSchema
     .extend({
@@ -74,6 +86,7 @@ export const extendedWarrantyReviewDetailSchema =
       certificateNumber: nullableText,
       certificateStatus: nullableText,
       certificateFileId: z.uuid().nullable(),
+      history: z.array(extendedWarrantyReviewHistoryItemSchema).max(20),
       videoUrl: z.url().refine((value) => value.startsWith("https://")),
       videoUrlExpiresAt: z.iso.datetime({ offset: true }),
     })
