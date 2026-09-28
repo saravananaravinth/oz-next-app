@@ -9,11 +9,14 @@ import {
   CheckCircle2,
   Clock3,
   CreditCard,
+  FileCheck2,
   LoaderCircle,
   MapPin,
   PackageCheck,
+  ReceiptText,
   RefreshCw,
   ShieldCheck,
+  Truck,
   UserRound,
 } from "lucide-react";
 
@@ -221,11 +224,17 @@ export function ExtendedWarrantyPurchasePage({
     );
   }
 
+  if (state === "paid" && purchase !== null) {
+    return (
+      <PaymentConfirmedThankYou purchase={purchase} option={selectedOption} />
+    );
+  }
+
   if (state === "paid") {
     return (
       <PageState
         title="Payment confirmed"
-        description="Your payment has been verified. Ozotec will now continue the SPD kit fulfillment and Extended Warranty process."
+        description="Your payment has been verified and your Extended Warranty order is being prepared."
         icon={<CheckCircle2 aria-hidden="true" />}
       />
     );
@@ -401,6 +410,245 @@ export function ExtendedWarrantyPurchasePage({
         />
       </div>
     </ContentRoot>
+  );
+}
+
+function PaymentConfirmedThankYou({
+  purchase,
+  option,
+}: Readonly<{
+  purchase: ExtendedWarrantyPurchase;
+  option: ExtendedWarrantyPurchaseOption | null;
+}>): React.ReactElement {
+  const orderNumber = purchase.order?.orderNumber ?? "Confirmed";
+  const kitName = option?.name ?? "Selected SPD kit";
+  const amountPaid =
+    option === null
+      ? "Confirmed"
+      : formatMinor(option.totalAmountMinor, option.currency);
+
+  return (
+    <ContentRoot
+      width="narrow"
+      density="comfortable"
+      className="min-h-dvh bg-muted/20 px-0 py-0"
+    >
+      <div className="mx-auto flex min-h-dvh w-full max-w-md flex-col bg-background shadow-sm">
+        <header className="flex min-h-16 items-center justify-between gap-3 border-b border-border/70 bg-background/95 px-4 py-3 backdrop-blur-xl">
+          <div className="min-w-0">
+            <img
+              src="/logo-light.svg"
+              alt="Ozotec EV"
+              className="h-7 w-auto dark:hidden"
+            />
+            <img
+              src="/logo-dark.svg"
+              alt="Ozotec EV"
+              className="hidden h-7 w-auto dark:block"
+            />
+          </div>
+          <div className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-readable">
+            <ShieldCheck aria-hidden="true" className="size-4 text-primary" />
+            Secure payment
+          </div>
+        </header>
+
+        <main className="flex flex-1 flex-col px-4 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-7">
+          <section
+            aria-labelledby="payment-confirmed-title"
+            className="text-center motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-2 motion-safe:duration-500 motion-reduce:animate-none"
+          >
+            <div className="relative mx-auto flex size-20 items-center justify-center">
+              <span
+                aria-hidden="true"
+                className="absolute inset-0 rounded-full border border-primary/15 bg-primary/5"
+              />
+              <span className="relative flex size-16 items-center justify-center rounded-full border border-primary/25 bg-primary/10 text-primary shadow-sm">
+                <CheckCircle2 aria-hidden="true" className="size-8" />
+              </span>
+            </div>
+
+            <Badge variant="secondary" className="mt-5 rounded-full px-3 py-1">
+              <CheckCircle2 aria-hidden="true" className="size-3.5" />
+              Payment confirmed
+            </Badge>
+
+            <h1
+              id="payment-confirmed-title"
+              className="mt-4 text-2xl font-semibold tracking-tight text-foreground"
+            >
+              Thank you for your purchase
+            </h1>
+            <p className="mx-auto mt-2 max-w-sm text-sm leading-6 text-muted-readable">
+              Your payment has been securely verified. We&apos;ll now prepare
+              your SPD kit and continue the Extended Warranty fulfillment
+              process.
+            </p>
+          </section>
+
+          <section
+            aria-labelledby="confirmed-order-title"
+            className="mt-7 rounded-2xl border border-border/70 bg-card p-4 shadow-xs"
+          >
+            <SectionHeading
+              icon={<ReceiptText aria-hidden="true" />}
+              title="Order confirmed"
+            />
+            <h2 id="confirmed-order-title" className="sr-only">
+              Order confirmed
+            </h2>
+            <dl className="mt-4 grid gap-3 text-sm">
+              <ConfirmationRow label="Order" value={orderNumber} mono />
+              <ConfirmationRow label="Vehicle" value={purchase.vehicleLabel} />
+              <ConfirmationRow label="SPD kit" value={kitName} />
+              <ConfirmationRow label="Amount paid" value={amountPaid} strong />
+              <ConfirmationRow
+                label="Payment"
+                value="Confirmed"
+                status="success"
+              />
+            </dl>
+          </section>
+
+          <section
+            aria-labelledby="next-steps-title"
+            className="mt-3 rounded-2xl border border-border/70 bg-card p-4 shadow-xs"
+          >
+            <SectionHeading
+              icon={<PackageCheck aria-hidden="true" />}
+              title="What happens next"
+            />
+            <h2 id="next-steps-title" className="sr-only">
+              What happens next
+            </h2>
+            <ol className="mt-4 grid gap-0">
+              <ConfirmationStep
+                number={1}
+                icon={<FileCheck2 aria-hidden="true" />}
+                title="Order preparation"
+                description="We’ll create and process your sales order, invoice, and SPD kit package."
+              />
+              <ConfirmationStep
+                number={2}
+                icon={<Truck aria-hidden="true" />}
+                title="Shipment & tracking"
+                description="When the kit is shipped, we’ll send the shipment and tracking update to your registered WhatsApp contact."
+              />
+              <ConfirmationStep
+                number={3}
+                icon={<PackageCheck aria-hidden="true" />}
+                title="Installation verification"
+                description="After delivery, use your secure order link to record the SPD kit installation video for approval."
+              />
+              <ConfirmationStep
+                number={4}
+                icon={<ShieldCheck aria-hidden="true" />}
+                title="Warranty certificate"
+                description="Once the installation evidence is approved, your Extended Warranty certificate will be issued for download."
+                last
+              />
+            </ol>
+          </section>
+
+          <aside className="mt-3 rounded-2xl border border-primary/20 bg-primary/[0.04] p-4">
+            <div className="flex items-start gap-3">
+              <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+                <ShieldCheck aria-hidden="true" className="size-4.5" />
+              </span>
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-foreground">
+                  You&apos;re all set
+                </p>
+                <p className="mt-1 text-xs leading-5 text-muted-readable">
+                  No additional payment is required for this order. Keep an eye
+                  on WhatsApp for important shipment and certificate updates
+                  from Ozotec EV.
+                </p>
+                {purchase.buyer.maskedPhone === null ? null : (
+                  <p className="mt-2 text-xs font-medium text-foreground">
+                    Updates: {purchase.buyer.maskedPhone}
+                  </p>
+                )}
+              </div>
+            </div>
+          </aside>
+
+          <p className="mt-auto pt-7 text-center text-xs leading-5 text-muted-readable">
+            You can safely close this page. Your payment confirmation is
+            recorded with Ozotec EV.
+          </p>
+        </main>
+      </div>
+    </ContentRoot>
+  );
+}
+
+function ConfirmationRow({
+  label,
+  value,
+  mono = false,
+  strong = false,
+  status,
+}: Readonly<{
+  label: string;
+  value: string;
+  mono?: boolean;
+  strong?: boolean;
+  status?: "success";
+}>): React.ReactElement {
+  return (
+    <div className="flex items-start justify-between gap-4 border-b border-border/60 pb-3 last:border-b-0 last:pb-0">
+      <dt className="shrink-0 text-muted-readable">{label}</dt>
+      <dd
+        className={cn(
+          "min-w-0 break-words text-right font-medium text-foreground",
+          mono && "font-mono text-xs tabular-nums",
+          strong && "text-base font-semibold tabular-nums",
+          status === "success" &&
+            "inline-flex items-center gap-1.5 text-primary",
+        )}
+      >
+        {status === "success" ? (
+          <CheckCircle2 aria-hidden="true" className="size-3.5 shrink-0" />
+        ) : null}
+        {value}
+      </dd>
+    </div>
+  );
+}
+
+function ConfirmationStep({
+  number,
+  icon,
+  title,
+  description,
+  last = false,
+}: Readonly<{
+  number: number;
+  icon: React.ReactNode;
+  title: string;
+  description: string;
+  last?: boolean;
+}>): React.ReactElement {
+  return (
+    <li className="relative flex gap-3 pb-5 last:pb-0">
+      {last ? null : (
+        <span
+          aria-hidden="true"
+          className="absolute left-[1.0625rem] top-9 h-[calc(100%-1rem)] w-px bg-border"
+        />
+      )}
+      <span className="relative z-10 flex size-9 shrink-0 items-center justify-center rounded-full border border-primary/20 bg-primary/10 text-primary [&>svg]:size-4">
+        {icon}
+        <span className="sr-only">Step {String(number)}</span>
+      </span>
+      <div className="min-w-0 pt-0.5">
+        <p className="text-sm font-semibold text-foreground">{title}</p>
+        <p className="mt-1 text-xs leading-5 text-muted-readable">
+          {description}
+        </p>
+      </div>
+    </li>
   );
 }
 
