@@ -12,7 +12,7 @@ import {
   unwrapApiPayload,
   type ApiEnvelopeResult,
 } from "@/lib/api/envelope";
-import { ApiHttpError } from "@/lib/api/problem";
+import { ApiHttpError, isApiHttpError } from "@/lib/api/problem";
 import {
   authBodyTokenResponseSchema,
   jwtTokenSchema,
@@ -819,7 +819,19 @@ async function fetchOnceEnvelope<TData, TMeta = undefined>(
       buildServerEdgeUrl(path),
       requestInit,
     );
-    const payload = await readJsonPayload(response);
+    let payload: unknown;
+    try {
+      payload = await readJsonPayload(response);
+    } catch (error: unknown) {
+      if (
+        response.ok ||
+        !isApiHttpError(error) ||
+        error.code !== "api_response_invalid_json"
+      ) {
+        throw error;
+      }
+      payload = null;
+    }
 
     if (!response.ok) {
       if (

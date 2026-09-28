@@ -129,9 +129,16 @@ function RefundDialog({
   const [idempotencyKey, setIdempotencyKey] = React.useState(
     () => `payment-refund:${transaction.chargeId}:${crypto.randomUUID()}`,
   );
+  const committedRefundAmount = transaction.refunds
+    .filter((refund) => refund.status !== "FAILED")
+    .reduce((total, refund) => total + BigInt(refund.amountMinor), 0n);
+  const providerRefundedAmount = BigInt(transaction.refundedAmountMinor);
+  const effectiveRefundedAmount =
+    committedRefundAmount > providerRefundedAmount
+      ? committedRefundAmount
+      : providerRefundedAmount;
   const refundable =
-    BigInt(transaction.capturedAmountMinor) -
-    BigInt(transaction.refundedAmountMinor);
+    BigInt(transaction.capturedAmountMinor) - effectiveRefundedAmount;
   const form = useForm<RefundForm>({
     resolver: zodResolver(refundFormSchema),
     defaultValues: {

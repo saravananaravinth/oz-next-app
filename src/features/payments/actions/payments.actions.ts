@@ -108,21 +108,27 @@ function actionFailure(error: unknown): PaymentsActionFailure {
   if (isApiHttpError(error)) {
     const requestId = safeRequestId(error.requestId);
     const message =
-      error.status === 401
-        ? "Your ERP session is no longer authorized for this operation."
-        : error.status === 403
-          ? "You do not have permission to perform this payment operation."
-          : error.status === 404
-            ? "The requested payment resource is no longer available."
-            : error.status === 409
-              ? "Payment state changed. Refresh the workspace before retrying."
-              : error.status === 422
-                ? "The payment request failed validation. Review the inputs and retry."
-                : error.status === 429
-                  ? "Payment operations are temporarily rate limited. Retry shortly."
-                  : error.status >= 500
-                    ? "The payment provider or ERP payment service is temporarily unavailable."
-                    : "The payment operation could not be completed safely.";
+      error.code === "provider_refund_insufficient_balance"
+        ? "Razorpay does not currently have enough available balance to issue this refund. Add provider balance or wait for additional settlements, then retry."
+        : error.code === "provider_refund_not_allowed"
+          ? "Razorpay rejected this refund for the current payment state or amount. Refresh the payment record and verify the refundable amount before retrying."
+          : error.code === "provider_authentication_failed"
+            ? "Razorpay authorization is unavailable. Repair the payment provider credentials before retrying."
+            : error.status === 401
+              ? "Your ERP session is no longer authorized for this operation."
+              : error.status === 403
+                ? "You do not have permission to perform this payment operation."
+                : error.status === 404
+                  ? "The requested payment resource is no longer available."
+                  : error.status === 409
+                    ? "Payment state changed. Refresh the workspace before retrying."
+                    : error.status === 422
+                      ? "The payment request failed validation. Review the inputs and retry."
+                      : error.status === 429
+                        ? "Payment operations are temporarily rate limited. Retry shortly."
+                        : error.status >= 500
+                          ? "The payment provider or ERP payment service is temporarily unavailable."
+                          : "The payment operation could not be completed safely.";
     return {
       ok: false,
       code: error.code,
