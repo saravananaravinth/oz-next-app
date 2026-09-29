@@ -35,3 +35,10 @@ export async function reconcileExtendedWarrantyPaymentAction(
   await assertSameOriginMutation(API_CONFIG.appOrigin);
   await admin.reconcileExtendedWarrantyPaymentAction(input);
 }
+
+export async function reconcileExtendedWarrantyFulfillmentAction(
+  input: Readonly<{ tenantId: string; unitId: string; idempotencyKey: string }>,
+) {
+  await assertSameOriginMutation(API_CONFIG.appOrigin);
+  return await admin.reconcileExtendedWarrantyFulfillmentAction(input);
+}

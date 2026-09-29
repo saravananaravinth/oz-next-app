@@ -170,6 +170,52 @@ export const extendedWarrantyWorkspaceDetailSchema = z
     paidAt: dateTime,
     totalAmountMinor: z.string().nullable(),
     currency: z.string().nullable(),
+    fulfillmentSync: z
+      .object({
+        fulfillmentId: z.uuid(),
+        health: z.string(),
+        lastSuccessAt: dateTime,
+        nextAttemptAt: dateTime,
+        failureCode: z.string().nullable(),
+        jobId: z.string().nullable(),
+        taskId: z.string().nullable(),
+        attemptCount: z.number().int().nonnegative(),
+        progress: z
+          .object({
+            target: z.string(),
+            partial: z.boolean(),
+            lines: z.array(
+              z
+                .object({
+                  lineId: z.string().nullable(),
+                  required: z.number(),
+                  invoiced: z.number(),
+                  packed: z.number(),
+                  shipped: z.number(),
+                  delivered: z.number(),
+                })
+                .strict(),
+            ),
+          })
+          .strict()
+          .nullable(),
+        resources: z.array(
+          z
+            .object({
+              kind: z.string(),
+              id: z.string(),
+              number: z.string().nullable(),
+              status: z.string().nullable(),
+              trackingNumber: z.string().nullable(),
+              carrier: z.string().nullable(),
+              trackingUrl: z.string().nullable(),
+            })
+            .strict(),
+        ),
+      })
+      .strict()
+      .nullable()
+      .optional(),
     fulfillmentStatus: z.string().nullable(),
     trackingNumber: z.string().nullable(),
     carrierName: z.string().nullable(),
@@ -208,6 +254,9 @@ export const extendedWarrantyWorkspaceDetailSchema = z
           reason: z.string(),
           attemptCount: z.number().int(),
           nextAttemptAt: z.iso.datetime({ offset: true }),
+          completedAt: dateTime.optional(),
+          lastAttemptAt: dateTime.optional(),
+          failureCode: z.string().nullable().optional(),
         })
         .strict(),
     ),

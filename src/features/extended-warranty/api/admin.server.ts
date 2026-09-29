@@ -250,3 +250,37 @@ export async function reconcileExtendedWarrantyPaymentAction(
   );
   revalidatePath("/extended-warranty");
 }
+
+export async function reconcileExtendedWarrantyFulfillmentAction(
+  input: Readonly<{ tenantId: string; unitId: string; idempotencyKey: string }>,
+) {
+  const parsed = z
+    .object({
+      tenantId: z.uuid(),
+      unitId: z.uuid(),
+      idempotencyKey: z.string().min(8).max(200),
+    })
+    .strict()
+    .parse(input);
+  const access = await requireActionAccess(parsed.tenantId, [
+    "extended-warranty:order:update",
+  ]);
+  const result = await serverFetch(
+    `/erp/extended-warranty/workspace/${encodeURIComponent(parsed.unitId)}/reconcile-fulfillment`,
+    {
+      method: HTTP_METHODS.POST,
+      schema: z
+        .object({
+          outcome: z.enum(["queued", "deduplicated"]),
+          jobId: z.string(),
+          taskId: z.string().nullable(),
+        })
+        .strict(),
+      idempotencyKey: parsed.idempotencyKey,
+      cache: "no-store",
+      ...contextOptions(access),
+    },
+  );
+  revalidatePath("/extended-warranty");
+  return result;
+}

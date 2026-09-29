@@ -117,7 +117,7 @@ export function ZohoWebhookReceiptsTable({
             Recent delivery outcomes
           </h3>
           <p className="mt-0.5 text-caption text-muted-readable">
-            Provider notifications and their durable processing outcome.
+            Notification acceptance and independent fulfillment processing.
           </p>
         </div>
         <Badge variant="outline">
@@ -154,8 +154,20 @@ export function ZohoWebhookReceiptsTable({
               </TableCell>
               <TableCell>
                 <Badge variant={statusVariant(receipt.status)}>
-                  {humanizeToken(receipt.status)}
+                  {receipt.resourceType === "invoice" &&
+                  receipt.status === "PROCESSED"
+                    ? "Accepted"
+                    : humanizeToken(receipt.status)}
                 </Badge>
+                {receipt.fulfillmentProcessing ? (
+                  <p className="mt-1 text-caption text-muted-readable">
+                    Fulfillment:{" "}
+                    {humanizeToken(receipt.fulfillmentProcessing.status)}
+                    {receipt.fulfillmentProcessing.failureCode
+                      ? ` · ${humanizeToken(receipt.fulfillmentProcessing.failureCode)}`
+                      : ""}
+                  </p>
+                ) : null}
               </TableCell>
               <TableCell>
                 <code className="text-caption text-muted-readable">

@@ -1,6 +1,7 @@
 // oz-next-app/src/features/extended-warranty/ui/admin-workspace.tsx
 "use client";
 
+import { paymentVerificationTiming } from "../policies/reconciliation-display";
 import * as React from "react";
 import type { Route } from "next";
 import Link from "next/link";
@@ -77,6 +78,7 @@ import {
   downloadExtendedWarrantyCertificateAction,
   prepareExtendedWarrantyPurchaseLinkAction,
   reconcileExtendedWarrantyPaymentAction,
+  reconcileExtendedWarrantyFulfillmentAction,
   sendExtendedWarrantyPurchaseLinkAction,
   syncExtendedWarrantyStockAction,
 } from "@/features/extended-warranty/actions/admin.actions";
@@ -530,6 +532,10 @@ export function ExtendedWarrantyWorkspacePage({
   canReconcile,
 }: ExtendedWarrantyWorkspacePageProps): React.ReactElement {
   const [reconciling, startReconciliation] = React.useTransition();
+  const fulfillmentIntent = React.useRef<{
+    unitId: string;
+    key: string;
+  } | null>(null);
   const [syncingStock, startStockSync] = React.useTransition();
   const [filtersOpen, setFiltersOpen] = React.useState(false);
   const [draftStatus, setDraftStatus] = React.useState<WorkspaceStatus>(
@@ -1224,20 +1230,135 @@ export function ExtendedWarrantyWorkspacePage({
               </div>
 
               <div className="grid gap-6 px-6 py-6 pb-10">
-                {detail.eligibilityBlockers.length > 0 ||
-                detail.reconciliationReasons.length > 0 ? (
+                {detail.reconciliationReasons.length > 0 ? (
                   <ContentStatus
                     variant="warning"
                     title="Attention required"
                     description={Array.from(
-                      new Set([
-                        ...detail.eligibilityBlockers,
-                        ...detail.reconciliationReasons,
-                      ]),
+                      new Set([...detail.reconciliationReasons]),
                     ).join(". ")}
                   />
                 ) : null}
 
+                {detail.eligibilityBlockers.length > 0 ? (
+                  <p className="text-sm text-muted-foreground">
+                    Purchase eligibility:{" "}
+                    {detail.eligibilityBlockers.join(". ")}
+                  </p>
+                ) : null}
+                <p
+                  className="text-sm text-muted-foreground"
+                  aria-label="Warranty workflow"
+                >
+                  Payment → Sales order → Invoice → Packing → Shipment →
+                  Delivery → Installation → Review → Activation → Certificate.
+                  Current stage:{" "}
+                  {formatDisplayLabel(detail.orderStatus, "Not ordered")}
+                </p>
+                {detail.fulfillmentSync ? (
+                  <section
+                    className="grid gap-3 rounded-lg border p-4"
+                    aria-label="Fulfillment synchronization"
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <h2 className="font-semibold">
+                        Fulfillment synchronization
+                      </h2>
+                      {canSend && detail.orderId ? (
+                        <Button
+                          variant="outline"
+                          disabled={reconciling}
+                          onClick={() => {
+                            const intent = fulfillmentIntent.current;
+                            const idempotencyKey =
+                              intent?.unitId === detail.unitId
+                                ? intent.key
+                                : crypto.randomUUID();
+                            fulfillmentIntent.current = {
+                              unitId: detail.unitId,
+                              key: idempotencyKey,
+                            };
+                            startReconciliation(async () => {
+                              try {
+                                await reconcileExtendedWarrantyFulfillmentAction(
+                                  {
+                                    tenantId,
+                                    unitId: detail.unitId,
+                                    idempotencyKey,
+                                  },
+                                );
+                                fulfillmentIntent.current = null;
+                                toast.success(
+                                  "Fulfillment reconciliation queued.",
+                                );
+                                router.refresh();
+                              } catch {
+                                toast.error(
+                                  "Unable to queue fulfillment reconciliation.",
+                                );
+                              }
+                            });
+                          }}
+                        >
+                          Reconcile Fulfillment
+                        </Button>
+                      ) : null}
+                    </div>
+                    <p className="text-sm">
+                      {formatDisplayLabel(
+                        detail.fulfillmentSync.health,
+                        "Unknown",
+                      )}
+                      {detail.fulfillmentSync.failureCode
+                        ? ` · ${formatDisplayLabel(detail.fulfillmentSync.failureCode, "Unknown failure")}`
+                        : ""}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      Last successful check:{" "}
+                      {formatDateTime(detail.fulfillmentSync.lastSuccessAt)}
+                      {detail.fulfillmentSync.nextAttemptAt
+                        ? ` · Next attempt: ${formatDateTime(detail.fulfillmentSync.nextAttemptAt)}`
+                        : ""}
+                    </p>
+                    {detail.fulfillmentSync.progress?.lines.map(
+                      (line, index) => (
+                        <p key={line.lineId ?? index} className="text-sm">
+                          Kit line {index + 1}: {line.invoiced}/{line.required}{" "}
+                          invoiced · {line.packed}/{line.required} packed ·{" "}
+                          {line.shipped}/{line.required} shipped ·{" "}
+                          {line.delivered}/{line.required} delivered
+                        </p>
+                      ),
+                    )}
+                    {detail.fulfillmentSync.progress?.partial ? (
+                      <p className="text-sm text-muted-foreground">
+                        Installation becomes available after all required kit
+                        items are delivered.
+                      </p>
+                    ) : null}
+                    {detail.fulfillmentSync.resources.map((resource) => (
+                      <div
+                        key={`${resource.kind}:${resource.id}`}
+                        className="text-sm"
+                      >
+                        <span>
+                          {formatDisplayLabel(resource.kind, "Document")}:{" "}
+                          {resource.number ?? resource.id} ·{" "}
+                          {formatDisplayLabel(
+                            resource.status,
+                            "Awaiting verification",
+                          )}
+                        </span>
+                        {resource.trackingNumber ? (
+                          <p className="text-xs text-muted-foreground">
+                            {resource.carrier} · Tracking{" "}
+                            {resource.trackingNumber}
+                          </p>
+                        ) : null}
+                      </div>
+                    ))}
+                  </section>
+                ) : null}
                 <section className="grid gap-4 border-b pb-6">
                   <div>
                     <h2 className="font-semibold">Purchase & Workflow</h2>
@@ -1503,9 +1624,17 @@ export function ExtendedWarrantyWorkspacePage({
                           className="flex flex-col gap-1 p-3 sm:flex-row sm:items-center sm:justify-between"
                         >
                           <div>
-                            <div className="font-medium">{job.reason}</div>
+                            <div className="font-medium">
+                              {formatDisplayLabel(job.reason, "Verification")}
+                            </div>
                             <div className="text-xs text-muted-foreground">
-                              Next Attempt {formatDateTime(job.nextAttemptAt)}
+                              {paymentVerificationTiming(job).label}{" "}
+                              {formatDateTime(
+                                paymentVerificationTiming(job).at,
+                              )}
+                              {job.failureCode
+                                ? ` · ${formatDisplayLabel(job.failureCode, "Verification error")}`
+                                : ""}
                             </div>
                           </div>
                           <Badge variant="outline">

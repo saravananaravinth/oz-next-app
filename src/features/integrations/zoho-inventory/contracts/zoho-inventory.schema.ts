@@ -407,6 +407,16 @@ export const zohoWebhookEndpointsSchema = z
   .readonly();
 export const zohoWebhookReceiptSchema = z
   .object({
+    fulfillmentProcessing: z
+      .object({
+        status: z.string(),
+        jobId: z.string().nullable(),
+        taskId: z.string().nullable(),
+        failureCode: z.string().nullable(),
+      })
+      .strict()
+      .nullable()
+      .optional(),
     receiptId: uuidSchema,
     status: z.enum([
       "RECEIVED",
