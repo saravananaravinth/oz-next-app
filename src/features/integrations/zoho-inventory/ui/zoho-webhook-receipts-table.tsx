@@ -48,6 +48,10 @@ function eventLabel(receipt: ZohoWebhookReceipt): string {
     return humanizeToken(receipt.eventName);
   }
 
+  if (receipt.resourceType === "sales_order") return "Sales order notification";
+  if (receipt.resourceType === "package") return "Package notification";
+  if (receipt.resourceType === "shipment") return "Shipment notification";
+
   if (receipt.resourceType === "invoice") {
     return "Invoice notification";
   }
@@ -66,6 +70,9 @@ function eventLabel(receipt: ZohoWebhookReceipt): string {
 function resourceLabel(
   resourceType: ZohoWebhookReceipt["resourceType"],
 ): string {
+  if (resourceType === "sales_order") return "Sales order";
+  if (resourceType === "package") return "Package";
+  if (resourceType === "shipment") return "Shipment";
   if (resourceType === "invoice") return "Invoice";
   if (resourceType === "composite_item") return "Composite item";
   if (resourceType === "item") return "Item";
@@ -122,7 +129,7 @@ export function ZohoWebhookReceiptsTable({
         <TableHeader>
           <TableRow>
             <TableHead>Received</TableHead>
-            <TableHead>Event / item</TableHead>
+            <TableHead>Event / resource</TableHead>
             <TableHead>Status</TableHead>
             <TableHead>Failure</TableHead>
           </TableRow>

@@ -94,6 +94,7 @@
     "esbuild": "0.28.1",
     "postcss": "8.5.26",
     "sharp": "$sharp",
+    "undici": "7.29.1",
     "ws": "8.21.0"
   },
   "allowScripts": {
