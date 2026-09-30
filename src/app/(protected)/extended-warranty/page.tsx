@@ -7,6 +7,7 @@ import {
   loadExtendedWarrantyVehicleDetail,
   loadExtendedWarrantyWorkspace,
   type ExtendedWarrantyWorkspaceDetailPayload,
+  type ExtendedWarrantyWorkspaceReviewPayload,
 } from "@/features/extended-warranty";
 import { loadExtendedWarrantyReviewOrder } from "@/features/extended-warranty/api/review.server";
 import { extendedWarrantyWorkspaceQuerySchema } from "@/features/extended-warranty/contracts/admin.schema";
@@ -80,34 +81,41 @@ export default async function Page({
   const detailPromise: Promise<ExtendedWarrantyWorkspaceDetailPayload> | null =
     selectedUnitId === undefined
       ? null
-      : (async (): Promise<ExtendedWarrantyWorkspaceDetailPayload> => {
-          const [detail, me] = await Promise.all([
-            loadExtendedWarrantyVehicleDetail(access, selectedUnitId),
-            mePromise,
-          ]);
-          const canReview = me.permissions.includes("extended-warranty:review");
-          let review: ExtendedWarrantyWorkspaceDetailPayload["review"] = null;
-          let reviewUnavailable: string | null = null;
+      : loadExtendedWarrantyVehicleDetail(access, selectedUnitId);
 
-          if (canReview && detail.orderId && detail.installationSubmittedAt) {
-            try {
-              review = await loadExtendedWarrantyReviewOrder(
-                access,
-                detail.orderId,
-              );
-            } catch (error: unknown) {
-              if (
-                isApiHttpError(error) &&
-                (error.status === 409 || error.status === 404)
-              ) {
-                reviewUnavailable = REVIEW_NOT_READY_MESSAGE;
-              } else {
-                throw error;
-              }
-            }
+  const reviewPromise: Promise<ExtendedWarrantyWorkspaceReviewPayload> | null =
+    detailPromise === null
+      ? null
+      : (async (): Promise<ExtendedWarrantyWorkspaceReviewPayload> => {
+          const [detail, me] = await Promise.all([detailPromise, mePromise]);
+          const canReview = me.permissions.includes("extended-warranty:review");
+
+          if (
+            !canReview ||
+            !detail.orderId ||
+            !detail.installationSubmittedAt
+          ) {
+            return { review: null, reviewUnavailable: null };
           }
 
-          return { detail, review, reviewUnavailable };
+          try {
+            const review = await loadExtendedWarrantyReviewOrder(
+              access,
+              detail.orderId,
+            );
+            return { review, reviewUnavailable: null };
+          } catch (error: unknown) {
+            if (
+              isApiHttpError(error) &&
+              (error.status === 409 || error.status === 404)
+            ) {
+              return {
+                review: null,
+                reviewUnavailable: REVIEW_NOT_READY_MESSAGE,
+              };
+            }
+            throw error;
+          }
         })();
 
   const [data, me] = await Promise.all([workspacePromise, mePromise]);
@@ -118,7 +126,9 @@ export default async function Page({
       data={data}
       query={parsedQuery}
       detailPromise={detailPromise}
+      reviewPromise={reviewPromise}
       canReconcile={me.permissions.includes("payment:reconcile")}
+      canReview={me.permissions.includes("extended-warranty:review")}
       canSend={me.permissions.includes("extended-warranty:order:update")}
     />
   );

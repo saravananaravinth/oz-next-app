@@ -2,8 +2,10 @@
 import type { ExtendedWarrantyWorkspaceDetail } from "@/features/extended-warranty/contracts/admin.schema";
 import type { ExtendedWarrantyReviewDetail } from "@/features/extended-warranty/contracts/review.schema";
 
-export type ExtendedWarrantyWorkspaceDetailPayload = Readonly<{
-  detail: ExtendedWarrantyWorkspaceDetail;
+export type ExtendedWarrantyWorkspaceDetailPayload =
+  ExtendedWarrantyWorkspaceDetail;
+
+export type ExtendedWarrantyWorkspaceReviewPayload = Readonly<{
   review: ExtendedWarrantyReviewDetail | null;
   reviewUnavailable: string | null;
 }>;

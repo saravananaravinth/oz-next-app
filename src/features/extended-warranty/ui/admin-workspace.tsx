@@ -77,7 +77,10 @@ import type {
   PaymentProviderAccount,
 } from "@/features/extended-warranty/contracts/admin.schema";
 import { safeInternalHref } from "@/lib/security/navigation";
-import type { ExtendedWarrantyWorkspaceDetailPayload } from "@/features/extended-warranty/ui/workspace-detail.types";
+import type {
+  ExtendedWarrantyWorkspaceDetailPayload,
+  ExtendedWarrantyWorkspaceReviewPayload,
+} from "@/features/extended-warranty/ui/workspace-detail.types";
 import {
   CertificateButton,
   formatWorkspaceDateTime as formatDateTime,
@@ -90,8 +93,10 @@ type ExtendedWarrantyWorkspacePageProps = Readonly<{
   data: ExtendedWarrantyWorkspace;
   query: ExtendedWarrantyWorkspaceQuery;
   detailPromise: Promise<ExtendedWarrantyWorkspaceDetailPayload> | null;
+  reviewPromise: Promise<ExtendedWarrantyWorkspaceReviewPayload> | null;
   canSend: boolean;
   canReconcile: boolean;
+  canReview: boolean;
 }>;
 
 type WorkspaceStatus = ExtendedWarrantyWorkspaceQuery["status"];
@@ -298,14 +303,14 @@ function WorkspaceDetailLoadingSheet({
     >
       <SheetContent
         side="right"
-        className="w-full overflow-y-auto p-0 sm:max-w-[820px]"
+        className="w-full overflow-y-auto rounded-none p-0 sm:w-[min(68rem,calc(100vw-2rem))] sm:max-w-[68rem] sm:rounded-l-3xl"
       >
         <div className="grid min-h-full content-start gap-6 bg-background px-6 py-6">
           <SheetHeader className="text-left">
             <SheetTitle>Loading warranty details</SheetTitle>
             <SheetDescription>
-              The workspace remains available while vehicle and review details
-              are loaded.
+              The workspace remains available while the warranty record is
+              loaded.
             </SheetDescription>
           </SheetHeader>
           <div className="grid gap-3" aria-busy="true" aria-live="polite">
@@ -335,7 +340,7 @@ function WorkspaceDetailErrorSheet({
     >
       <SheetContent
         side="right"
-        className="w-full overflow-y-auto p-0 sm:max-w-[820px]"
+        className="w-full overflow-y-auto rounded-none p-0 sm:w-[min(68rem,calc(100vw-2rem))] sm:max-w-[68rem] sm:rounded-l-3xl"
       >
         <div className="grid min-h-full content-start gap-6 bg-background px-6 py-6">
           <SheetHeader className="text-left">
@@ -380,8 +385,10 @@ export function ExtendedWarrantyWorkspacePage({
   data,
   query,
   detailPromise,
+  reviewPromise,
   canSend,
   canReconcile,
+  canReview,
 }: ExtendedWarrantyWorkspacePageProps): React.ReactElement {
   const [syncingStock, startStockSync] = React.useTransition();
   const [filtersOpen, setFiltersOpen] = React.useState(false);
@@ -1048,9 +1055,11 @@ export function ExtendedWarrantyWorkspacePage({
           >
             <LazyWorkspaceDetailSheet
               detailPromise={detailPromise}
+              reviewPromise={reviewPromise}
               tenantId={tenantId}
               canSend={canSend}
               canReconcile={canReconcile}
+              canReview={canReview}
               onClose={closeDetail}
             />
           </React.Suspense>

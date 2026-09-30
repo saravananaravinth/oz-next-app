@@ -225,9 +225,25 @@ export async function loadExtendedWarrantyOrderVehicle(
 }
 
 export async function reconcileExtendedWarrantyPaymentAction(
-  input: Readonly<{ tenantId: string; unitId: string }>,
+  input: Readonly<{
+    tenantId: string;
+    unitId: string;
+    idempotencyKey: string;
+  }>,
 ): Promise<void> {
-  const parsed = sendPurchaseLinkActionSchema.parse(input);
+  const parsed = z
+    .object({
+      tenantId: z.uuid(),
+      unitId: z.uuid(),
+      idempotencyKey: z
+        .string()
+        .trim()
+        .min(16)
+        .max(200)
+        .regex(/^[A-Za-z0-9._:@/-]+$/u),
+    })
+    .strict()
+    .parse(input);
   const access = await requireActionAccess(parsed.tenantId, [
     "extended-warranty:order:read",
     "payment:reconcile",
@@ -243,7 +259,7 @@ export async function reconcileExtendedWarrantyPaymentAction(
     {
       method: HTTP_METHODS.POST,
       schema: z.unknown(),
-      idempotencyKey: requestId("ew-reconcile"),
+      idempotencyKey: parsed.idempotencyKey,
       cache: "no-store",
       ...contextOptions(access),
     },
@@ -258,7 +274,12 @@ export async function reconcileExtendedWarrantyFulfillmentAction(
     .object({
       tenantId: z.uuid(),
       unitId: z.uuid(),
-      idempotencyKey: z.string().min(8).max(200),
+      idempotencyKey: z
+        .string()
+        .trim()
+        .min(16)
+        .max(200)
+        .regex(/^[A-Za-z0-9._:@/-]+$/u),
     })
     .strict()
     .parse(input);

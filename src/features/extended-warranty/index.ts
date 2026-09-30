@@ -16,4 +16,7 @@ export * from "@/features/extended-warranty/api/review.server";
 export * from "@/features/extended-warranty/contracts/admin.schema";
 export * from "@/features/extended-warranty/api/admin.server";
 export * from "@/features/extended-warranty/ui/admin-workspace";
-export type { ExtendedWarrantyWorkspaceDetailPayload } from "@/features/extended-warranty/ui/workspace-detail.types";
+export type {
+  ExtendedWarrantyWorkspaceDetailPayload,
+  ExtendedWarrantyWorkspaceReviewPayload,
+} from "@/features/extended-warranty/ui/workspace-detail.types";
