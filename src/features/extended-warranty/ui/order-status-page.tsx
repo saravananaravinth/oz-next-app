@@ -34,25 +34,27 @@ import {
 } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { isApiHttpError } from "@/lib/api/problem";
-import { idempotencyKey as createIdempotencyKey } from "@/lib/security/request-identifiers";
 import {
-  createExtendedWarrantyInstallationUpload,
-  finalizeExtendedWarrantyInstallationUpload,
   getExtendedWarrantyOrderStatus,
-  sha256Blob,
-  uploadInstallationVideoToSignedUrl,
   type InstallationLocationEvidence,
-  type LiveInstallationRecordingMetadata,
 } from "@/features/extended-warranty/api/order-status.client";
+import { type ExtendedWarrantyOrderStatus } from "@/features/extended-warranty/contracts/order-status.schema";
+
 import {
-  EXTENDED_WARRANTY_INSTALLATION_VIDEO_MAX_BYTES,
-  EXTENDED_WARRANTY_INSTALLATION_VIDEO_MAX_DURATION_MS,
-  type ExtendedWarrantyOrderStatus,
-} from "@/features/extended-warranty/contracts/order-status.schema";
+  createInstallationUploadSession,
+  resumeInstallationUpload,
+  RecordingExpiredError,
+  type InstallationUploadSession,
+  type LiveRecording,
+} from "@/features/extended-warranty/api/installation-upload-session";
+
+import {
+  startInstallationRecorder,
+  type InstallationRecorderHandle,
+} from "@/features/extended-warranty/api/live-installation-recorder";
 
 const STATUS_POLL_MS = 12_000;
 const GEOLOCATION_TIMEOUT_MS = 15_000;
-const RECORDING_TICK_MS = 250;
 const POLLED_ORDER_STATUSES = new Set<string>([
   "SALES_ORDER_PENDING",
   "SALES_ORDER_CREATED",
@@ -76,16 +78,11 @@ type RecorderState =
   | "idle"
   | "requesting"
   | "ready"
+  | "failed"
   | "recording"
   | "preparing"
   | "uploading"
   | "finalizing";
-
-type LiveRecording = Readonly<{
-  blob: Blob;
-  contentType: "video/mp4" | "video/webm";
-  metadata: LiveInstallationRecordingMetadata;
-}>;
 
 export function ExtendedWarrantyOrderStatusPage({
   token,
@@ -106,25 +103,15 @@ export function ExtendedWarrantyOrderStatusPage({
     null,
   );
   const lifecycleControllerRef = React.useRef<AbortController | null>(null);
+  const uploadSessionRef = React.useRef<InstallationUploadSession | null>(null);
+  const uploadBusyRef = React.useRef(false);
+  const captureGenerationRef = React.useRef(0);
+  const [recordingExpired, setRecordingExpired] = React.useState(false);
   const streamRef = React.useRef<MediaStream | null>(null);
-  const recorderRef = React.useRef<MediaRecorder | null>(null);
-  const chunksRef = React.useRef<Blob[]>([]);
-  const recordingStartedAtRef = React.useRef<number | null>(null);
-  const autoStopTimerRef = React.useRef<number | null>(null);
-  const recordingTickRef = React.useRef<number | null>(null);
-
+  const recorderRef = React.useRef<InstallationRecorderHandle | null>(null);
   const stopTracks = React.useCallback((): void => {
     for (const track of streamRef.current?.getTracks() ?? []) track.stop();
     streamRef.current = null;
-  }, []);
-
-  const clearRecordingTimers = React.useCallback((): void => {
-    if (autoStopTimerRef.current !== null)
-      window.clearTimeout(autoStopTimerRef.current);
-    if (recordingTickRef.current !== null)
-      window.clearInterval(recordingTickRef.current);
-    autoStopTimerRef.current = null;
-    recordingTickRef.current = null;
   }, []);
 
   const refresh = React.useCallback(
@@ -178,14 +165,15 @@ export function ExtendedWarrantyOrderStatusPage({
       });
 
     return () => {
+      captureGenerationRef.current += 1;
+      uploadSessionRef.current = null;
       controller.abort();
       lifecycleControllerRef.current = null;
-      clearRecordingTimers();
-      if (recorderRef.current?.state === "recording")
-        recorderRef.current.stop();
+      recorderRef.current?.cancel();
+      recorderRef.current = null;
       stopTracks();
     };
-  }, [clearRecordingTimers, stopTracks, token]);
+  }, [stopTracks, token]);
 
   React.useEffect(() => {
     if (status === null || !shouldPoll(status) || recorderState !== "idle")
@@ -200,70 +188,36 @@ export function ExtendedWarrantyOrderStatusPage({
   }, [recorderState, refreshCurrent, status]);
 
   const uploadRecording = React.useCallback(
-    async (recording: LiveRecording): Promise<void> => {
+    async (recording?: LiveRecording): Promise<void> => {
       const signal = lifecycleControllerRef.current?.signal;
-      if (
-        status?.installation.canUpload !== true ||
-        signal === undefined ||
-        signal.aborted ||
-        location === null
-      ) {
+      if (signal === undefined || signal.aborted || uploadBusyRef.current)
         return;
-      }
-      if (
-        recording.blob.size < 1 ||
-        recording.blob.size > EXTENDED_WARRANTY_INSTALLATION_VIDEO_MAX_BYTES
-      ) {
-        setRecorderState("ready");
-        setRecorderError(
-          `The 60-second recording exceeded the secure ${formatBytes(EXTENDED_WARRANTY_INSTALLATION_VIDEO_MAX_BYTES)} upload limit. Record again.`,
+      if (recording !== undefined) {
+        if (location === null) return;
+        uploadSessionRef.current = createInstallationUploadSession(
+          recording,
+          location,
         );
-        return;
       }
-
+      const session = uploadSessionRef.current;
+      if (session === null) return;
+      uploadBusyRef.current = true;
       setRecorderError(null);
+      setRecordingExpired(false);
       setUploadProgress(0);
-      setRecorderState("preparing");
       try {
-        const checksumSha256 = await sha256Blob(recording.blob);
-        if (isAbortRequested(signal)) return;
-        const extension =
-          recording.contentType === "video/mp4" ? "mp4" : "webm";
-        const intent = await createExtendedWarrantyInstallationUpload({
+        await resumeInstallationUpload(session, {
           token,
-          fileName: `spd-installation-${recording.metadata.recordingStartedAt.replaceAll(":", "-")}.${extension}`,
-          contentType: recording.contentType,
-          sizeBytes: recording.blob.size,
-          checksumSha256,
-          idempotencyKey: createIdempotencyKey(),
           signal,
-        });
-        if (isAbortRequested(signal)) return;
-
-        setRecorderState("uploading");
-        await uploadInstallationVideoToSignedUrl({
-          uploadUrl: intent.uploadUrl,
-          video: recording.blob,
-          requiredHeaders: intent.requiredHeaders,
-          signal,
+          onStage: (stage) => {
+            if (!signal.aborted) setRecorderState(stage);
+          },
           onProgress: (percent) => {
-            if (!isAbortRequested(signal)) setUploadProgress(percent);
+            if (!signal.aborted) setUploadProgress(percent);
           },
         });
         if (isAbortRequested(signal)) return;
-
-        setRecorderState("finalizing");
-        await finalizeExtendedWarrantyInstallationUpload({
-          token,
-          uploadId: intent.uploadId,
-          checksumSha256,
-          sizeBytes: recording.blob.size,
-          recording: recording.metadata,
-          location,
-          signal,
-        });
-        if (isAbortRequested(signal)) return;
-
+        uploadSessionRef.current = null;
         setRecorderOpen(false);
         setRecorderState("idle");
         setLocation(null);
@@ -273,16 +227,30 @@ export function ExtendedWarrantyOrderStatusPage({
         await refresh(signal);
       } catch (error: unknown) {
         if (isAbortRequested(signal)) return;
-        setRecorderState("ready");
+        setRecorderState("failed");
+        setRecordingExpired(error instanceof RecordingExpiredError);
         setRecorderError(toUploadMessage(error));
+      } finally {
+        uploadBusyRef.current = false;
       }
     },
-    [location, refresh, status?.installation.canUpload, stopTracks, token],
+    [location, refresh, stopTracks, token],
   );
 
   const openRecorder = React.useCallback(async (): Promise<void> => {
-    if (status?.installation.canUpload !== true || recorderState !== "idle")
+    if (
+      status?.installation.canUpload !== true ||
+      !["idle", "failed"].includes(recorderState)
+    )
       return;
+    const signal = lifecycleControllerRef.current?.signal;
+    if (signal === undefined || signal.aborted) return;
+    const generation = ++captureGenerationRef.current;
+    uploadSessionRef.current = null;
+    recorderRef.current?.cancel();
+    recorderRef.current = null;
+    setRecordingExpired(false);
+    stopTracks();
     setRecorderOpen(true);
     setRecorderState("requesting");
     setRecorderError(null);
@@ -301,112 +269,89 @@ export function ExtendedWarrantyOrderStatusPage({
           noiseSuppression: true,
         },
       });
+      if (
+        isAbortRequested(signal) ||
+        generation !== captureGenerationRef.current
+      ) {
+        for (const track of stream.getTracks()) track.stop();
+        return;
+      }
       streamRef.current = stream;
       setPreviewStream(stream);
       const capturedLocation = await requestInstallationLocation();
+      if (
+        isAbortRequested(signal) ||
+        generation !== captureGenerationRef.current
+      )
+        return;
       setLocation(capturedLocation);
       setRecorderState("ready");
     } catch (error: unknown) {
+      if (
+        isAbortRequested(signal) ||
+        generation !== captureGenerationRef.current
+      )
+        return;
       setPreviewStream(null);
       stopTracks();
       setRecorderState("idle");
+      setRecorderOpen(false);
       setRecorderError(toRecorderPermissionMessage(error));
     }
   }, [recorderState, status?.installation.canUpload, stopTracks]);
 
   const stopRecording = React.useCallback((): void => {
-    clearRecordingTimers();
-    if (recorderRef.current?.state === "recording") recorderRef.current.stop();
-  }, [clearRecordingTimers]);
+    recorderRef.current?.stop();
+  }, []);
 
   const startRecording = React.useCallback((): void => {
     const stream = streamRef.current;
-    if (stream === null || recorderState !== "ready" || location === null)
+    const signal = lifecycleControllerRef.current?.signal;
+    if (
+      stream === null ||
+      recorderState !== "ready" ||
+      location === null ||
+      signal === undefined ||
+      signal.aborted ||
+      recorderRef.current !== null
+    )
       return;
-    const mimeType = selectRecorderMimeType();
-    const recorder = new MediaRecorder(stream, {
-      mimeType,
-      videoBitsPerSecond: 1_500_000,
-      audioBitsPerSecond: 96_000,
-    });
-    recorderRef.current = recorder;
-    chunksRef.current = [];
     setRecorderError(null);
     setRecordingElapsedMs(0);
-    const startedAtMs = Date.now();
-    recordingStartedAtRef.current = startedAtMs;
-
-    recorder.addEventListener("dataavailable", (event) => {
-      if (event.data.size > 0) chunksRef.current.push(event.data);
-    });
-    recorder.addEventListener(
-      "stop",
-      () => {
-        clearRecordingTimers();
-        const stoppedAtMs = Date.now();
-        const recordingStartedAtMs = recordingStartedAtRef.current;
-        recordingStartedAtRef.current = null;
-        recorderRef.current = null;
-        if (recordingStartedAtMs === null) {
-          setRecorderState("ready");
-          setRecorderError(
-            "The live recording session could not be verified. Record again.",
-          );
-          return;
-        }
-        const durationMs = Math.min(
-          EXTENDED_WARRANTY_INSTALLATION_VIDEO_MAX_DURATION_MS,
-          Math.max(1, stoppedAtMs - recordingStartedAtMs),
-        );
-        const contentType = normalizeRecorderContentType(recorder.mimeType);
-        const blob = new Blob(chunksRef.current, { type: contentType });
-        chunksRef.current = [];
-        void uploadRecording({
-          blob,
-          contentType,
-          metadata: {
-            recordedAt: new Date(recordingStartedAtMs).toISOString(),
-            recordingStartedAt: new Date(recordingStartedAtMs).toISOString(),
-            recordingStoppedAt: new Date(stoppedAtMs).toISOString(),
-            durationMs,
-          },
-        });
-      },
-      { once: true },
-    );
-    recorder.addEventListener(
-      "error",
-      () => {
-        clearRecordingTimers();
-        setRecorderState("ready");
-        setRecorderError(
-          "The camera recorder failed. Record the installation again.",
-        );
-      },
-      { once: true },
-    );
-
-    recorder.start(1_000);
     setRecorderState("recording");
-    recordingTickRef.current = window.setInterval(() => {
-      setRecordingElapsedMs(
-        Math.min(
-          EXTENDED_WARRANTY_INSTALLATION_VIDEO_MAX_DURATION_MS,
-          Date.now() - startedAtMs,
-        ),
+    const fail = (): void => {
+      recorderRef.current = null;
+      stopTracks();
+      if (signal.aborted) return;
+      setPreviewStream(null);
+      setRecorderState("failed");
+      setRecordingExpired(true);
+      setRecorderError(
+        "The camera recording could not be completed. Record the installation again.",
       );
-    }, RECORDING_TICK_MS);
-    autoStopTimerRef.current = window.setTimeout(
-      stopRecording,
-      EXTENDED_WARRANTY_INSTALLATION_VIDEO_MAX_DURATION_MS,
-    );
-  }, [
-    clearRecordingTimers,
-    location,
-    recorderState,
-    stopRecording,
-    uploadRecording,
-  ]);
+    };
+    try {
+      recorderRef.current = startInstallationRecorder(
+        stream,
+        selectRecorderMimeType(),
+        {
+          complete: (recording) => {
+            recorderRef.current = null;
+            stopTracks();
+            if (signal.aborted) return;
+            setPreviewStream(null);
+            void uploadRecording(recording);
+          },
+          error: fail,
+          tick: (elapsed) => {
+            if (!signal.aborted) setRecordingElapsedMs(elapsed);
+          },
+        },
+      );
+    } catch {
+      fail();
+    }
+  }, [location, recorderState, stopTracks, uploadRecording]);
 
   const closeRecorder = React.useCallback((): void => {
     if (
@@ -415,7 +360,8 @@ export function ExtendedWarrantyOrderStatusPage({
       )
     )
       return;
-    clearRecordingTimers();
+    captureGenerationRef.current += 1;
+    uploadSessionRef.current = null;
     setPreviewStream(null);
     stopTracks();
     setRecorderOpen(false);
@@ -423,7 +369,7 @@ export function ExtendedWarrantyOrderStatusPage({
     setLocation(null);
     setRecorderError(null);
     setRecordingElapsedMs(0);
-  }, [clearRecordingTimers, recorderState, stopTracks]);
+  }, [recorderState, stopTracks]);
 
   if (pageState === "loading") {
     return (
@@ -495,6 +441,9 @@ export function ExtendedWarrantyOrderStatusPage({
             onStartRecording={startRecording}
             onStopRecording={stopRecording}
             onCloseRecorder={closeRecorder}
+            onRetryUpload={() => void uploadRecording()}
+            onRecordAgain={() => void openRecorder()}
+            recordingExpired={recordingExpired}
           />
 
           <Card className="rounded-2xl shadow-xs">
@@ -629,6 +578,9 @@ type StageCardProps = Readonly<{
   onStartRecording: () => void;
   onStopRecording: () => void;
   onCloseRecorder: () => void;
+  onRetryUpload: () => void;
+  onRecordAgain: () => void;
+  recordingExpired: boolean;
 }>;
 
 function CurrentStageCard(props: StageCardProps): React.ReactElement {
@@ -861,21 +813,36 @@ function RecorderPanel(props: StageCardProps): React.ReactElement {
   ].includes(props.recorderState);
   if (!props.recorderOpen) {
     return (
-      <Button
-        type="button"
-        size="lg"
-        className="mt-1 min-h-12 w-full rounded-xl"
-        onClick={props.onOpenRecorder}
-      >
-        <Video className="size-4" aria-hidden="true" /> Record live installation
-        video
-      </Button>
+      <div>
+        {props.recorderError === null ? null : (
+          <p role="alert" className="mb-3 text-sm text-destructive">
+            {props.recorderError}
+          </p>
+        )}
+        <Button
+          type="button"
+          size="lg"
+          className="mt-1 min-h-12 w-full rounded-xl"
+          onClick={props.onOpenRecorder}
+        >
+          <Video className="size-4" aria-hidden="true" /> Record live
+          installation video
+        </Button>
+      </div>
     );
   }
   return (
     <div className="space-y-4">
       <div className="overflow-hidden rounded-xl border bg-black">
-        <RecorderPreview stream={props.previewStream} />
+        {props.recorderState === "failed" ? (
+          <p className="p-6 text-center text-sm text-white">
+            {props.recordingExpired
+              ? "Record a new video to continue."
+              : "Your recording stays in this page until you retry or discard it."}
+          </p>
+        ) : (
+          <RecorderPreview stream={props.previewStream} />
+        )}
       </div>
       <div className="flex items-center justify-between gap-3 text-sm">
         <span className="inline-flex items-center gap-1.5 text-muted-foreground">
@@ -912,6 +879,23 @@ function RecorderPanel(props: StageCardProps): React.ReactElement {
         >
           <Square className="size-4" aria-hidden="true" /> Stop & upload now
         </Button>
+      ) : props.recorderState === "failed" ? (
+        <div className="space-y-2">
+          <Button
+            className="w-full"
+            onClick={props.onRetryUpload}
+            disabled={props.recordingExpired}
+          >
+            Retry upload
+          </Button>
+          <Button
+            className="w-full"
+            variant="outline"
+            onClick={props.onRecordAgain}
+          >
+            Record again
+          </Button>
+        </div>
       ) : props.recorderState === "ready" ? (
         <Button
           type="button"
@@ -933,7 +917,7 @@ function RecorderPanel(props: StageCardProps): React.ReactElement {
         disabled={busy}
         onClick={props.onCloseRecorder}
       >
-        Cancel
+        {props.recorderState === "failed" ? "Discard" : "Cancel"}
       </Button>
       <p className="text-xs leading-5 text-muted-foreground">
         Camera capture stops automatically at 60 seconds. The video, current
@@ -1055,14 +1039,6 @@ function selectRecorderMimeType(): string {
     );
   }
   return supported;
-}
-
-function normalizeRecorderContentType(
-  value: string,
-): "video/mp4" | "video/webm" {
-  const base = value.split(";", 1)[0]?.trim().toLowerCase();
-  if (base === "video/mp4" || base === "video/webm") return base;
-  throw new Error("The live camera produced an unsupported video format.");
 }
 
 async function requestInstallationLocation(): Promise<InstallationLocationEvidence> {
@@ -1197,10 +1173,4 @@ function formatMoney(currency: string, minor: string): string {
 function formatDuration(valueMs: number): string {
   const totalSeconds = Math.min(60, Math.floor(valueMs / 1000));
   return `00:${String(totalSeconds).padStart(2, "0")}`;
-}
-
-function formatBytes(value: number): string {
-  if (value >= 1024 * 1024) return `${(value / (1024 * 1024)).toFixed(0)} MiB`;
-  if (value >= 1024) return `${String(Math.ceil(value / 1024))} KiB`;
-  return `${String(value)} B`;
 }
