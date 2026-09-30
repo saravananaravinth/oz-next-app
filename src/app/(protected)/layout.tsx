@@ -3,10 +3,13 @@ import "server-only";
 
 import type { ReactElement, ReactNode } from "react";
 
+import { TooltipProvider } from "@/components/ui/tooltip";
+
 import { SidebarWrapper } from "@/features/app-shell/ui/sidebar-wrapper";
 import { requireAuthenticatedMe } from "@/features/auth/server/require-auth";
 import { ErpActorScopeCacheBoundary } from "@/features/erp-core/ui/erp-actor-scope-cache-boundary";
 import { erpActorScopeFromMe } from "@/features/erp-core/queries/erp-query-scope";
+import { AppQueryProvider } from "@/lib/query";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -33,17 +36,21 @@ export default async function ProtectedLayout({
   const actorScope = erpActorScopeFromMe(me);
 
   return (
-    <ErpActorScopeCacheBoundary scope={actorScope}>
-      <SidebarWrapper
-        me={me}
-        brandName={WORKSPACE_BRAND.name}
-        brandTagline={WORKSPACE_BRAND.tagline}
-        brandLogoLight={WORKSPACE_BRAND.logoLight}
-        brandLogoDark={WORKSPACE_BRAND.logoDark}
-        notifications={EMPTY_NOTIFICATIONS}
-      >
-        {children}
-      </SidebarWrapper>
-    </ErpActorScopeCacheBoundary>
+    <AppQueryProvider>
+      <TooltipProvider delayDuration={250} skipDelayDuration={100}>
+        <ErpActorScopeCacheBoundary scope={actorScope}>
+          <SidebarWrapper
+            me={me}
+            brandName={WORKSPACE_BRAND.name}
+            brandTagline={WORKSPACE_BRAND.tagline}
+            brandLogoLight={WORKSPACE_BRAND.logoLight}
+            brandLogoDark={WORKSPACE_BRAND.logoDark}
+            notifications={EMPTY_NOTIFICATIONS}
+          >
+            {children}
+          </SidebarWrapper>
+        </ErpActorScopeCacheBoundary>
+      </TooltipProvider>
+    </AppQueryProvider>
   );
 }

@@ -32,6 +32,10 @@ import {
 } from "@/lib/api/http-contract";
 import { logger } from "@/lib/observability/logger";
 import {
+  apiRouteTelemetryLabel,
+  shouldWarnSlowServerApiRequest,
+} from "@/server/api/api-route-telemetry";
+import {
   serverRequestContextHeaders,
   type ServerActorContextHeaders,
 } from "@/server/api/request-context-headers";
@@ -336,6 +340,7 @@ async function dispatchEdgeRequest(
   url: string,
   init: ServerRequestInit,
 ): Promise<Response> {
+  const startedAt = performance.now();
   const target = readDiagnosticUrlParts(url);
   const requestId = readDiagnosticHeader(init, HDR.REQUEST_ID);
   const correlationId = readDiagnosticHeader(init, HDR.CORRELATION_ID);
@@ -347,24 +352,41 @@ async function dispatchEdgeRequest(
     requestId,
     correlationId,
     targetOrigin: target.origin,
-    targetPathname: target.pathname,
+    targetRoute: apiRouteTelemetryLabel(target.pathname),
     appEnvironment: API_CONFIG.appEnv,
   };
 
-  if (!REQUIRE_ERP_EDGE_SERVICE_BINDING) {
-    logger.debug("erp_edge_public_fetch_selected", {
+  const logCompletion = (
+    dispatchTarget: "public_fetch" | "service_binding",
+    response: Response,
+  ): void => {
+    const durationMs = Math.max(0, Math.round(performance.now() - startedAt));
+    const fields = {
       ...requestLogFields,
-      bindingStatus: "ignored_for_environment",
-      dispatchTarget: "public_fetch",
-    });
+      dispatchTarget,
+      status: response.status,
+      durationMs,
+    };
 
+    if (shouldWarnSlowServerApiRequest(durationMs)) {
+      logger.warn("erp_edge_dispatch_slow", fields);
+      return;
+    }
+
+    logger.debug("erp_edge_dispatch_completed", fields);
+  };
+
+  if (!REQUIRE_ERP_EDGE_SERVICE_BINDING) {
     try {
-      return await fetch(url, toCloudflareFetchInit(init));
+      const response = await fetch(url, toCloudflareFetchInit(init));
+      logCompletion("public_fetch", response);
+      return response;
     } catch (error: unknown) {
       logger.error("erp_edge_public_fetch_dispatch_failed", {
         ...requestLogFields,
         bindingStatus: "ignored_for_environment",
         dispatchTarget: "public_fetch",
+        durationMs: Math.max(0, Math.round(performance.now() - startedAt)),
         errorName: diagnosticErrorName(error),
         errorMessage: diagnosticErrorMessage(error),
       });
@@ -385,6 +407,7 @@ async function dispatchEdgeRequest(
     logger.error("erp_edge_service_binding_required", {
       ...bindingLogFields,
       dispatchTarget: "none",
+      durationMs: Math.max(0, Math.round(performance.now() - startedAt)),
     });
 
     throw new ApiHttpError({
@@ -395,11 +418,16 @@ async function dispatchEdgeRequest(
   }
 
   try {
-    return await resolution.binding.fetch(toServiceBindingRequest(url, init));
+    const response = await resolution.binding.fetch(
+      toServiceBindingRequest(url, init),
+    );
+    logCompletion("service_binding", response);
+    return response;
   } catch (error: unknown) {
     logger.error("erp_edge_service_binding_dispatch_failed", {
       ...bindingLogFields,
       dispatchTarget: "service_binding",
+      durationMs: Math.max(0, Math.round(performance.now() - startedAt)),
       errorName: diagnosticErrorName(error),
       errorMessage: diagnosticErrorMessage(error),
     });

@@ -1,17 +1,18 @@
 // oz-next-app/src/app/(protected)/extended-warranty/page.tsx
-import { isApiHttpError } from "@/lib/api/problem";
-import { requireAuthenticatedMe } from "@/features/auth/server/require-auth";
-import { loadExtendedWarrantyReviewOrder } from "@/features/extended-warranty/api/review.server";
 import type { Metadata } from "next";
 
+import { requireAuthenticatedMe } from "@/features/auth/server/require-auth";
 import {
   ExtendedWarrantyWorkspacePage,
   loadExtendedWarrantyVehicleDetail,
   loadExtendedWarrantyWorkspace,
+  type ExtendedWarrantyWorkspaceDetailPayload,
 } from "@/features/extended-warranty";
+import { loadExtendedWarrantyReviewOrder } from "@/features/extended-warranty/api/review.server";
 import { extendedWarrantyWorkspaceQuerySchema } from "@/features/extended-warranty/contracts/admin.schema";
 import { EXTENDED_WARRANTY_ROUTE_PERMISSION } from "@/features/extended-warranty/contracts/route-access";
 import { requireExtendedWarrantyRouteAccess } from "@/features/extended-warranty/server/route-access";
+import { isApiHttpError } from "@/lib/api/problem";
 
 export const metadata: Metadata = {
   title: "Extended Warranty | Ozotec ERP",
@@ -21,6 +22,9 @@ export const metadata: Metadata = {
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 export const fetchCache = "force-no-store";
+
+const REVIEW_NOT_READY_MESSAGE =
+  "Installation evidence is not ready for review. Refresh after processing completes.";
 
 type ExtendedWarrantyOverviewPageProps = Readonly<{
   searchParams: Promise<
@@ -50,9 +54,12 @@ function flattenSearchParams(
 export default async function Page({
   searchParams,
 }: ExtendedWarrantyOverviewPageProps) {
-  const access = await requireExtendedWarrantyRouteAccess([
-    EXTENDED_WARRANTY_ROUTE_PERMISSION.OVERVIEW,
-    EXTENDED_WARRANTY_ROUTE_PERMISSION.ORDERS,
+  const [access, rawSearchParams] = await Promise.all([
+    requireExtendedWarrantyRouteAccess([
+      EXTENDED_WARRANTY_ROUTE_PERMISSION.OVERVIEW,
+      EXTENDED_WARRANTY_ROUTE_PERMISSION.ORDERS,
+    ]),
+    searchParams,
   ]);
 
   if (access.kind !== "resolved") {
@@ -64,41 +71,53 @@ export default async function Page({
   }
 
   const parsedQuery = extendedWarrantyWorkspaceQuerySchema.parse(
-    flattenSearchParams(await searchParams),
+    flattenSearchParams(rawSearchParams),
   );
+  const mePromise = requireAuthenticatedMe();
+  const workspacePromise = loadExtendedWarrantyWorkspace(access, parsedQuery);
+  const selectedUnitId = parsedQuery.unitId;
 
-  const [data, detail] = await Promise.all([
-    loadExtendedWarrantyWorkspace(access, parsedQuery),
-    parsedQuery.unitId === undefined
-      ? Promise.resolve(null)
-      : loadExtendedWarrantyVehicleDetail(access, parsedQuery.unitId),
-  ]);
+  const detailPromise: Promise<ExtendedWarrantyWorkspaceDetailPayload> | null =
+    selectedUnitId === undefined
+      ? null
+      : (async (): Promise<ExtendedWarrantyWorkspaceDetailPayload> => {
+          const [detail, me] = await Promise.all([
+            loadExtendedWarrantyVehicleDetail(access, selectedUnitId),
+            mePromise,
+          ]);
+          const canReview = me.permissions.includes("extended-warranty:review");
+          let review: ExtendedWarrantyWorkspaceDetailPayload["review"] = null;
+          let reviewUnavailable: string | null = null;
 
-  const me = await requireAuthenticatedMe();
-  const canReview = me.permissions.includes("extended-warranty:review");
-  let review = null;
-  let reviewUnavailable: string | null = null;
-  if (canReview && detail?.orderId && detail.installationSubmittedAt) {
-    try {
-      review = await loadExtendedWarrantyReviewOrder(access, detail.orderId);
-    } catch (error) {
-      if (
-        isApiHttpError(error) &&
-        (error.status === 409 || error.status === 404)
-      )
-        reviewUnavailable =
-          "Installation evidence is not ready for review. Refresh after processing completes.";
-      else throw error;
-    }
-  }
+          if (canReview && detail.orderId && detail.installationSubmittedAt) {
+            try {
+              review = await loadExtendedWarrantyReviewOrder(
+                access,
+                detail.orderId,
+              );
+            } catch (error: unknown) {
+              if (
+                isApiHttpError(error) &&
+                (error.status === 409 || error.status === 404)
+              ) {
+                reviewUnavailable = REVIEW_NOT_READY_MESSAGE;
+              } else {
+                throw error;
+              }
+            }
+          }
+
+          return { detail, review, reviewUnavailable };
+        })();
+
+  const [data, me] = await Promise.all([workspacePromise, mePromise]);
+
   return (
     <ExtendedWarrantyWorkspacePage
       tenantId={access.tenantId}
       data={data}
       query={parsedQuery}
-      detail={detail}
-      review={review}
-      reviewUnavailable={reviewUnavailable}
+      detailPromise={detailPromise}
       canReconcile={me.permissions.includes("payment:reconcile")}
       canSend={me.permissions.includes("extended-warranty:order:update")}
     />

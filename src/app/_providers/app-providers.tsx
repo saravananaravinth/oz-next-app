@@ -4,18 +4,15 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { ThemeProvider } from "next-themes";
-import { NuqsAdapter } from "nuqs/adapters/next/app";
 import { ErrorBoundary, type FallbackProps } from "react-error-boundary";
 
 import { Button } from "@/components/ui/button";
 import { Toaster } from "@/components/ui/sonner";
-import { TooltipProvider } from "@/components/ui/tooltip";
 import { useToast } from "@/shared/hooks/use-toast";
 import {
   isClientDevelopment,
   isClientProduction,
 } from "@/lib/env/client-public-env";
-import { AppQueryProvider } from "@/lib/query/index";
 import { UI_STORAGE_KEYS } from "@/lib/ui-preferences";
 
 export type ProvidersProps = Readonly<
@@ -572,29 +569,23 @@ export function Providers({
       fallbackRender={renderFallback}
       onError={handleBoundaryError}
     >
-      <NuqsAdapter>
-        <ThemeProvider {...themeProviderProps}>
-          <AppQueryProvider>
-            <TooltipProvider delayDuration={250} skipDelayDuration={100}>
-              <ClientRuntimeEffects
-                diagnosticsDisabled={options.disableErrorReporting}
-              />
-              {children}
-            </TooltipProvider>
-          </AppQueryProvider>
+      <ThemeProvider {...themeProviderProps}>
+        <ClientRuntimeEffects
+          diagnosticsDisabled={options.disableErrorReporting}
+        />
+        {children}
 
-          <Toaster
-            theme={options.forceDarkMode ? "dark" : "system"}
-            richColors
-            expand={false}
-            duration={3_800}
-            closeButton
-            gap={8}
-            offset={8}
-            position="top-right"
-          />
-        </ThemeProvider>
-      </NuqsAdapter>
+        <Toaster
+          theme={options.forceDarkMode ? "dark" : "system"}
+          richColors
+          expand={false}
+          duration={3_800}
+          closeButton
+          gap={8}
+          offset={8}
+          position="top-right"
+        />
+      </ThemeProvider>
     </ErrorBoundary>
   );
 }

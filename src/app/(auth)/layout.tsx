@@ -1,6 +1,8 @@
 // oz-next-app/src/app/(auth)/layout.tsx
 import type { ReactElement, ReactNode } from "react";
 
+import { AppQueryProvider } from "@/lib/query";
+
 type AuthLayoutProps = Readonly<{
   children: ReactNode;
 }>;
@@ -12,8 +14,10 @@ export default function AuthLayout({
   children,
 }: AuthLayoutProps): ReactElement {
   return (
-    <main id="main-content" tabIndex={-1} className={AUTH_LAYOUT_CLASS_NAME}>
-      {children}
-    </main>
+    <AppQueryProvider>
+      <main id="main-content" tabIndex={-1} className={AUTH_LAYOUT_CLASS_NAME}>
+        {children}
+      </main>
+    </AppQueryProvider>
   );
 }

@@ -8,6 +8,10 @@ import {
 } from "./src/lib/runtime/browser-support";
 import { EXTENDED_WARRANTY_PUBLIC_ROUTE_BASES } from "./src/features/extended-warranty/contracts/extended-warranty-route-map";
 import { buildForwardedRequestHeaders } from "./src/lib/security/forwarded-request-headers";
+import {
+  isKnownProtectedAppPath,
+  isSensitiveProbePath,
+} from "./src/lib/security/application-route-policy";
 
 const HDR = {
   REQUEST_ID: "x-request-id",
@@ -839,6 +843,30 @@ export function middleware(request: NextRequest): NextResponse {
   }
 
   if (isBlockedPath(pathname)) {
+    return problemResponse({
+      request,
+      context,
+      status: HTTP_STATUS.NOT_FOUND,
+      code: "route_not_found",
+      detail: "This route is not exposed by the frontend application.",
+    });
+  }
+
+  if (isSensitiveProbePath(pathname)) {
+    return problemResponse({
+      request,
+      context,
+      status: HTTP_STATUS.NOT_FOUND,
+      code: "route_not_found",
+      detail: "This route is not exposed by the frontend application.",
+    });
+  }
+
+  if (
+    !publicPath &&
+    !isApiPath(pathname) &&
+    !isKnownProtectedAppPath(pathname)
+  ) {
     return problemResponse({
       request,
       context,
