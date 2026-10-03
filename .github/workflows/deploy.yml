@@ -285,8 +285,8 @@ jobs:
           );
           assert.equal(
             packageJson.engines?.node,
-            ">=24.15.0 <25.0.0",
-            "Node.js engine must remain >=24.15.0 <25.0.0.",
+            ">=24.16.0 <25.0.0",
+            "Node.js engine must remain >=24.16.0 <25.0.0.",
           );
           assert.equal(
             packageJson.engines?.npm,
