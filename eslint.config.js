@@ -79,6 +79,7 @@ const javascriptConfigFiles = [
   "postcss.config.mjs",
   "scripts/**/*.js",
   "scripts/**/*.mjs",
+  "tools/**/*.mjs",
 ];
 
 const requestPathFiles = [
@@ -225,6 +226,18 @@ export default defineConfig(
 
   ...nextCoreWebVitals,
   ...nextTypescript,
+
+  {
+    files: ["tools/**/*.cjs"],
+    extends: [js.configs.recommended],
+    languageOptions: {
+      sourceType: "commonjs",
+      globals: nodeGlobals,
+    },
+    rules: {
+      "@typescript-eslint/no-require-imports": "off",
+    },
+  },
 
   {
     files: javascriptConfigFiles,

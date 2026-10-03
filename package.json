@@ -6,7 +6,7 @@
   "type": "module",
   "license": "UNLICENSED",
   "engines": {
-    "node": ">=24.15.0 <25.0.0",
+    "node": ">=24.16.0 <25.0.0",
     "npm": ">=12.0.1 <13.0.0"
   },
   "scripts": {
@@ -21,7 +21,8 @@
     "bundles:check": "node generate-bundles.mjs --check-relative-paths",
     "bundles:fix": "node generate-bundles.mjs --fix-relative-paths",
     "bundles:generate": "node generate-bundles.mjs",
-    "test": "vitest run",
+    "test": "npm run test:tooling && vitest run",
+    "test:tooling": "node --test tools/fast-glob-compat/*.test.mjs",
     "test:watch": "vitest",
     "deps:validate": "npm ls --all",
     "audit:prod": "npm audit --omit=dev --audit-level=high",
@@ -82,6 +83,7 @@
     "eslint": "9.39.5",
     "eslint-config-next": "^16.3.7",
     "eslint-config-prettier": "^10.1.8",
+    "fast-glob": "file:tools/fast-glob-compat",
     "globals": "17.7.0",
     "prettier": "3.9.6",
     "shadcn": "4.13.1",
@@ -95,6 +97,7 @@
     "brace-expansion@1.x": "1.1.21",
     "ip-address@10.x": "10.7.2",
     "esbuild": "0.28.1",
+    "fast-glob": "$fast-glob",
     "postcss": "8.5.26",
     "sharp": "$sharp",
     "undici": "7.29.1",

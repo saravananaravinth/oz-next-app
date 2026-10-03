@@ -129,8 +129,8 @@ const packageJson = JSON.parse(
 if (packageJson.packageManager !== "npm@12.0.1") {
   fail("packageManager must be pinned to npm@12.0.1.");
 }
-if (packageJson.engines?.node !== ">=24.15.0 <25.0.0") {
-  fail("Node.js engine must remain >=24.15.0 <25.0.0.");
+if (packageJson.engines?.node !== ">=24.16.0 <25.0.0") {
+  fail("Node.js engine must remain >=24.16.0 <25.0.0.");
 }
 if (packageJson.engines?.npm !== ">=12.0.1 <13.0.0") {
   fail("npm engine must remain >=12.0.1 <13.0.0.");
