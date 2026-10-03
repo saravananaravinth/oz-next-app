@@ -1,4 +1,5 @@
 // oz-next-app/src/features/integrations/zoho-inventory/ui/zoho-inventory-page.tsx
+import { CreditNoteSettlementOperations } from "./credit-note-settlement-operations";
 import type { ReactElement } from "react";
 import {
   Activity,
@@ -311,6 +312,10 @@ export function ZohoInventoryPage({
               ? "No successful Credit Note invoice sync has completed. Configure Head Office by its stable Zoho location ID before accrual."
               : `Last successful sync: ${formatDateTime(creditNoteOperations.lastSuccessfulSyncAt)}. Manual backfills are bounded to 93 days and mapping changes require a reason and row version.`}
           </p>
+          <CreditNoteSettlementOperations
+            settlements={creditNoteOperations.settlements}
+            canManage={canManageCreditNoteOperations}
+          />
         </ContentDataSurface>
       )}
 

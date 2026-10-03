@@ -8,6 +8,8 @@ import { API_CONFIG } from "@/lib/api/http-contract";
 import { assertSameOriginMutation } from "@/server/security/origin";
 
 import {
+  creditNoteSettlementCommandActionSchema,
+  type CreditNoteSettlementCommandResult,
   beginZohoAuthorizationActionInputSchema,
   createZohoConnectionActionInputSchema,
   runZohoReconciliationActionInputSchema,
@@ -32,6 +34,7 @@ import {
 } from "@/features/integrations/zoho-inventory/policies/zoho-inventory.policy";
 import { assertZohoAuthorizationUrl } from "@/features/integrations/zoho-inventory/policies/zoho-oauth-provider.policy";
 import {
+  runCreditNoteSettlementCommand,
   beginZohoAuthorization,
   createZohoConnection,
   disconnectZohoConnection,
@@ -301,6 +304,31 @@ export async function runZohoReconciliationAction(
       idempotencyKey: body.idempotencyKey,
     });
 
+    revalidatePath(INTEGRATION_PATH);
+    return { ok: true, data };
+  } catch (error: unknown) {
+    return zohoInventoryActionFailure(error);
+  }
+}
+
+export async function runCreditNoteSettlementCommandAction(
+  input: unknown,
+): Promise<ActionResult<CreditNoteSettlementCommandResult>> {
+  try {
+    const command = creditNoteSettlementCommandActionSchema.parse(input);
+    const access = await resolveActionAccess("canRead");
+    const me = await requireAuthenticatedMe();
+    const permissions =
+      me.auth?.permissionResolution?.effectivePermissions ??
+      me.auth?.effectivePermissions ??
+      me.permissions;
+    if (
+      access.actorKind === "DEALER" ||
+      (access.actorKind !== "SUPER_ADMIN" &&
+        !permissions.includes("credit-note:reconciliation:run"))
+    )
+      throw new TypeError("zoho_integration_access_forbidden");
+    const data = await runCreditNoteSettlementCommand({ access, command });
     revalidatePath(INTEGRATION_PATH);
     return { ok: true, data };
   } catch (error: unknown) {

@@ -182,9 +182,9 @@ function settlementStatusLabel(status: CreditNoteSettlementStatus): string {
     case "NOT_DUE":
       return "Not due";
     case "PENDING":
-      return "Pending";
+      return "Awaiting submission";
     case "POSTING":
-      return "Processing";
+      return "Confirming submission";
     case "SETTLED":
       return "Settled";
     case "BLOCKED_PROVIDER_CONFIGURATION":
@@ -878,6 +878,11 @@ function SettlementHistory({
                       {settlementStatusLabel(item.settlementStatus)}
                     </Badge>
                   </div>
+                  {item.nextAction ? (
+                    <p className="text-caption text-muted-readable">
+                      {item.nextAction}
+                    </p>
+                  ) : null}
                   <CreditNoteMetricGrid className="grid-cols-2 sm:grid-cols-2 xl:grid-cols-2">
                     <CreditNoteMetric
                       label="Final amount"
@@ -921,11 +926,16 @@ function SettlementHistory({
                     </TableCell>
                     <TableCell>
                       <p className="font-medium text-foreground">
-                        {item.zohoCreditNoteNumber ?? "Pending document"}
+                        {item.zohoCreditNoteNumber ?? "Awaiting Zoho document"}
                       </p>
                       <p className="mt-0.5 text-caption text-muted-readable">
                         Cycle {item.cycleId.slice(0, 8)}
                       </p>
+                      {item.nextAction ? (
+                        <p className="mt-1 max-w-64 text-caption text-muted-readable">
+                          {item.nextAction}
+                        </p>
+                      ) : null}
                     </TableCell>
                     <TableCell className="text-right text-tabular">
                       {item.finalPurchaseVehicleCount === null
@@ -943,7 +953,13 @@ function SettlementHistory({
                       >
                         {item.providerStatus === null
                           ? "Not started"
-                          : humanize(item.providerStatus)}
+                          : item.providerStatus === "PREPARED"
+                            ? "Awaiting submission"
+                            : item.providerStatus === "FAILED"
+                              ? "Submission rejected"
+                              : item.providerStatus === "OUTCOME_UNKNOWN"
+                                ? "Confirmation required"
+                                : humanize(item.providerStatus)}
                       </Badge>
                     </TableCell>
                     <TableCell className="text-center">

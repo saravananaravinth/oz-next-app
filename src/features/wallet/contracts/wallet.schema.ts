@@ -361,6 +361,13 @@ export const creditNoteSettlementHistorySchema = z
     providerCreatedAt: z.iso.datetime({ offset: true }).nullable(),
     providerOpenedAt: z.iso.datetime({ offset: true }).nullable(),
     settledAt: z.iso.datetime({ offset: true }).nullable(),
+    requestedNumber: z.string().max(100).nullable().optional().default(null),
+    nextAttemptAt: z.iso
+      .datetime({ offset: true })
+      .nullable()
+      .optional()
+      .default(null),
+    nextAction: z.string().max(512).nullable().optional().default(null),
     lastErrorCode: z.string().trim().min(1).max(256).nullable(),
   })
   .strict();

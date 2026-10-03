@@ -9,6 +9,8 @@ import { serverApiClient } from "@/server/api/edge-api-client";
 import type { ServerActorContextHeaders } from "@/server/api/request-context-headers";
 
 import {
+  creditNoteSettlementCommandResultSchema,
+  creditNoteSettlementCommandActionSchema,
   zohoAuthorizationExchangeResultSchema,
   zohoAuthorizationStartResultSchema,
   zohoConnectionsSchema,
@@ -454,6 +456,26 @@ export async function enqueueZohoReconciliation(
     },
     schema: zohoSyncJobSchema,
     idempotencyKey: input.idempotencyKey,
+    refreshOnUnauthorized: false,
+    ...(input.access.actorContext === undefined
+      ? {}
+      : { actorContext: input.access.actorContext }),
+  });
+}
+
+export async function runCreditNoteSettlementCommand(
+  input: Readonly<{
+    access: ResolvedZohoInventoryAccess;
+    command: unknown;
+  }>,
+) {
+  const { cycleId, action, ...body } =
+    creditNoteSettlementCommandActionSchema.parse(input.command);
+  return await creditNoteOperationsClient.request({
+    method: HTTP_METHODS.POST,
+    path: `/operations/settlements/${cycleId}/${action}`,
+    body,
+    schema: creditNoteSettlementCommandResultSchema,
     refreshOnUnauthorized: false,
     ...(input.access.actorContext === undefined
       ? {}

@@ -574,8 +574,57 @@ export const zohoIntegrationSearchParamsSchema = z
   })
   .strict();
 
+export const creditNoteSettlementOperationSchema = z
+  .object({
+    cycleId: z.uuid(),
+    rowVersion: z.number().int().positive(),
+    settlementStatus: z.string().max(128),
+    finalAmount: z.string().nullable(),
+    providerStatus: z.string().nullable(),
+    requestedNumber: z.string().nullable(),
+    failurePhase: z.string().nullable(),
+    httpStatus: z.number().int().nullable(),
+    providerCode: z.string().nullable(),
+    failureKind: z.string().nullable(),
+    nextAttemptAt: isoDateTimeSchema.nullable(),
+    attemptCount: z.number().int().nonnegative(),
+    retryAllowed: z.boolean(),
+  })
+  .strict();
+export const creditNoteSettlementCommandResultSchema = z
+  .object({
+    cycleId: z.uuid(),
+    rowVersion: z.number().int().positive(),
+    outcome: z.enum(["ABSENT", "MATCHED", "QUEUED"]),
+    retryAllowed: z.boolean(),
+  })
+  .strict();
+export const creditNoteSettlementCommandActionSchema = z
+  .object({
+    cycleId: z.uuid(),
+    expectedRowVersion: z.number().int().positive(),
+    idempotencyKey: z
+      .string()
+      .min(16)
+      .max(128)
+      .regex(/^[A-Za-z0-9:_-]+$/u),
+    action: z.enum(["reconcile", "retry"]),
+  })
+  .strict();
+export type CreditNoteSettlementOperation = z.infer<
+  typeof creditNoteSettlementOperationSchema
+>;
+export type CreditNoteSettlementCommandResult = z.infer<
+  typeof creditNoteSettlementCommandResultSchema
+>;
+
 export const creditNoteOperationsSnapshotSchema = z
   .object({
+    settlements: z
+      .array(creditNoteSettlementOperationSchema)
+      .max(100)
+      .optional()
+      .default([]),
     configured: z.boolean(),
     locationId: z.string().nullable(),
     locationName: z.string().nullable(),
